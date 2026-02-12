@@ -1,0 +1,25 @@
+// src/grammar.lalrpop
+use crate::ast::{Expr, BinaryOp};
+
+grammar;
+
+pub Expression: Box<Expr> = {
+    Expr,
+};
+
+Expr: Box<Expr> = {
+    <l:Expr> "+" <r:Term> => Box::new(Expr::Binary(l, BinaryOp::Add, r)),
+    <l:Expr> "-" <r:Term> => Box::new(Expr::Binary(l, BinaryOp::Sub, r)),
+    Term,
+};
+
+Term: Box<Expr> = {
+    <l:Term> "*" <r:Factor> => Box::new(Expr::Binary(l, BinaryOp::Mul, r)),
+    <l:Term> "/" <r:Factor> => Box::new(Expr::Binary(l, BinaryOp::Div, r)),
+    Factor,
+};
+
+Factor: Box<Expr> = {
+    r"[0-9]+(\.[0-9]+)?" => Box::new(Expr::Number(<>.parse::<f64>().unwrap())),
+    "(" <e:Expr> ")" => e,
+};

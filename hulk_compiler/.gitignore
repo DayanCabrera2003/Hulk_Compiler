@@ -1,0 +1,29 @@
+# Rust build artifacts
+target/
+
+# Cargo lock file (optional, but common to ignore for libraries)
+Cargo.lock
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.bak
+*.log
+
+# LALRPOP generated parser (if you don't want to commit it)
+# src/grammar.rs

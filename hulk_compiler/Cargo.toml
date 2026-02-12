@@ -1,0 +1,10 @@
+[package]
+name = "Hulk_Compiler"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+lalrpop-util = { version = "0.23.0", features = ["lexer"] }
+
+[build-dependencies]
+lalrpop = "0.23.0"
