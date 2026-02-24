@@ -1,0 +1,33 @@
+program         = { top_level_def } global_expr ;
+
+top_level_def   = function_def
+                | type_def
+                | protocol_def
+                | macro_def
+                ;
+
+function_def    = "function" IDENT "(" [ param_list ] ")" [ ":" type_ref ] "="> %EXPR% ";";
+
+type_def        = "type" IDENT [ "(" [ param_list ] ")" ] [ inherits_clause ] type_body ;
+inherits_clause = "inherits" IDENT [ "(" [ arg_list ] ")" ] ;
+arg_list        = %EXPR% { "," %EXPR% } ;
+type_body       = "{" { type_member } "}" ;
+
+type_member     = IDENT member_rest ;
+member_rest     = attr_rest | method_rest ;
+attr_rest       = [ ":" type_ref ] "=" %EXPR% ";" ;
+method_rest     = "(" [ param_list ] ")" [ ":" type_ref ] "="> %EXPR% ";" ;
+
+protocol_def    = "protocol" IDENT [ "extends" IDENT ] protocol_body ;
+protocol_body   = "{" { protocol_method } "}" ;
+protocol_method = IDENT "(" [ param_list ] ")" [ ":" type_ref ] ";" ;
+
+macro_def       = "def" IDENT "(" [ macro_param_list ] ")" "="> %EXPR% ";" ;
+macro_param_list= macro_param { "," macro_param } ;
+macro_param     = ( "@" | "$" | "*" )? IDENT [ ":" type_ref ] ;
+
+global_expr     = %EXPR% [ ";" ] ;
+
+type_ref        = IDENT type_ref_suffix | functor_type ;
+type_ref_suffix = "*" | "[" "]" | ε ;
+functor_type    = "(" [ type_ref { "," type_ref } ] ")" "->" type_ref ;
