@@ -10,3 +10,6 @@ repository.workspace = true
 hulk-ast = { path = "../hulk-ast" }
 hulk-tokens = { path = "../hulk-tokens" }
 hulk-diagnostics = { path = "../hulk-diagnostics" }
+
+[dev-dependencies]
+hulk-lexer = { path = "../hulk-lexer" }
