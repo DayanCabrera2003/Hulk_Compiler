@@ -1,0 +1,20 @@
+// functors.hulk — `protocol NumberFilter`, lambdas, anotación (A)->B.
+// Snippets literales de Hulk.md:1154, 1196, 1228, 1261.
+protocol NumberFilter {
+    invoke(x: Number): Boolean;
+}
+
+function is_odd(x: Number): Boolean => x % 2 == 1;
+
+function count_when(numbers: Number*, filter: (Number) -> Boolean): Number =>
+    let total = 0 in {
+        for (x in numbers)
+            if (filter(x)) total := total + 1;
+        total;
+    };
+
+{
+    print(count_when(range(0, 10), is_odd));
+    print(count_when(range(0, 10), (x: Number): Boolean => x % 2 == 0));
+    print(count_when(range(0, 10), (x) => x > 5));
+}

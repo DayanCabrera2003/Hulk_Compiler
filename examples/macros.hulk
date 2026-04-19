@@ -1,0 +1,30 @@
+// macros.hulk — `def` con parámetros *, @, $.
+// Snippets literales de Hulk.md:1342 (`repeat`), 1396 (`swap`), 1437
+// (`repeat_iter`). La variante `match/case` (Hulk.md:1478) se difiere a la
+// sesión 10 porque el parser aún no la soporta (ver
+// `doc/seccion-05-frontend-tests.md`).
+def repeat(n: Number, *expr: Object): Object =>
+    let total = n in
+        while (total >= 0) {
+            total := total - 1;
+            expr;
+        };
+
+def swap(@a: Object, @b: Object) {
+    let temp: Object = a in {
+        a := b;
+        b := temp;
+    };
+}
+
+def repeat_iter($iter: Number, n: Number, *expr: Object) {
+    let iter: Number = 0, total: Number = n in {
+        while (total >= 0) {
+            total := total - 1;
+            expr;
+            iter := iter + 1;
+        };
+    };
+}
+
+0;

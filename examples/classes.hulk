@@ -1,0 +1,28 @@
+// classes.hulk — type con atributos, métodos, herencia, self, base.
+// Point/PolarPoint adaptados de Hulk.md:468 y Hulk.md:529 (constructor
+// forwardeando argumentos al padre como en Hulk.md:554). Person/Knight
+// es el caso `base()` de Hulk.md:570.
+type Point(x: Number, y: Number) {
+    x: Number = x;
+    y: Number = y;
+    getX(): Number => self.x;
+    getY(): Number => self.y;
+    setX(x: Number) => self.x := x;
+    setY(y: Number) => self.y := y;
+}
+
+type PolarPoint(phi: Number, rho: Number) inherits Point(rho, phi) {
+    rho(): Number => sqrt(self.getX() ^ 2 + self.getY() ^ 2);
+}
+
+type Person(firstname: String, lastname: String) {
+    firstname: String = firstname;
+    lastname: String = lastname;
+    name(): String => self.firstname @@ self.lastname;
+}
+
+type Knight inherits Person {
+    name(): String => "Sir" @@ base();
+}
+
+let p = new Knight("Phil", "Collins") in print(p.name());

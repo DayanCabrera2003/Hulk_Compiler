@@ -250,8 +250,11 @@ impl<'a> Lexer<'a> {
     }
 
     fn consume_comment(&mut self) {
+        // Avanzar por codepoint completo: un comentario puede contener
+        // cualquier UTF-8 (ej: `—`, `á`) y sumar 1 byte dejaría el cursor
+        // a mitad de un codepoint, provocando panic en el próximo peek.
         while self.peek_char().is_some_and(|ch| ch != '\n') {
-            self.cursor += 1;
+            self.advance_char();
         }
     }
 
@@ -492,5 +495,36 @@ let x = 5 in {
 
         assert_eq!(tokens, expected);
         assert!(diagnostics.is_empty());
+    }
+
+    #[test]
+    fn consume_comment_tolerates_multibyte_utf8() {
+        // Regression: `consume_comment` used to advance byte-by-byte and
+        // panic when a comment contained characters like `—`, `á`, or `ú`.
+        let src = "// comentario con — tildes á ú y emoji 🦀\nlet x = 1 in x;";
+        let (tokens, diagnostics) = lex_tokens(src);
+
+        assert!(
+            diagnostics.is_empty(),
+            "unexpected diagnostics: {:?}",
+            diagnostics.diagnostics()
+        );
+        assert_eq!(tokens.first(), Some(&Token::Let));
+    }
+
+    #[test]
+    fn utf8_in_comment_between_tokens() {
+        let src = "1 // é\n+ 2";
+        let (tokens, diagnostics) = lex_tokens(src);
+        assert!(diagnostics.is_empty());
+        assert_eq!(
+            tokens,
+            vec![
+                Token::Number(1.0),
+                Token::Plus,
+                Token::Number(2.0),
+                Token::Eof,
+            ]
+        );
     }
 }
