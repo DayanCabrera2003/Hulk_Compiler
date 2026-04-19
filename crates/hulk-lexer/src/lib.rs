@@ -195,27 +195,15 @@ impl<'a> Lexer<'a> {
             }
 
             if ch == '\\' {
-                self.cursor += 1;
+                self.cursor += 1; // consume '\'
                 match self.peek_char() {
-                    Some('"') => {
-                        value.push('"');
-                        self.cursor += 1;
-                    }
-                    Some('n') => {
-                        value.push('\n');
-                        self.cursor += 1;
-                    }
-                    Some('t') => {
-                        value.push('\t');
-                        self.cursor += 1;
-                    }
-                    Some('\\') => {
-                        value.push('\\');
-                        self.cursor += 1;
-                    }
+                    Some('"')  => { value.push('"');  self.cursor += 1; }
+                    Some('n')  => { value.push('\n'); self.cursor += 1; }
+                    Some('t')  => { value.push('\t'); self.cursor += 1; }
+                    Some('\\') => { value.push('\\'); self.cursor += 1; }
                     Some(other) => {
                         let escape_start = self.cursor.saturating_sub(1);
-                        self.cursor += 1;
+                        self.cursor += other.len_utf8();
                         self.report_error(
                             escape_start,
                             self.cursor,
@@ -233,7 +221,7 @@ impl<'a> Lexer<'a> {
             }
 
             value.push(ch);
-            self.cursor += 1;
+            self.advance_char(); // correcto para cualquier codepoint UTF-8
         }
 
         if terminated {
@@ -273,13 +261,26 @@ impl<'a> Lexer<'a> {
     }
 
     fn peek_char(&self) -> Option<char> {
-        self.bytes.get(self.cursor).map(|byte| char::from(*byte))
+        self.source[self.cursor..].chars().next()
     }
 
+    /// Returns the character after the current one, skipping over the correct
+    /// number of UTF-8 bytes for the current character.
     fn peek_next_char(&self) -> Option<char> {
-        self.bytes
-            .get(self.cursor + 1)
-            .map(|byte| char::from(*byte))
+        let mut chars = self.source[self.cursor..].chars();
+        let first = chars.next()?;
+        // Only valid for ASCII lookahead (operators are always ASCII).
+        // For the general case we skip by the byte length of the first char.
+        let _ = first;
+        chars.next()
+    }
+
+    /// Advances the cursor past the current character, returning its byte length.
+    fn advance_char(&mut self) -> usize {
+        let ch = self.peek_char().unwrap_or('\0');
+        let len = ch.len_utf8();
+        self.cursor += len;
+        len
     }
 }
 

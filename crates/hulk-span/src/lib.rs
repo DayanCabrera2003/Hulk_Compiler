@@ -102,6 +102,23 @@ impl Span {
         self.end
     }
 
+    /// Returns a zero-length span at the start of `file`. Used for synthetic nodes in error recovery.
+    #[must_use]
+    pub fn dummy(file: Arc<SourceFile>) -> Self {
+        Self { file, start: 0, end: 0 }
+    }
+
+    /// Merges two spans into the smallest span that contains both.
+    /// Both spans must belong to the same source file.
+    #[must_use]
+    pub fn merge(self, other: Span) -> Self {
+        Self {
+            file: self.file,
+            start: self.start.min(other.start),
+            end: self.end.max(other.end),
+        }
+    }
+
     /// Returns the half-open byte range.
     #[must_use]
     pub fn range(&self) -> std::ops::Range<usize> {

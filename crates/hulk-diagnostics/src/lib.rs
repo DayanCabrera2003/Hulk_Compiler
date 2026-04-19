@@ -134,6 +134,11 @@ impl DiagnosticBag {
         &self.diagnostics
     }
 
+    /// Removes and returns all diagnostics, leaving the bag empty.
+    pub fn drain(&mut self) -> Vec<Diagnostic> {
+        std::mem::take(&mut self.diagnostics)
+    }
+
     /// Emits all diagnostics to stderr.
     pub fn emit_stderr(&self) -> Result<(), codespan_reporting::files::Error> {
         let mut writer = StandardStream::stderr(ColorChoice::Auto);
