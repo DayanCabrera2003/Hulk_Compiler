@@ -98,7 +98,11 @@ impl<'a> Lexer<'a> {
                 '>' => self.double_or_single('=', Token::GreaterEqual, Token::Greater),
 
                 _ => {
-                    self.cursor += 1;
+                    // Avanzar por codepoint completo: un carácter inesperado
+                    // puede ser multibyte (emoji, `ñ`, `ü`, etc.). Sumar 1
+                    // byte dejaría el cursor a mitad de un codepoint y el
+                    // próximo peek_char paniquearía.
+                    self.advance_char();
                     self.report_error(start, self.cursor, "caracter inesperado");
                 }
             }
@@ -525,6 +529,46 @@ let x = 5 in {
                 Token::Number(2.0),
                 Token::Eof,
             ]
+        );
+    }
+
+    #[test]
+    fn multibyte_unexpected_char_does_not_panic() {
+        // Regression: el fallthrough del match en `lex_all` avanzaba
+        // `cursor += 1` sobre caracteres inesperados multibyte (🦀, ñ, ü),
+        // dejando el cursor a mitad de un codepoint y paniqueando en el
+        // siguiente peek_char. Debe reportar el error y continuar.
+        let src = "let 🦀 = 1 in 0;";
+        let (tokens, diagnostics) = lex_tokens(src);
+        assert!(
+            !diagnostics.is_empty(),
+            "se esperaba un diagnóstico por '🦀'"
+        );
+        assert!(
+            diagnostics
+                .diagnostics()
+                .iter()
+                .any(|d| d.message.contains("caracter inesperado")),
+            "mensaje esperado 'caracter inesperado', diagnósticos: {:?}",
+            diagnostics.diagnostics()
+        );
+        // El lexer siguió y emitió los tokens restantes.
+        assert!(tokens.contains(&Token::Let));
+        assert!(tokens.contains(&Token::In));
+    }
+
+    #[test]
+    fn multiple_multibyte_unexpected_chars_each_report_independently() {
+        let src = "🦀 ñ ü";
+        let (_, diagnostics) = lex_tokens(src);
+        let unexpected = diagnostics
+            .diagnostics()
+            .iter()
+            .filter(|d| d.message.contains("caracter inesperado"))
+            .count();
+        assert_eq!(
+            unexpected, 3,
+            "esperaba 3 caracteres inesperados, obtuvo {unexpected}"
         );
     }
 }

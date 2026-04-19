@@ -5,9 +5,7 @@
 //! tests verifican que N errores independientes producen ≥ N diagnósticos y que
 //! el contenido válido posterior se mantiene en el AST.
 
-use crate::common::{
-    assert_any_error, assert_has_message, error_count, parse_capturing_all,
-};
+use crate::common::{assert_any_error, assert_has_message, error_count, parse_capturing_all};
 
 #[test]
 fn two_malformed_functions_reported_together() {
@@ -30,12 +28,17 @@ fn lexical_and_syntactic_errors_coexist_in_one_pass() {
 
 #[test]
 fn multiple_unexpected_chars_each_produce_diagnostic() {
-    let (_, diags) = parse_capturing_all("multi.hulk", "# $ ? ; 1;");
+    // Nota: `$` es token válido (Token::Dollar para macros). Usamos caracteres
+    // verdaderamente inesperados.
+    let (_, diags) = parse_capturing_all("multi.hulk", "# ~ ? ; 1;");
     let unexpected = diags
         .iter()
         .filter(|d| d.message.contains("caracter inesperado"))
         .count();
-    assert!(unexpected >= 3, "esperaba 3+ 'caracter inesperado', obtuvo {unexpected}");
+    assert!(
+        unexpected >= 3,
+        "esperaba 3+ 'caracter inesperado', obtuvo {unexpected}"
+    );
 }
 
 #[test]

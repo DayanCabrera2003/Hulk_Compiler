@@ -50,7 +50,8 @@ pub(super) fn assert_any_error(diags: &[Diagnostic]) {
     assert!(
         error_count(diags) > 0,
         "se esperaba al menos un diagnóstico de error; se obtuvo: {:?}",
-        diags.iter()
+        diags
+            .iter()
             .map(|d| (d.severity, &d.message))
             .collect::<Vec<_>>()
     );

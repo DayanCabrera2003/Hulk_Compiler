@@ -79,7 +79,10 @@ fn multiple_invalid_escapes_each_reported() {
         .iter()
         .filter(|d| d.message.contains("secuencia de escape invalida"))
         .count();
-    assert!(count >= 3, "se esperaba 3+ escapes inválidos, obtuvo {count}");
+    assert!(
+        count >= 3,
+        "se esperaba 3+ escapes inválidos, obtuvo {count}"
+    );
 }
 
 // ---------------------------------------------------------------------------
