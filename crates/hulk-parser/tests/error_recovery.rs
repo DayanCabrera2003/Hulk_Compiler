@@ -247,6 +247,105 @@ fn body_is_empty_block_when_parse_completely_fails() {
 }
 
 // ---------------------------------------------------------------------------
+// Header-level recovery: a malformed decl header must not swallow the next
+// declaration. These are the highest-impact recovery points because a missing
+// `{` or `(` in a header can otherwise cascade through the rest of the file.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn type_without_opening_brace_does_not_swallow_next_decl() {
+    let (program, bag) = parse_source("type Foo function bar() => 1; 0;");
+    assert!(bag.has_errors());
+    let fn_names: Vec<_> = program.functions.iter().map(|f| f.name.clone()).collect();
+    assert!(
+        fn_names.contains(&"bar".to_string()),
+        "expected `bar` to survive recovery, got functions={fn_names:?}"
+    );
+}
+
+#[test]
+fn protocol_without_opening_brace_does_not_swallow_next_decl() {
+    let (program, bag) = parse_source("protocol Foo function bar() => 1; 0;");
+    assert!(bag.has_errors());
+    let fn_names: Vec<_> = program.functions.iter().map(|f| f.name.clone()).collect();
+    assert!(
+        fn_names.contains(&"bar".to_string()),
+        "expected `bar` to survive recovery, got functions={fn_names:?}"
+    );
+}
+
+#[test]
+fn function_without_parens_does_not_swallow_next_decl() {
+    // `function foo` then another function — recovery should still parse `bar`.
+    let (program, bag) = parse_source("function foo type Bar { x = 1; } 0;");
+    assert!(bag.has_errors());
+    let ty_names: Vec<_> = program.types.iter().map(|t| t.name.clone()).collect();
+    assert!(
+        ty_names.contains(&"Bar".to_string()),
+        "expected `Bar` to survive recovery, got types={ty_names:?}"
+    );
+}
+
+#[test]
+fn macro_without_parens_does_not_swallow_next_decl() {
+    let (program, bag) = parse_source("def bad function good() => 1; 0;");
+    assert!(bag.has_errors());
+    let fn_names: Vec<_> = program.functions.iter().map(|f| f.name.clone()).collect();
+    assert!(
+        fn_names.contains(&"good".to_string()),
+        "expected `good` to survive recovery, got functions={fn_names:?}"
+    );
+}
+
+#[test]
+fn type_with_missing_brace_followed_by_type() {
+    let (program, bag) = parse_source(
+        r#"type First
+           type Second { x = 1; }
+           0;"#,
+    );
+    assert!(bag.has_errors());
+    let ty_names: Vec<_> = program.types.iter().map(|t| t.name.clone()).collect();
+    assert!(
+        ty_names.contains(&"Second".to_string()),
+        "expected `Second` to survive recovery, got types={ty_names:?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Dummy-span sanity: synthetic nodes produced on error must not crash visitors.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn visitor_walks_synthetic_ast_without_panic() {
+    use hulk_ast::{visitor::walk_expr, Expr, Visitor};
+
+    struct Counter(usize);
+    impl Visitor for Counter {
+        fn visit_expr(&mut self, e: &Expr) {
+            self.0 += 1;
+            walk_expr(self, e);
+        }
+    }
+
+    // Sample of pathological inputs — the visitor must complete for each.
+    let inputs = [
+        "type Foo function bar() => 1; 0;",
+        "{ let x = ",
+        "protocol P {",
+        "def m(*",
+        "function f(x:",
+    ];
+    for src in inputs {
+        let (program, _) = parse_source(src);
+        let mut counter = Counter(0);
+        counter.visit_program(&program);
+        // Some nodes must have been visited (the synthetic body exists).
+        assert!(counter.0 > 0, "visitor did not walk program for `{src}`");
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Fuzz-style safety net: random-looking inputs must not panic or hang.
 // ---------------------------------------------------------------------------
 

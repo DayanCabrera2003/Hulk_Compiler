@@ -149,6 +149,22 @@ impl Parser {
             None
         };
 
+        // Recovery gate: if `{` is missing and the next token is a declaration
+        // keyword or EOF, the user probably forgot the body entirely. Returning
+        // a synthetic type here stops `parse_type_members` from greedily
+        // consuming the next declaration.
+        if !self.at(&Token::LBrace) && self.peek_is_recovery_boundary() {
+            self.expect(&Token::LBrace, "se esperaba '{' al abrir cuerpo de tipo");
+            let span = type_tok.span.merge(self.previous_span());
+            return TypeDecl {
+                name,
+                params,
+                parent,
+                members: Vec::new(),
+                span,
+            };
+        }
+
         let lbrace_span = self
             .expect(&Token::LBrace, "se esperaba '{' al abrir cuerpo de tipo")
             .map(|t| t.span)
@@ -285,6 +301,23 @@ impl Parser {
                 }
                 break;
             }
+        }
+
+        // Same recovery gate as `parse_type_decl`: a missing `{` on a header
+        // followed by a decl keyword / EOF means "no body at all" — return
+        // early instead of letting the methods loop consume neighbouring decls.
+        if !self.at(&Token::LBrace) && self.peek_is_recovery_boundary() {
+            self.expect(
+                &Token::LBrace,
+                "se esperaba '{' al abrir cuerpo de protocolo",
+            );
+            let span = proto_tok.span.merge(self.previous_span());
+            return ProtocolDecl {
+                name,
+                extends,
+                methods: Vec::new(),
+                span,
+            };
         }
 
         self.expect(

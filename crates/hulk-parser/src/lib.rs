@@ -173,6 +173,18 @@ impl Parser {
         }
     }
 
+    /// True when the current token signals the end of the enclosing construct
+    /// from the point of view of error recovery: either EOF or the start of a
+    /// new top-level declaration. A `parse_*_decl` that reaches one of these
+    /// with its header unfinished should bail out with a synthetic node
+    /// rather than attempt to consume more tokens.
+    pub(crate) fn peek_is_recovery_boundary(&self) -> bool {
+        matches!(
+            self.peek(),
+            Token::Eof | Token::Function | Token::Type | Token::Protocol | Token::Def
+        )
+    }
+
     /// Emit an error diagnostic pointing at the current token.
     pub(crate) fn error_here(&mut self, message: impl Into<String>, label: impl Into<String>) {
         let span = self.peek_span();

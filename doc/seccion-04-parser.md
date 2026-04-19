@@ -203,6 +203,7 @@ La sintaxis `def foo(params): RetType => ...` aparece en ejemplos de Hulk.md, pe
 | `skip_to_sync()` | Recorta hasta el conjunto canónico de tokens de sincronización: `; } EOF function type protocol def`. |
 | `position()` | Accesor del cursor; las iteraciones lo usan para detectar falta de progreso. |
 | `ensure_progress(before)` | Fuerza un `advance` si no hubo progreso desde `before`, garantizando terminación. |
+| `peek_is_recovery_boundary()` | `true` cuando el token actual es `Eof` o el inicio de una nueva declaración top-level (`function`/`type`/`protocol`/`def`). Señal para abortar un parse con header roto. |
 
 **Puntos con guarda de progreso** (todos los loops que parsean una lista delimitada):
 
@@ -212,6 +213,19 @@ La sintaxis `def foo(params): RetType => ...` aparece en ejemplos de Hulk.md, pe
 | Miembros de `type { … }` | [src/decl.rs](crates/hulk-parser/src/decl.rs) | `skip_until(&[Semicolon, RBrace, Eof])`, come `;` si corresponde |
 | Firmas de `protocol { … }` | [src/decl.rs](crates/hulk-parser/src/decl.rs) | Idéntica estrategia que miembros |
 | Statements de `{ … }` | [src/expr.rs](crates/hulk-parser/src/expr.rs) (preexistente en 4.2) | Diagnóstico + `skip_until(&[Semicolon, RBrace, Eof])` |
+
+**Gate de header en `type` / `protocol`**:
+
+`parse_type_decl` y `parse_protocol_decl` verifican explícitamente antes de llamar al loop de miembros/firmas:
+
+```rust
+if !self.at(&Token::LBrace) && self.peek_is_recovery_boundary() {
+    self.expect(&Token::LBrace, "…");     // emite el diagnóstico
+    return <TypeDecl|ProtocolDecl> sintético con members vacíos;
+}
+```
+
+Sin esta guarda, `type Foo function bar() => 1;` haría que el loop de miembros (que itera hasta `RBrace` o `EOF`) consuma `function bar() => 1;` interpretándolo como miembros rotos, perdiendo la siguiente declaración. El test `type_without_opening_brace_does_not_swallow_next_decl` cubre exactamente este caso y era rojo antes del fix.
 
 ### Puntos de sincronización
 
@@ -260,14 +274,15 @@ Esto se valida en [`tests/error_recovery.rs`](crates/hulk-parser/tests/error_rec
 ### Tests nuevos (4.3)
 
 **Ubicación**: [`crates/hulk-parser/tests/error_recovery.rs`](crates/hulk-parser/tests/error_recovery.rs).
-**Total**: 19 tests agrupados en:
+**Total**: 25 tests agrupados en:
 
 | Grupo | Qué verifica | Tests |
 |---|---|---|
 | Terminación | Inputs malformados terminan en tiempo acotado | 5 |
 | Sincronización | Contenido post-error sigue parseando | 5 |
 | Recovery específico | Cada sitio de `expect` puntual | 6 |
-| Nodos sintéticos | `parse` siempre devuelve un `Program` | 2 |
+| Header roto no engulle | `type`/`protocol`/`function`/`def` sin body dejan intacta la siguiente decl | 5 |
+| Nodos sintéticos | `parse` siempre devuelve un `Program` (incluso para visitors) | 3 |
 | Fuzz | 200 entradas aleatorias sin panic/loop | 1 |
 
 ### Gotchas encontrados en 4.3
@@ -279,13 +294,13 @@ Esto se valida en [`tests/error_recovery.rs`](crates/hulk-parser/tests/error_rec
 
 ### Cobertura de tests tras 4.3
 
-**Total**: 111 tests en `hulk-parser` (`cargo test -p hulk-parser`).
+**Total**: 120 tests en `hulk-parser` (`cargo test -p hulk-parser`).
 - 3 unit tests en `src/tests.rs`.
-- 89 integration tests en `tests/declarations.rs`.
-- 19 integration tests en `tests/error_recovery.rs` (4.3).
+- 92 integration tests en `tests/declarations.rs`.
+- 25 integration tests en `tests/error_recovery.rs` (4.3).
 
 **Validación final**:
-- `cargo test -p hulk-parser` → 111/111 passed
+- `cargo test -p hulk-parser` → 120/120 passed
 - `cargo clippy -p hulk-parser --all-targets -- -D warnings` → limpio
 - `cargo test --workspace` → todos los crates verdes
 - `cargo clippy --workspace --all-targets -- -D warnings` → limpio
