@@ -113,8 +113,11 @@ impl<'a> Lexer<'a> {
     }
 
     fn single_char(&mut self, token: Token) {
+        // Hoy todos los call sites disparan con caracteres ASCII (ver el
+        // match de lex_all). Usamos advance_char para blindar futuras
+        // extensiones multibyte sin repetir el bug de cursor += 1.
         let start = self.cursor;
-        self.cursor += 1;
+        self.advance_char();
         self.push_token(token, start, self.cursor);
     }
 
