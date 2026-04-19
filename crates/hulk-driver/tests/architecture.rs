@@ -1,29 +1,68 @@
 // Test de arquitectura: verifica dependencias entre crates y ciclos
 // Requiere cargo_metadata como dev-dependency
 
-use std::collections::{HashMap, HashSet};
 use cargo_metadata::MetadataCommand;
+use std::collections::{HashMap, HashSet};
 
 /// Define la whitelist de dependencias permitidas entre crates.
 /// Fuente de verdad: diagrama de dependencias en PIPELINE.md.
 fn allowed_deps() -> HashMap<&'static str, HashSet<&'static str>> {
-    use std::iter::FromIterator;
     HashMap::from([
         ("hulk-span", HashSet::new()),
-        ("hulk-tokens", HashSet::from_iter(["hulk-span"].into_iter())),
-        ("hulk-ast", HashSet::from_iter(["hulk-span"].into_iter())),
-        ("hulk-diagnostics", HashSet::from_iter(["hulk-span"].into_iter())),
-        ("hulk-lexer", HashSet::from_iter(["hulk-tokens", "hulk-diagnostics"].into_iter())),
-        ("hulk-parser", HashSet::from_iter(["hulk-ast", "hulk-tokens", "hulk-diagnostics"].into_iter())),
-        ("hulk-semantic", HashSet::from_iter(["hulk-ast", "hulk-diagnostics"].into_iter())),
-        ("hulk-types", HashSet::from_iter(["hulk-ast", "hulk-semantic", "hulk-diagnostics"].into_iter())),
-        ("hulk-hir", HashSet::from_iter(["hulk-ast", "hulk-semantic", "hulk-types"].into_iter())),
-        ("hulk-macros", HashSet::from_iter(["hulk-hir", "hulk-diagnostics"].into_iter())),
-        ("hulk-desugar", HashSet::from_iter(["hulk-hir", "hulk-diagnostics"].into_iter())),
-        ("hulk-banner", HashSet::from_iter(["hulk-hir", "hulk-diagnostics"].into_iter())),
-        ("hulk-codegen", HashSet::from_iter(["hulk-banner", "hulk-diagnostics"].into_iter())),
-        ("hulk-driver", HashSet::from_iter(["hulk-lexer", "hulk-parser", "hulk-semantic", "hulk-types", "hulk-hir", "hulk-macros", "hulk-desugar", "hulk-banner", "hulk-codegen"].into_iter())),
-        ("hulk-cli", HashSet::from_iter(["hulk-driver"].into_iter())),
+        ("hulk-tokens", HashSet::from(["hulk-span"])),
+        ("hulk-ast", HashSet::from(["hulk-span"])),
+        ("hulk-diagnostics", HashSet::from(["hulk-span"])),
+        (
+            "hulk-lexer",
+            HashSet::from(["hulk-tokens", "hulk-diagnostics"]),
+        ),
+        (
+            "hulk-parser",
+            HashSet::from(["hulk-ast", "hulk-tokens", "hulk-diagnostics"]),
+        ),
+        (
+            "hulk-semantic",
+            HashSet::from(["hulk-ast", "hulk-diagnostics"]),
+        ),
+        (
+            "hulk-types",
+            HashSet::from(["hulk-ast", "hulk-semantic", "hulk-diagnostics"]),
+        ),
+        (
+            "hulk-hir",
+            HashSet::from(["hulk-ast", "hulk-semantic", "hulk-types"]),
+        ),
+        (
+            "hulk-macros",
+            HashSet::from(["hulk-hir", "hulk-diagnostics"]),
+        ),
+        (
+            "hulk-desugar",
+            HashSet::from(["hulk-hir", "hulk-diagnostics"]),
+        ),
+        (
+            "hulk-banner",
+            HashSet::from(["hulk-hir", "hulk-diagnostics"]),
+        ),
+        (
+            "hulk-codegen",
+            HashSet::from(["hulk-banner", "hulk-diagnostics"]),
+        ),
+        (
+            "hulk-driver",
+            HashSet::from([
+                "hulk-lexer",
+                "hulk-parser",
+                "hulk-semantic",
+                "hulk-types",
+                "hulk-hir",
+                "hulk-macros",
+                "hulk-desugar",
+                "hulk-banner",
+                "hulk-codegen",
+            ]),
+        ),
+        ("hulk-cli", HashSet::from(["hulk-driver"])),
     ])
 }
 
@@ -62,7 +101,14 @@ fn detect_cycles<'a>(graph: &'a HashMap<&'a str, HashSet<&'a str>>) -> Vec<Vec<&
     let mut cycles = Vec::new();
     for &node in graph.keys() {
         if !visited.contains(node) {
-            visit(node, graph, &mut stack, &mut visited, &mut rec_stack, &mut cycles);
+            visit(
+                node,
+                graph,
+                &mut stack,
+                &mut visited,
+                &mut rec_stack,
+                &mut cycles,
+            );
         }
     }
     cycles
@@ -70,25 +116,45 @@ fn detect_cycles<'a>(graph: &'a HashMap<&'a str, HashSet<&'a str>>) -> Vec<Vec<&
 
 #[test]
 fn test_layer_dependencies() {
-    let metadata = MetadataCommand::new().exec().expect("cargo metadata failed");
-    let workspace_members: HashSet<_> = metadata.workspace_members.iter().map(|id| {
-        metadata.packages.iter().find(|p| &p.id == id).unwrap().name.as_str()
-    }).collect();
+    let metadata = MetadataCommand::new()
+        .exec()
+        .expect("cargo metadata failed");
+    let workspace_members: HashSet<_> = metadata
+        .workspace_members
+        .iter()
+        .map(|id| {
+            metadata
+                .packages
+                .iter()
+                .find(|p| &p.id == id)
+                .unwrap()
+                .name
+                .as_str()
+        })
+        .collect();
     let allowed = allowed_deps();
 
     // Verifica que todos los crates estén en la whitelist
     for member in &workspace_members {
-        assert!(allowed.contains_key(member), "Crate '{member}' no está en la whitelist de dependencias. Actualiza allowed_deps().");
+        assert!(
+            allowed.contains_key(member),
+            "Crate '{member}' no está en la whitelist de dependencias. Actualiza allowed_deps()."
+        );
     }
     for key in allowed.keys() {
-        assert!(workspace_members.contains(key), "Crate '{key}' está en la whitelist pero no existe en el workspace.");
+        assert!(
+            workspace_members.contains(key),
+            "Crate '{key}' está en la whitelist pero no existe en el workspace."
+        );
     }
 
     // Construye el grafo de dependencias locales
     let mut graph: HashMap<&str, HashSet<&str>> = HashMap::new();
     for pkg in &metadata.packages {
         let name = pkg.name.as_str();
-        if !allowed.contains_key(name) { continue; }
+        if !allowed.contains_key(name) {
+            continue;
+        }
         let mut local_deps = HashSet::new();
         for dep in &pkg.dependencies {
             let dep_name = dep.name.as_str();
@@ -116,7 +182,11 @@ fn test_layer_dependencies() {
     // Verifica ciclos
     let cycles = detect_cycles(&graph);
     if !cycles.is_empty() {
-        let msg = cycles.iter().map(|c| format!("Ciclo: {}", c.join(" → "))).collect::<Vec<_>>().join("\n");
+        let msg = cycles
+            .iter()
+            .map(|c| format!("Ciclo: {}", c.join(" → ")))
+            .collect::<Vec<_>>()
+            .join("\n");
         panic!("Ciclos detectados en el grafo de dependencias:\n{msg}");
     }
 }
