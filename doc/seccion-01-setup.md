@@ -100,3 +100,24 @@ Esta adaptación permite aprovechar lo mejor de GitFlow (historia estructurada, 
 
 ## Lecciones aprendidas y gotchas
 Asegurarse de que todos los crates estén listados en `members` y que el resolver esté en `2` para evitar problemas de dependencias transitivas.
+
+### Decisión: CI con GitHub Actions
+
+**Qué se eligió**: GitHub Actions para CI/CD, con workflows YAML en `.github/workflows/`. Se ejecutan en cada push a ramas principales (`main`, `develop`, `section/**`, `feature/**`).
+
+**Alternativas consideradas**:
+- **GitLab CI**: integración nativa con GitLab, pipelines YAML similares, runners gratuitos. Descartado por estar el repo en GitHub y menor integración con el ecosistema Rust.
+- **CircleCI**: potente y flexible, pero con límites en el plan gratuito y menos integración directa con GitHub.
+- **Travis CI**: popularidad decreciente, menos integración con features modernas de GitHub.
+
+**Justificación**: GitHub Actions es nativo, gratuito para proyectos públicos, fácil de configurar y mantiene los workflows junto al código. Permite matrices de OS, jobs paralelos y caching eficiente para Rust.
+
+### Decisión: cargo-tarpaulin vs grcov
+
+**Qué se eligió**: `cargo-tarpaulin` para cobertura de código Rust.
+
+**Alternativas consideradas**:
+- **grcov**: requiere configuración extra (generar cobertura con `llvm-cov`, exportar a lcov, etc.), menos amigable en CI, problemas de soporte en macOS/Windows.
+- **cargo-tarpaulin**: integración directa con Rust, fácil de usar en CI, soporta cobertura por crate, buen soporte multiplataforma.
+
+**Justificación**: `cargo-tarpaulin` es el estándar de facto para cobertura en Rust, con integración directa en GitHub Actions y menor fricción de setup. Permite umbrales por crate y reportes automáticos.

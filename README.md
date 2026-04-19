@@ -1,5 +1,8 @@
 # HULK Compiler
 
+[![CI](https://github.com/DayanCabrera2003/hulk_compiler/actions/workflows/ci.yml/badge.svg)](https://github.com/DayanCabrera2003/hulk_compiler/actions/workflows/ci.yml)
+[![Coverage](https://github.com/DayanCabrera2003/hulk_compiler/actions/workflows/coverage.yml/badge.svg)](https://github.com/DayanCabrera2003/hulk_compiler/actions/workflows/coverage.yml)
+
 Compilador del lenguaje HULK (Havana University Language for Kompilers).
 
 ## Build

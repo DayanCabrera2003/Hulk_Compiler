@@ -1,0 +1,187 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+      - 'section/**'
+      - 'feature/**'
+
+jobs:
+  fmt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      - name: Run cargo fmt
+        run: cargo fmt --all --check
+
+  clippy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      - name: Run cargo clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      - name: Run cargo test
+        run: cargo test --workspace --all-features
+
+  doc:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      - name: Run cargo doc
+        run: cargo doc --workspace --no-deps --document-private-items
+
+  architecture:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      - name: Run architecture test
+        run: cargo test -p hulk-driver --test architecture
+
+  coverage:
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install LLVM 17
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y llvm-17-dev libpolly-17-dev clang-17
+          echo "LLVM_SYS_170_PREFIX=/usr/lib/llvm-17" >> $GITHUB_ENV
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Install cargo-tarpaulin
+        run: cargo install cargo-tarpaulin
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      - name: Run coverage
+        run: |
+          mkdir -p coverage
+          cargo tarpaulin --workspace --out Xml --output-dir coverage/
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-xml
+          path: coverage/
+      - name: Verificar umbrales de cobertura
+        run: |
+          set -e
+          declare -A THRESHOLDS
+          THRESHOLDS[lexer]=85
+          THRESHOLDS[parser]=85
+          THRESHOLDS[types]=85
+          THRESHOLDS[banner]=85
+          THRESHOLDS[codegen]=70
+          THRESHOLDS[driver]=60
+          THRESHOLDS[cli]=60
+          sudo apt-get install -y xmlstarlet
+          for crate in "${!THRESHOLDS[@]}"; do
+            xml="coverage/${crate}/cobertura.xml"
+            if [ -f "$xml" ]; then
+              pct=$(xmlstarlet sel -t -v "/coverage/packages/package[@name='hulk-$crate']/@line-rate" "$xml" | awk '{printf("%.0f", $1*100)}')
+              min=${THRESHOLDS[$crate]}
+              echo "Crate $crate: cobertura $pct% (mínimo $min%)"
+              if [ "$pct" -lt "$min" ]; then
+                echo "Fallo: cobertura insuficiente en $crate ($pct% < $min%)" >&2
+                exit 1
+              fi
+            else
+              echo "No hay reporte de cobertura para $crate ($xml)"
+            fi
+          done
+
+  build-release:
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Build release
+        run: cargo build --release
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-binaries
+          path: target/release/
+
+  fuzz-short:
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@nightly
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz
+      - name: Run short fuzz
+        run: |
+          for target in lexer parser types banner codegen driver cli; do
+            if [ -d "fuzz/fuzz_targets" ] && [ -f "fuzz/fuzz_targets/$target.rs" ]; then
+              cargo fuzz run $target -- -max_total_time=60
+            else
+              echo "No existe fuzz target $target, saltando."
+            fi
+          done
