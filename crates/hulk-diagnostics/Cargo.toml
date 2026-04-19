@@ -8,3 +8,4 @@ repository.workspace = true
 
 [dependencies]
 hulk-span = { path = "../hulk-span" }
+codespan-reporting.workspace = true
