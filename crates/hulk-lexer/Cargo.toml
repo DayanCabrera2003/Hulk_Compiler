@@ -9,3 +9,6 @@ repository.workspace = true
 [dependencies]
 hulk-tokens = { path = "../hulk-tokens" }
 hulk-diagnostics = { path = "../hulk-diagnostics" }
+
+[dev-dependencies]
+proptest.workspace = true

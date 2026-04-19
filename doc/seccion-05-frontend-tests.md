@@ -285,6 +285,162 @@ error: identificadores en HULK no pueden empezar con '_'
 error: token inesperado: se esperaba In
 ```
 
-## 5.3 — Property tests + fuzzing + robustez
+## 5.3 — Property tests + fuzzing + robustez ✓
 
-Pendiente.
+### Qué se implementó
+
+- **`crates/hulk-lexer/tests/property.rs`** (nuevo, binario de test
+  independiente): 5 tests que combinan property-based testing con `proptest`
+  y un fuzz manual determinista:
+  - `valid_sources_have_partition_consistent_spans` (unit, sobre los 13
+    programas de 5.1): verifica que las spans emitidas particionan el source
+    dejando solo whitespace/comentarios en los gaps — la versión testeable
+    del requisito "reconstruir el source desde los spans".
+  - `lexer_never_panics_on_arbitrary_ascii` (proptest, 512 casos): entradas
+    ASCII de hasta 200 caracteres.
+  - `lexer_never_panics_on_arbitrary_utf8` (proptest, 512 casos): entradas
+    Unicode arbitrarias (regex `\PC`).
+  - `lexer_preserves_byte_length_via_spans` (proptest, 512 casos): la suma
+    de longitudes de span de los tokens no-EOF es ≤ `source.len()`.
+  - `lexer_fuzz_10k_iterations_without_panic` (unit): 10 000 iteraciones
+    generadas con LCG determinista, mezclando 70 % alfabeto ASCII + 25 %
+    keywords HULK + 5 % caracteres multibyte.
+- **`crates/hulk-parser/tests/property.rs`** (nuevo, binario independiente):
+  7 tests:
+  - `valid_sources_parse_without_diagnostics` (unit): los 13 programas
+    parsean sin diagnósticos.
+  - `parser_never_panics_on_arbitrary_ascii` (proptest, 512 casos).
+  - `parser_never_panics_on_arbitrary_utf8` (proptest, 512 casos).
+  - `balanced_parens_always_parse_to_number` (proptest, 512 casos con
+    `n in 1..60`): N pares de `()` alrededor de `1;` parsean a `Number(1)` —
+    el requisito exacto del PIPELINE.
+  - `let_with_arbitrary_number_parses` (proptest): `let x = N in x;` parsea
+    a un `Let` para cualquier N finito.
+  - `identifier_program_always_parses` (proptest): identificadores
+    alfanuméricos simples parsean.
+  - `parser_fuzz_10k_iterations_without_panic` (unit): 10 000 iteraciones
+    con LCG alimentando al pipeline lexer→parser completo.
+- **`proptest` añadido a `[dev-dependencies]`** de `hulk-lexer` y
+  `hulk-parser` vía `proptest.workspace = true` (ya estaba en
+  `[workspace.dependencies]`).
+
+### Invariantes probadas
+
+| Invariante                                                        | Test(s)                                                            | Nº casos |
+|-------------------------------------------------------------------|--------------------------------------------------------------------|----------|
+| Partición span-consistente en fuentes válidas                     | `valid_sources_have_partition_consistent_spans`                    | 13       |
+| Spans internamente consistentes en ASCII                          | `lexer_never_panics_on_arbitrary_ascii`                            | 512      |
+| Spans internamente consistentes en Unicode                        | `lexer_never_panics_on_arbitrary_utf8`                             | 512      |
+| Cobertura de span ≤ longitud del source                           | `lexer_preserves_byte_length_via_spans`                            | 512      |
+| Lexer no paniquea sobre input pseudo-aleatorio (ASCII + multibyte)| `lexer_fuzz_10k_iterations_without_panic`                          | 10 000   |
+| Parser no paniquea sobre input ASCII                              | `parser_never_panics_on_arbitrary_ascii`                           | 512      |
+| Parser no paniquea sobre input Unicode                            | `parser_never_panics_on_arbitrary_utf8`                            | 512      |
+| N paréntesis balanceados → `Number(1)` (n ∈ 1..60)                | `balanced_parens_always_parse_to_number`                           | 512      |
+| `let x = N in x;` parsea como `Let` para N ∈ [-1000, 1000]        | `let_with_arbitrary_number_parses`                                 | 512      |
+| Identificadores alfanuméricos parsean                             | `identifier_program_always_parses`                                 | 512      |
+| Pipeline lexer→parser no paniquea con LCG                         | `parser_fuzz_10k_iterations_without_panic`                         | 10 000   |
+
+### Decisiones de diseño
+
+- **Interpretación de "reconstruir el source desde los spans"**: los tokens
+  no llevan lexeme explícito (`Token::Number(f64)` vs el dígito literal), así
+  que reconstrucción literal es imposible sin el source. La formulación
+  testeable es la **partición span-consistente**: iterar los tokens en orden
+  y verificar que `source[prev.end..curr.start]` contiene solo whitespace o
+  `//…\n`. Esta propiedad implica que concatenando lexemas con gaps
+  intactos se recupera el source — objetivo semántico equivalente.
+- **Property test + fuzz complementarios**: `proptest` explora mutaciones
+  guiadas del shrinker (tras un fallo, busca el input mínimo); el fuzz LCG
+  garantiza reproducibilidad determinista y volumen alto (10 000 × 2 =
+  20 000 iteraciones combinadas). Ambos son necesarios — proptest encuentra
+  regressions, el fuzz garantiza ausencia de panic bajo escala.
+- **LCG con seed fijo**: `0x1234_5678_9ABC_DEF0` y `0xFEED_FACE_CAFE_BABE`.
+  Reproducibilidad entre corridas y CI, sin dependencias adicionales
+  (`rand` hubiera sido una dep más para un uso trivial).
+- **Mezcla ASCII + keywords + UTF-8 en el fuzz**: 70/25/5. Los keywords
+  estresan al parser en rutas que la basura aleatoria tarda en alcanzar; el
+  5 % de multibyte garantiza que las dos rutas UTF-8 del lexer que fixeamos
+  en 2.2 se ejercitan constantemente.
+- **512 casos de proptest**: por encima del default (256) para aumentar
+  confianza sin inflar el tiempo de test (la suite completa corre en
+  ~0.5 s por test binario).
+
+### Gotchas
+
+- **`\PC` en proptest regex**: la clase `\P{C}` (Unicode non-control) debe
+  escribirse `"\\PC"` (dos backslashes) dentro de un string literal de Rust,
+  o usar raw strings. Sin escape correcto, la compilación del regex falla
+  en runtime.
+- **`prop_assert!` y `matches!` con `..`**: `prop_assert!(matches!(x, Let {
+  .. }))` falla porque `prop_assert!` concatena el literal del assert como
+  format string y `{ .. }` se interpreta como placeholder. Solución:
+  pre-computar el booleano (`let is_let = matches!(…); prop_assert!(is_let);`).
+- **Clippy `manual_is_multiple_of`**: clippy 1.95 exige
+  `n.is_multiple_of(20)` en lugar de `n % 20 == 0`. Aplicado.
+- **`parse_capturing_all` vs `lex_and_parse`**: la suite 5.3 combina los
+  dos bags (lexer + parser) en el bag del parser via `push` en lugar del
+  vector externo que usa 5.2. Misma funcionalidad, adaptado al sitio donde
+  hace falta.
+
+### Métricas globales de la sesión 5
+
+| Categoría                              | Archivos | Tests  |
+|----------------------------------------|----------|--------|
+| 5.1 — programas válidos                | 16       | 98     |
+| 5.2 — errores esperados                | 5        | 47     |
+| 5.3 — property + fuzz (lexer)          | 1        | 5      |
+| 5.3 — property + fuzz (parser)         | 1        | 7      |
+| **Totales sección 5**                  | **23**   | **157**|
+| Tests restantes del workspace (S 1-4)  | —        | 199    |
+| **Total workspace**                    | —        | **356**|
+
+Casos de property/fuzz ejecutados por corrida:
+
+| Categoría                               | Casos  |
+|-----------------------------------------|--------|
+| Proptest lexer (3 tests × 512)          | 1 536  |
+| Proptest parser (5 tests × 512)         | 2 560  |
+| Fuzz LCG lexer                          | 10 000 |
+| Fuzz LCG parser                         | 10 000 |
+| **Total por corrida**                   | **24 096** |
+
+Features cubiertas al 100 % (accesibles desde el parser actual):
+
+- Expresiones, literales, operadores (incl. `^`, `%`, `@`, `@@`, `:=`).
+- `let` (bindings múltiples, anidamiento, redefinición).
+- `if`/`elif`/`else`, `while`, `for`.
+- `function` inline y full-form, recursión.
+- `type` con atributos/métodos/herencia/`base`.
+- `protocol` con `extends` y firmas tipadas.
+- Vectores: literales, generadores, indexing, `T*`, `T[]`.
+- Lambdas, functores `(A)->B`.
+- Macros: `def` con `Regular`, `*body`, `@symbolic`, `$placeholder`.
+- Error recovery: reporte múltiple en una sola pasada.
+
+Features NO cubiertas aún (fuera del alcance del parser / diferidas):
+
+- `match`/`case` en bodies de macro (diferido a S 10 — parser no lo
+  contempla todavía).
+- Expansión de macros en tiempo de compilación (S 10).
+- Desugaring (`for` → `while`, `@@` → `@ " " @`, etc.) (S 11).
+
+### Ejemplos de uso
+
+Ejecutar solo la suite 5.3:
+
+```
+cargo test -p hulk-lexer --test property
+cargo test -p hulk-parser --test property
+```
+
+Forzar más casos en proptest (variable de entorno):
+
+```
+PROPTEST_CASES=4096 cargo test -p hulk-parser --test property
+```
+
+Reproducir un fallo de proptest concreto:
+
+```
+PROPTEST_REGRESSIONS=/tmp/regressions.txt cargo test -p hulk-parser --test property
+```

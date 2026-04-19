@@ -13,3 +13,4 @@ hulk-diagnostics = { path = "../hulk-diagnostics" }
 
 [dev-dependencies]
 hulk-lexer = { path = "../hulk-lexer" }
+proptest.workspace = true
