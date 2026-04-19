@@ -71,5 +71,32 @@ No aplica, solo estructura de proyecto.
 ## Estrategia de testing
 No aplica, aún no hay lógica implementada.
 
+
+## Decisión: Adaptación de GitFlow a proyecto single-developer
+
+### Qué se eligió
+Se utiliza una estructura de ramas basada en GitFlow, pero adaptada para un solo desarrollador:
+
+- `main`: rama base, siempre limpia y estable.
+- `develop`: rama de integración, parte de `main`.
+- `section/X-...`: ramas por sección mayor del proyecto, salen de `develop`.
+- `feature/X.Y-...`: ramas de funcionalidad, salen de la rama de sección correspondiente.
+- Releases: se fusionan de `develop` a `main`.
+
+### Alternativas consideradas
+- **Trunk-based development**: solo una rama principal (main/master), todo se integra ahí. Ventaja: simplicidad y menos overhead. Desventaja: poca trazabilidad por sección/subsección, historia menos estructurada, difícil aislar cambios grandes.
+- **GitHub Flow**: ramas cortas desde main, PRs para todo. Ventaja: integración continua, fácil colaboración. Desventaja: requiere PRs/reviews, menos útil en single-developer, historia menos jerárquica.
+
+### Justificación
+Se mantiene la estructura jerárquica de ramas para:
+- Trazabilidad clara de cambios por sección/subsección del proyecto.
+- Permitir aislar y revisar avances por partes lógicas del compilador.
+- Facilitar merges controlados y revertibles.
+- Aunque no hay PRs ni branch protection, la disciplina se mantiene mediante un checklist auto-impuesto (tests, formato, documentación, mensaje de commit correcto, merges con --no-ff).
+
+Esta adaptación permite aprovechar lo mejor de GitFlow (historia estructurada, ramas temáticas) sin la carga administrativa de PRs y revisiones externas, adecuada para un proyecto individual.
+
+---
+
 ## Lecciones aprendidas y gotchas
 Asegurarse de que todos los crates estén listados en `members` y que el resolver esté en `2` para evitar problemas de dependencias transitivas.
