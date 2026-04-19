@@ -1,0 +1,18 @@
+[package]
+name = "hulk-driver"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+hulk-lexer = { path = "../hulk-lexer" }
+hulk-parser = { path = "../hulk-parser" }
+hulk-semantic = { path = "../hulk-semantic" }
+hulk-types = { path = "../hulk-types" }
+hulk-hir = { path = "../hulk-hir" }
+hulk-macros = { path = "../hulk-macros" }
+hulk-desugar = { path = "../hulk-desugar" }
+hulk-banner = { path = "../hulk-banner" }
+hulk-codegen = { path = "../hulk-codegen" }
