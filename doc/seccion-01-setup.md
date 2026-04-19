@@ -121,3 +121,43 @@ Asegurarse de que todos los crates estén listados en `members` y que el resolve
 - **cargo-tarpaulin**: integración directa con Rust, fácil de usar en CI, soporta cobertura por crate, buen soporte multiplataforma.
 
 **Justificación**: `cargo-tarpaulin` es el estándar de facto para cobertura en Rust, con integración directa en GitHub Actions y menor fricción de setup. Permite umbrales por crate y reportes automáticos.
+
+---
+
+## Decisión: Herramientas de calidad
+
+### Qué se eligió
+Se configuraron tres herramientas principales para asegurar la calidad y seguridad del código:
+
+- **rustfmt**: Formateador oficial de Rust. Configuración: `edition = "2021"`, `max_width = 100`, `imports_granularity = "Crate"`, `use_field_init_shorthand = true`, `newline_style = "Unix"`, `reorder_imports = true`.
+- **clippy**: Linter de Rust. Configuración: umbral de complejidad cognitiva en 30, warnings estrictos (`-D warnings`), y denegación de lints peligrosos (`clippy::unwrap_used`, `clippy::expect_used`).
+- **cargo-deny**: Auditoría de licencias y vulnerabilidades. Solo se permiten licencias MIT, Apache-2.0, BSD. Se bloquean crates vulnerables y se puede ampliar la blacklist según necesidades.
+
+### Alternativas consideradas
+- **rustfmt**: No usar formateador o usar uno alternativo. Descartado por falta de integración y menor soporte.
+- **clippy**: Usar solo warnings por defecto. Descartado para mantener un estándar alto de calidad.
+- **cargo-deny**: No auditar licencias. Descartado por riesgos legales y de seguridad.
+
+### Justificación
+- **rustfmt**: Garantiza formato consistente en todo el workspace, facilita revisiones y evita discusiones de estilo.
+- **clippy**: Detecta errores comunes, code smells y patrones peligrosos antes de que lleguen a producción.
+- **cargo-deny**: Previene el uso de dependencias con licencias incompatibles o vulnerabilidades conocidas.
+
+### Ejecución local
+
+Instalar dependencias:
+
+```sh
+cargo install cargo-deny
+```
+
+Comandos de chequeo:
+
+```sh
+cargo fmt --all --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo deny check
+```
+
+### CI
+Las tres herramientas se ejecutan en CI (ver `.github/workflows/ci.yml`). El pipeline falla si alguna no pasa.

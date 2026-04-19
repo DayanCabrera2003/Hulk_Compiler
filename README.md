@@ -31,3 +31,17 @@ cargo build --release
 ```
 
 Más detalles en `PIPELINE.md` y en la carpeta `doc/`.
+
+## Herramientas de calidad
+
+- Formato: `cargo fmt --all --check`
+- Linter: `cargo clippy --workspace --all-targets -- -D warnings`
+- Auditoría de licencias/vulnerabilidades: `cargo deny check`
+
+Instala `cargo-deny` con:
+
+```sh
+cargo install cargo-deny
+```
+
+Las tres herramientas se ejecutan automáticamente en CI.
