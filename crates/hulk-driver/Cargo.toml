@@ -16,3 +16,6 @@ hulk-macros = { path = "../hulk-macros" }
 hulk-desugar = { path = "../hulk-desugar" }
 hulk-banner = { path = "../hulk-banner" }
 hulk-codegen = { path = "../hulk-codegen" }
+
+[dev-dependencies]
+cargo_metadata = "0.18"
