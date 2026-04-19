@@ -1,6 +1,18 @@
 use crate::expr::Expr;
 use hulk_span::Span;
 
+/// Type annotation nodes used by declarations and typed expressions.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum TypeAnn {
+    Named(String),
+    Iterable(Box<TypeAnn>),
+    Vector(Box<TypeAnn>),
+    Functor {
+        params: Vec<TypeAnn>,
+        ret: Box<TypeAnn>,
+    },
+}
+
 /// Root declaration node for a complete HULK program.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Program {
@@ -52,7 +64,7 @@ pub struct MacroDecl {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Param {
     pub name: String,
-    pub type_name: Option<String>,
+    pub type_ann: Option<TypeAnn>,
     pub span: Span,
 }
 
@@ -68,7 +80,7 @@ pub struct Member {
 pub enum MemberKind {
     Attribute {
         name: String,
-        type_name: Option<String>,
+        type_ann: Option<TypeAnn>,
         value: Option<Expr>,
     },
     Method(FunctionDecl),
@@ -87,7 +99,7 @@ pub struct ParentSpec {
 pub struct MethodSig {
     pub name: String,
     pub params: Vec<Param>,
-    pub return_type: String,
+    pub return_type: TypeAnn,
     pub span: Span,
 }
 
@@ -137,7 +149,7 @@ mod tests {
             name: "f".to_owned(),
             params: vec![Param {
                 name: "x".to_owned(),
-                type_name: None,
+                type_ann: None,
                 span: span.clone(),
             }],
             body: Expr::new(ExprKind::Ident("x".to_owned()), span.clone(), NodeId(1)),

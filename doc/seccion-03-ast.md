@@ -26,6 +26,15 @@
   - Let, Assign, AssignTarget, LetBinding
   - If, While, For
   - New, Is, As, Lambda
+- Se agrego TypeAnn para anotaciones de tipo:
+  - Named(T)
+  - Iterable(T*)
+  - Vector(T[])
+  - Functor((A)->B)
+- Se incorporo el modulo crates/hulk-ast/src/visitor.rs.
+- Se definieron los traits Visitor (solo lectura) y VisitorMut (transformador).
+- Se implementaron recorridos por defecto para Program, declaraciones, TypeAnn y Expr.
+- Se agrego un test de recorrido completo y transformacion simple con VisitorMut.
 
 ## Decisiones de diseno
 
@@ -45,11 +54,18 @@
   - Si la funcion es full-form, `body` es `ExprKind::Block`.
   - Esta unificacion evita duplicar nodos para funciones y simplifica parser, visitors y fases semanticas posteriores.
 
+- Patron Visitor para fases posteriores:
+  - Se eligio un Visitor con metodos `visit_*` y funciones `walk_*` por defecto.
+  - Las fases que solo inspeccionan (resolver, typer) pueden sobreescribir pocos hooks y reutilizar el recorrido base.
+  - Las fases transformadoras usan VisitorMut para editar in-place cuando conviene (por ejemplo, desugar o normalizaciones locales).
+  - Este enfoque evita duplicar logica de traversal y reduce errores al agregar nuevas variantes del AST.
+
 ## Gotchas
 
 - Hulk.md menciona division con barra invertida en texto, pero los ejemplos usan /. El AST modela division como Div, alineado con ejemplos y con PIPELINE.md.
 - El operador % no aparece en la lista inicial de arithmetic operators del texto, pero si aparece en ejemplos de conditionals. Se incluyo como Mod.
 - El operador @@ se incluye como binario separado (ConcatSpaced) para conservar intencion semantica en AST antes de desugaring.
+- Las anotaciones de tipo se modelan con `TypeAnn` en lugar de strings crudos para que parser y fases semanticas compartan una representacion estructural unica.
 
 ## Ejemplos de uso
 
@@ -101,4 +117,30 @@ let full_fn = FunctionDecl {
 
 assert!(matches!(inline_fn.body.kind, ExprKind::Ident(_)));
 assert!(matches!(full_fn.body.kind, ExprKind::Block(_)));
+
+// Visitor: contar expresiones sin reimplementar el recorrido.
+use hulk_ast::visitor::walk_expr;
+use hulk_ast::{Expr, Program, Visitor};
+
+struct CountExpr {
+  n: usize,
+}
+
+impl Visitor for CountExpr {
+  fn visit_expr(&mut self, expr: &Expr) {
+    self.n += 1;
+    walk_expr(self, expr);
+  }
+}
+
+let mut counter = CountExpr { n: 0 };
+counter.visit_program(&Program {
+  functions: vec![],
+  types: vec![],
+  protocols: vec![],
+  macros: vec![],
+  body: expr,
+});
+
+assert!(counter.n >= 1);
 ```

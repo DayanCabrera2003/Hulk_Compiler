@@ -1,6 +1,6 @@
 use hulk_span::Span;
 
-use crate::decl::{AssignTarget, LetBinding, Param};
+use crate::decl::{AssignTarget, LetBinding, Param, TypeAnn};
 
 /// Stable identifier for AST nodes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -116,19 +116,20 @@ pub enum ExprKind {
         body: Box<Expr>,
     },
     New {
-        type_name: String,
+        type_ann: TypeAnn,
         args: Vec<Expr>,
     },
     Is {
         expr: Box<Expr>,
-        type_name: String,
+        type_ann: TypeAnn,
     },
     As {
         expr: Box<Expr>,
-        type_name: String,
+        type_ann: TypeAnn,
     },
     Lambda {
         params: Vec<Param>,
+        return_type: Option<TypeAnn>,
         body: Box<Expr>,
     },
 }
