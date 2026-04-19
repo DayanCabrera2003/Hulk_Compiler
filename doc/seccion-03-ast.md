@@ -18,6 +18,14 @@
 - Se definio UnaryOpKind con Neg y Not.
 - Se exporto la API publica desde crates/hulk-ast/src/lib.rs.
 - Se agregaron tests unitarios basicos para NodeIdGen y constructor de Expr.
+- Se creo el modulo de declaraciones en crates/hulk-ast/src/decl.rs.
+- Se definieron Program, FunctionDecl, TypeDecl, ProtocolDecl y MacroDecl.
+- Se agregaron Param, Member, ParentSpec y MethodSig para modelar firmas y miembros.
+- Se agrego MacroParam con sus variantes Regular, Body, Symbolic y Placeholder.
+- Se extendio ExprKind para cuerpos de declaraciones con:
+  - Let, Assign, AssignTarget, LetBinding
+  - If, While, For
+  - New, Is, As, Lambda
 
 ## Decisiones de diseno
 
@@ -29,6 +37,13 @@
   - Se eligio Box<Expr> para hijos de expresion porque representa arbol ownership-unico de forma simple y sin contadores atomicos.
   - Rc<Expr> se reservo como alternativa no necesaria por ahora; agregaria costo y complejidad para compartir subarboles, algo que el AST inicial no requiere.
   - Indices en arena son una opcion valida para etapas posteriores, pero en esta subsesion Box mantiene el codigo mas directo, legible y con menos infraestructura.
+
+- Funcion inline (`=>`) vs full-form (`{}`):
+  - Ambas formas se representan con la misma `FunctionDecl`.
+  - El campo `body` siempre es `Expr`.
+  - Si la funcion es inline, `body` puede ser cualquier expresion simple.
+  - Si la funcion es full-form, `body` es `ExprKind::Block`.
+  - Esta unificacion evita duplicar nodos para funciones y simplifica parser, visitors y fases semanticas posteriores.
 
 ## Gotchas
 
@@ -58,4 +73,32 @@ let expr = Expr::new(
     Span::new(file, 0, 5),
     ids.next_id(),
 );
+
+// Declaracion de funcion: inline o full-form usando la misma struct.
+use hulk_ast::{ExprKind, FunctionDecl, Param};
+
+let inline_fn = FunctionDecl {
+  name: "id".to_owned(),
+  params: vec![Param {
+    name: "x".to_owned(),
+    type_name: None,
+    span: Span::dummy(),
+  }],
+  body: Expr::new(ExprKind::Ident("x".to_owned()), Span::dummy(), ids.next_id()),
+  span: Span::dummy(),
+};
+
+let full_fn = FunctionDecl {
+  name: "sum".to_owned(),
+  params: vec![],
+  body: Expr::new(
+    ExprKind::Block(vec![Expr::new(ExprKind::Number(42.0), Span::dummy(), ids.next_id())]),
+    Span::dummy(),
+    ids.next_id(),
+  ),
+  span: Span::dummy(),
+};
+
+assert!(matches!(inline_fn.body.kind, ExprKind::Ident(_)));
+assert!(matches!(full_fn.body.kind, ExprKind::Block(_)));
 ```

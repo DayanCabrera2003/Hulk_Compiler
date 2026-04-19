@@ -1,5 +1,7 @@
 use hulk_span::Span;
 
+use crate::decl::{AssignTarget, LetBinding, Param};
+
 /// Stable identifier for AST nodes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct NodeId(pub u32);
@@ -87,6 +89,47 @@ pub enum ExprKind {
         element: Box<Expr>,
         binding: String,
         iterable: Box<Expr>,
+    },
+    Let {
+        bindings: Vec<Expr>,
+        body: Box<Expr>,
+    },
+    Assign {
+        target: Box<Expr>,
+        value: Box<Expr>,
+    },
+    AssignTarget(AssignTarget),
+    LetBinding(LetBinding),
+    If {
+        condition: Box<Expr>,
+        then_branch: Box<Expr>,
+        elif_branches: Vec<(Expr, Expr)>,
+        else_branch: Option<Box<Expr>>,
+    },
+    While {
+        condition: Box<Expr>,
+        body: Box<Expr>,
+    },
+    For {
+        binding: String,
+        iterable: Box<Expr>,
+        body: Box<Expr>,
+    },
+    New {
+        type_name: String,
+        args: Vec<Expr>,
+    },
+    Is {
+        expr: Box<Expr>,
+        type_name: String,
+    },
+    As {
+        expr: Box<Expr>,
+        type_name: String,
+    },
+    Lambda {
+        params: Vec<Param>,
+        body: Box<Expr>,
     },
 }
 
