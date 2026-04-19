@@ -1,8 +1,7 @@
 # Sesión 04 — Parser
 
 > Crate: `hulk-parser`.
-> Subsesiones completadas: 4.1 (Pratt parser base) y 4.2 (declaraciones + construcciones complejas).
-> Pendiente: 4.3 (error recovery exhaustivo y property tests).
+> Subsesiones completadas: 4.1 (Pratt parser base), 4.2 (declaraciones + construcciones complejas) y 4.3 (error recovery + tests + docs).
 
 ---
 
@@ -188,5 +187,106 @@ La sintaxis `def foo(params): RetType => ...` aparece en ejemplos de Hulk.md, pe
 - `cargo test -p hulk-parser` → 92/92 passed
 - `cargo clippy -p hulk-parser --all-targets -- -D warnings` → limpio
 - `cargo test --workspace` → todos los crates verdes (138 tests totales)
+- `cargo clippy --workspace --all-targets -- -D warnings` → limpio
+- `cargo fmt --all --check` → limpio
+
+---
+
+## 4.3 — Error recovery, tests y docs
+
+### Qué se implementó
+
+**Nuevas primitivas en `src/lib.rs`**:
+
+| Símbolo | Propósito |
+|---|---|
+| `skip_to_sync()` | Recorta hasta el conjunto canónico de tokens de sincronización: `; } EOF function type protocol def`. |
+| `position()` | Accesor del cursor; las iteraciones lo usan para detectar falta de progreso. |
+| `ensure_progress(before)` | Fuerza un `advance` si no hubo progreso desde `before`, garantizando terminación. |
+
+**Puntos con guarda de progreso** (todos los loops que parsean una lista delimitada):
+
+| Loop | Archivo | Recovery |
+|---|---|---|
+| Declaraciones top-level (`while is_decl_start`) | [src/decl.rs](crates/hulk-parser/src/decl.rs) | `skip_to_sync` + `ensure_progress` si una iteración no consumió tokens |
+| Miembros de `type { … }` | [src/decl.rs](crates/hulk-parser/src/decl.rs) | `skip_until(&[Semicolon, RBrace, Eof])`, come `;` si corresponde |
+| Firmas de `protocol { … }` | [src/decl.rs](crates/hulk-parser/src/decl.rs) | Idéntica estrategia que miembros |
+| Statements de `{ … }` | [src/expr.rs](crates/hulk-parser/src/expr.rs) (preexistente en 4.2) | Diagnóstico + `skip_until(&[Semicolon, RBrace, Eof])` |
+
+### Puntos de sincronización
+
+Estos son los tokens que "cierran" una construcción y permiten al parser reincorporarse al flujo normal después de un error. La tabla es el contrato sobre el que los tests de recovery razonan:
+
+| Token de sync | Abre qué | Usado por |
+|---|---|---|
+| `;` | Fin de statement / atributo / firma | bloques, miembros, firmas de protocolo |
+| `}` | Fin de bloque / cuerpo de type / cuerpo de protocolo | bloques, miembros, firmas |
+| `function` / `type` / `protocol` / `def` | Inicio de la siguiente declaración top-level | `parse_program` |
+| `Eof` | Fin del programa | todos (implícito en `skip_until`) |
+
+El método `skip_to_sync()` encapsula la lista completa para que las decisiones de alto nivel no dupliquen el set.
+
+### Regla invariante
+
+**El parser nunca devuelve `Result`**. Siempre retorna un `(Program, DiagnosticBag)`. En cualquier sitio donde un `expect` falla:
+
+1. Se emite un `Diagnostic` con `span` primario al token ofensor.
+2. Si la falla podría dejar al parser atascado (sin consumir tokens), se llama a `skip_until` o `skip_to_sync`.
+3. Se devuelve un nodo sintético (bloque vacío, `AssignTarget::Ident("")`, `TypeAnn::Named("")`, etc.) con un span válido o dummy.
+4. El loop padre usa `ensure_progress` para garantizar que la iteración termina.
+
+Consecuencia directa: el driver puede pedir cualquier fase posterior aun con errores de sintaxis, y **todos los errores de un archivo se reportan en una sola pasada** (requisito de `rules.md` §8.2).
+
+### Garantía de terminación
+
+Toda lista de construcciones (declaraciones, miembros, firmas) respeta este patrón:
+
+```rust
+let before = self.position();
+items.push(self.parse_item());
+if self.position() == before {
+    self.skip_until(&[...]);
+    self.ensure_progress(before);
+}
+```
+
+Si `parse_item` falla sin consumir tokens, el bloque de recovery salta al próximo token sync y —si sigue sin haber progreso— fuerza un `advance` individual. El parser no puede iterar infinitamente sobre el mismo token, incluso frente a input sintético adversario.
+
+Esto se valida en [`tests/error_recovery.rs`](crates/hulk-parser/tests/error_recovery.rs) con:
+
+- `fuzz_like_inputs_dont_panic_or_hang`: 200 entradas aleatorias cortas, seed fijo, alfabeto ASCII que el lexer acepta.
+- `parser_always_returns_a_program_even_on_garbage`: 8 entradas con secuencias patológicas (`}{(`, `;;;;;`, `@@@@`, etc.).
+
+### Tests nuevos (4.3)
+
+**Ubicación**: [`crates/hulk-parser/tests/error_recovery.rs`](crates/hulk-parser/tests/error_recovery.rs).
+**Total**: 19 tests agrupados en:
+
+| Grupo | Qué verifica | Tests |
+|---|---|---|
+| Terminación | Inputs malformados terminan en tiempo acotado | 5 |
+| Sincronización | Contenido post-error sigue parseando | 5 |
+| Recovery específico | Cada sitio de `expect` puntual | 6 |
+| Nodos sintéticos | `parse` siempre devuelve un `Program` | 2 |
+| Fuzz | 200 entradas aleatorias sin panic/loop | 1 |
+
+### Gotchas encontrados en 4.3
+
+- **`parse_member` sin guarda es vulnerable**: si el miembro empieza con `@` o `$`, `expect_ident` emite un diagnóstico pero no avanza, luego las comprobaciones de `(`/`:`/`=` son todas false, y el parser queda con `pos` sin cambiar. La guarda en `parse_type_members` detecta esto y salta a `;`/`}`.
+- **`parse_method_sig` tiene el mismo riesgo** si el primer token no es ident. Resuelto por la misma guarda en `parse_protocol_decl`.
+- **Top-level progress guard no es redundante**: aun con ident-expect y body-expect fallando, un `function` sin nada después deja el parser en la misma posición. El `skip_to_sync` del loop top-level salta al próximo `function`/`type`/etc.
+- **`skip_until` nunca incluye el token sync entre los consumidos**: se detiene *antes* de él. Es responsabilidad del caller decidir si avanzar (`advance` explícito) o delegar al siguiente parse. Los tests verifican esta semántica implícitamente.
+
+### Cobertura de tests tras 4.3
+
+**Total**: 111 tests en `hulk-parser` (`cargo test -p hulk-parser`).
+- 3 unit tests en `src/tests.rs`.
+- 89 integration tests en `tests/declarations.rs`.
+- 19 integration tests en `tests/error_recovery.rs` (4.3).
+
+**Validación final**:
+- `cargo test -p hulk-parser` → 111/111 passed
+- `cargo clippy -p hulk-parser --all-targets -- -D warnings` → limpio
+- `cargo test --workspace` → todos los crates verdes
 - `cargo clippy --workspace --all-targets -- -D warnings` → limpio
 - `cargo fmt --all --check` → limpio

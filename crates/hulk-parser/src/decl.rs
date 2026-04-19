@@ -19,12 +19,19 @@ impl Parser {
         let mut macros = Vec::new();
 
         while self.is_decl_start() {
+            let before = self.position();
             match self.peek() {
                 Token::Function => functions.push(self.parse_function_decl()),
                 Token::Type => types.push(self.parse_type_decl()),
                 Token::Protocol => protocols.push(self.parse_protocol_decl()),
                 Token::Def => macros.push(self.parse_macro_decl()),
                 _ => unreachable!("is_decl_start restricts peek() to declaration tokens"),
+            }
+            // If a malformed declaration did not consume any token, skip to
+            // the next sync point to guarantee termination.
+            if self.position() == before {
+                self.skip_to_sync();
+                self.ensure_progress(before);
             }
         }
 
@@ -187,7 +194,16 @@ impl Parser {
     fn parse_type_members(&mut self) -> Vec<Member> {
         let mut members = Vec::new();
         while !self.at(&Token::RBrace) && !self.at(&Token::Eof) {
+            let before = self.position();
             members.push(self.parse_member());
+            if self.position() == before {
+                // Recover: jump to the next `;` or `}` so the loop terminates.
+                self.skip_until(&[Token::Semicolon, Token::RBrace, Token::Eof]);
+                if self.at(&Token::Semicolon) {
+                    self.advance();
+                }
+                self.ensure_progress(before);
+            }
         }
         members
     }
@@ -277,7 +293,15 @@ impl Parser {
         );
         let mut methods = Vec::new();
         while !self.at(&Token::RBrace) && !self.at(&Token::Eof) {
+            let before = self.position();
             methods.push(self.parse_method_sig());
+            if self.position() == before {
+                self.skip_until(&[Token::Semicolon, Token::RBrace, Token::Eof]);
+                if self.at(&Token::Semicolon) {
+                    self.advance();
+                }
+                self.ensure_progress(before);
+            }
         }
         let end_span = self
             .expect(&Token::RBrace, "se esperaba '}' al cerrar protocolo")

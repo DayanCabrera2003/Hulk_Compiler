@@ -142,6 +142,37 @@ impl Parser {
         }
     }
 
+    /// Canonical set of synchronization tokens used across recovery points.
+    /// Spec from PIPELINE 4.3: `Semicolon, RBrace, Eof, Function, Type,
+    /// Protocol, Def`. (Eof is handled implicitly by `skip_until`.)
+    pub(crate) fn skip_to_sync(&mut self) {
+        let sync = [
+            Token::Semicolon,
+            Token::RBrace,
+            Token::Function,
+            Token::Type,
+            Token::Protocol,
+            Token::Def,
+        ];
+        self.skip_until(&sync);
+    }
+
+    /// Returns the current position cursor. Used by list-parsing loops to
+    /// detect lack of progress and force an advance so the parser cannot
+    /// infinite-loop on malformed input.
+    pub(crate) fn position(&self) -> usize {
+        self.pos
+    }
+
+    /// Forces the cursor one token forward if it has not moved since
+    /// `before`. Keeps the parser progressing after a recovery point where
+    /// no inner sub-parser consumed a token.
+    pub(crate) fn ensure_progress(&mut self, before: usize) {
+        if self.pos == before && !matches!(self.peek(), Token::Eof) {
+            self.advance();
+        }
+    }
+
     /// Emit an error diagnostic pointing at the current token.
     pub(crate) fn error_here(&mut self, message: impl Into<String>, label: impl Into<String>) {
         let span = self.peek_span();
