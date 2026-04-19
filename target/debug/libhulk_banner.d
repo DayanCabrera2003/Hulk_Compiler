@@ -1,0 +1,1 @@
+/home/dayancc/Documents/Universidad/Compilacion/Proyecto/hulk_compiler/target/debug/libhulk_banner.rlib: /home/dayancc/Documents/Universidad/Compilacion/Proyecto/hulk_compiler/crates/hulk-banner/src/lib.rs

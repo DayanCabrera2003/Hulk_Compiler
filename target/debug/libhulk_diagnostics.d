@@ -1,0 +1,1 @@
+/home/dayancc/Documents/Universidad/Compilacion/Proyecto/hulk_compiler/target/debug/libhulk_diagnostics.rlib: /home/dayancc/Documents/Universidad/Compilacion/Proyecto/hulk_compiler/crates/hulk-diagnostics/src/lib.rs
