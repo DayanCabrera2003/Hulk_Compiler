@@ -151,9 +151,13 @@ impl MacroParam {
 }
 
 /// Binding form used by `let` expressions.
+///
+/// `type_ann` is optional because HULK allows both `let x = 42 in ...`
+/// and `let x: Number = 42 in ...` (see Hulk.md, section "Type checking").
 #[derive(Debug, Clone, PartialEq)]
 pub struct LetBinding {
     pub name: String,
+    pub type_ann: Option<TypeAnn>,
     pub value: Box<Expr>,
     pub span: Span,
 }

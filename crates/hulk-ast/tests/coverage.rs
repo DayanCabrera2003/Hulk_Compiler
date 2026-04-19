@@ -295,6 +295,7 @@ fn let_expression_keeps_bindings_and_body() {
             bindings: vec![expr(
                 ExprKind::LetBinding(LetBinding {
                     name: "a".to_owned(),
+                    type_ann: None,
                     value: Box::new(num(1.0, 10)),
                     span: fresh_span(),
                 }),
@@ -831,6 +832,7 @@ fn build_kitchen_sink_program() -> Program {
     let binding_value = num_0_eb(&mut f);
     let let_binding = f.e(ExprKind::LetBinding(LetBinding {
         name: "x".to_owned(),
+        type_ann: None,
         value: binding_value,
         span: fresh_span(),
     }));
@@ -1209,6 +1211,7 @@ fn visitor_visits_let_body_after_bindings() {
             bindings: vec![expr(
                 ExprKind::LetBinding(LetBinding {
                     name: "a".to_owned(),
+                    type_ann: None,
                     value: Box::new(num(1.0, 10)),
                     span: fresh_span(),
                 }),

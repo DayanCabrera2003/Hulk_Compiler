@@ -1,11 +1,24 @@
+//! Pratt-based recursive descent parser for HULK.
+//!
+//! The public entry point is [`parse`], which consumes a token stream
+//! (produced by `hulk-lexer`) and a [`SourceFile`], and returns a partial
+//! [`Program`] AST along with the collected [`DiagnosticBag`].
+//!
+//! The parser never aborts: if an error is encountered it emits a diagnostic,
+//! attempts to recover, and continues scanning tokens so that every error in a
+//! single compilation unit is reported in one pass.
+
 use std::mem;
 use std::sync::Arc;
 
-use hulk_ast::{
-    BinOpKind, Expr, ExprKind, NodeIdGen, Program, UnaryOpKind,
-};
+use hulk_ast::{Expr, ExprKind, NodeIdGen, Program};
 use hulk_diagnostics::{Diagnostic, DiagnosticBag};
 use hulk_tokens::{SourceFile, Span, SpannedToken, Token};
+
+mod complex;
+mod decl;
+mod expr;
+mod type_ann;
 
 /// Pratt parser state for HULK source.
 pub struct Parser {
@@ -13,45 +26,69 @@ pub struct Parser {
     pos: usize,
     bag: DiagnosticBag,
     node_ids: NodeIdGen,
+    eof_span: Span,
 }
 
 impl Parser {
-    fn new(tokens: Vec<SpannedToken>) -> Self {
+    fn new(tokens: Vec<SpannedToken>, source: &SourceFile) -> Self {
+        // The last token produced by the lexer is always `Eof`. Use its span
+        // as a fallback for error messages reported past the end of input.
+        let eof_span = tokens
+            .last()
+            .map(|t| t.span.clone())
+            .unwrap_or_else(|| Span::dummy(Arc::new(source.clone())));
         Self {
             tokens,
             pos: 0,
             bag: DiagnosticBag::new(),
             node_ids: NodeIdGen::new(),
+            eof_span,
         }
     }
 
-    fn peek(&self) -> &Token {
+    // -- low-level token navigation -----------------------------------------
+
+    /// Returns the token at the current position without advancing.
+    pub(crate) fn peek(&self) -> &Token {
         self.tokens
             .get(self.pos)
-            .or_else(|| self.tokens.last())
             .map(|t| &t.token)
             .unwrap_or(&Token::Eof)
     }
 
-    fn peek_span(&self) -> Span {
+    /// Returns the token `offset` positions ahead of the current cursor.
+    pub(crate) fn peek_at(&self, offset: usize) -> &Token {
         self.tokens
-            .get(self.pos)
-            .or_else(|| self.tokens.last())
-            .map(|t| t.span.clone())
-            .expect("parser requires at least one token (Eof)")
+            .get(self.pos + offset)
+            .map(|t| &t.token)
+            .unwrap_or(&Token::Eof)
     }
 
-    fn at(&self, expected: &Token) -> bool {
+    /// Returns the span of the current token (or the EOF span if past the end).
+    pub(crate) fn peek_span(&self) -> Span {
+        self.tokens
+            .get(self.pos)
+            .map(|t| t.span.clone())
+            .unwrap_or_else(|| self.eof_span.clone())
+    }
+
+    /// True if the current token has the same variant as `expected`.
+    ///
+    /// Data-carrying variants (`Number`, `Ident`, `StringLit`) match on
+    /// discriminant only, so `at(&Token::Ident(String::new()))` returns true
+    /// for any identifier.
+    pub(crate) fn at(&self, expected: &Token) -> bool {
         same_variant(self.peek(), expected)
     }
 
-    fn advance(&mut self) -> SpannedToken {
+    /// Consumes and returns the current token, or clones the EOF token if
+    /// already past the end.
+    pub(crate) fn advance(&mut self) -> SpannedToken {
         let current = self
             .tokens
             .get(self.pos)
-            .or_else(|| self.tokens.last())
             .cloned()
-            .expect("parser requires at least one token (Eof)");
+            .unwrap_or_else(|| SpannedToken::new(Token::Eof, self.eof_span.clone()));
 
         if !matches!(current.token, Token::Eof) {
             self.pos += 1;
@@ -60,13 +97,19 @@ impl Parser {
         current
     }
 
-    fn expect(&mut self, expected: &Token, context: &'static str) -> Option<SpannedToken> {
+    /// If the current token matches `expected`, consume and return it.
+    /// Otherwise emit a diagnostic with `context` and return `None`.
+    pub(crate) fn expect(
+        &mut self,
+        expected: &Token,
+        context: &'static str,
+    ) -> Option<SpannedToken> {
         if self.at(expected) {
             Some(self.advance())
         } else {
             let found = format!("{:?}", self.peek());
             self.bag.push(
-                Diagnostic::error(format!("token inesperado: se esperaba {:?}", expected))
+                Diagnostic::error(format!("token inesperado: se esperaba {expected:?}"))
                     .with_label(self.peek_span(), context)
                     .with_note(format!("encontre: {found}")),
             );
@@ -74,217 +117,86 @@ impl Parser {
         }
     }
 
-    fn skip_until(&mut self, sync: &[Token]) {
-        while !matches!(self.peek(), Token::Eof)
-            && !sync.iter().any(|token| self.at(token))
-        {
+    /// Consume a `Token::Ident` and return its name. On mismatch, emit a
+    /// diagnostic with `context` and return `None`.
+    pub(crate) fn expect_ident(&mut self, context: &'static str) -> Option<(String, Span)> {
+        if let Token::Ident(_) = self.peek() {
+            let tok = self.advance();
+            if let Token::Ident(name) = tok.token {
+                return Some((name, tok.span));
+            }
+        }
+        let found = format!("{:?}", self.peek());
+        self.bag.push(
+            Diagnostic::error("se esperaba un identificador")
+                .with_label(self.peek_span(), context)
+                .with_note(format!("encontre: {found}")),
+        );
+        None
+    }
+
+    /// Advance until the next token is one of `sync` or EOF.
+    pub(crate) fn skip_until(&mut self, sync: &[Token]) {
+        while !matches!(self.peek(), Token::Eof) && !sync.iter().any(|tok| self.at(tok)) {
             self.advance();
         }
     }
 
-    fn parse_expr_bp(&mut self, min_bp: u8) -> Expr {
-        let mut lhs = self.parse_nud();
-
-        while let Some((op, l_bp, r_bp)) = self.infix_bp() {
-
-            if l_bp < min_bp {
-                break;
-            }
-
-            self.advance();
-            let rhs = self.parse_expr_bp(r_bp);
-            let span = lhs.span.clone().merge(rhs.span.clone());
-            lhs = Expr::new(
-                ExprKind::BinOp {
-                    op,
-                    left: Box::new(lhs),
-                    right: Box::new(rhs),
-                },
-                span,
-                self.node_ids.next_id(),
-            );
-        }
-
-        lhs
+    /// Emit an error diagnostic pointing at the current token.
+    pub(crate) fn error_here(&mut self, message: impl Into<String>, label: impl Into<String>) {
+        let span = self.peek_span();
+        self.bag.push(
+            Diagnostic::error(message)
+                .with_label(span, label.into()),
+        );
     }
 
-    fn parse_nud(&mut self) -> Expr {
-        let token = self.advance();
-        match token.token {
-            Token::Number(value) => Expr::new(
-                ExprKind::Number(value),
-                token.span,
-                self.node_ids.next_id(),
-            ),
-            Token::StringLit(value) => Expr::new(
-                ExprKind::StringLit(value),
-                token.span,
-                self.node_ids.next_id(),
-            ),
-            Token::True => Expr::new(
-                ExprKind::Bool(true),
-                token.span,
-                self.node_ids.next_id(),
-            ),
-            Token::False => Expr::new(
-                ExprKind::Bool(false),
-                token.span,
-                self.node_ids.next_id(),
-            ),
-            Token::Ident(name) => {
-                let kind = match name.as_str() {
-                    "self" => ExprKind::Self_,
-                    "base" => ExprKind::Base,
-                    _ => ExprKind::Ident(name),
-                };
-                Expr::new(kind, token.span, self.node_ids.next_id())
-            }
-            Token::Minus => {
-                let expr = self.parse_expr_bp(13);
-                let span = token.span.clone().merge(expr.span.clone());
-                Expr::new(
-                    ExprKind::UnaryOp {
-                        op: UnaryOpKind::Neg,
-                        expr: Box::new(expr),
-                    },
-                    span,
-                    self.node_ids.next_id(),
-                )
-            }
-            Token::Bang => {
-                let expr = self.parse_expr_bp(13);
-                let span = token.span.clone().merge(expr.span.clone());
-                Expr::new(
-                    ExprKind::UnaryOp {
-                        op: UnaryOpKind::Not,
-                        expr: Box::new(expr),
-                    },
-                    span,
-                    self.node_ids.next_id(),
-                )
-            }
-            Token::LParen => {
-                let expr = self.parse_expr_bp(0);
-                if let Some(close) = self.expect(&Token::RParen, "se esperaba ')' para cerrar grupo") {
-                    Expr::new(
-                        expr.kind,
-                        token.span.merge(close.span),
-                        expr.id,
-                    )
-                } else {
-                    expr
-                }
-            }
-            Token::LBrace => self.parse_block_expr(token.span),
-            _ => {
-                self.bag.push(
-                    Diagnostic::error("expresion invalida")
-                        .with_label(token.span.clone(), "no puede iniciar una expresion"),
-                );
-                Expr::new(
-                    ExprKind::Block(vec![]),
-                    token.span,
-                    self.node_ids.next_id(),
-                )
-            }
-        }
+    // -- node-id accessor for sub-modules ----------------------------------
+
+    pub(crate) fn next_node_id(&mut self) -> hulk_ast::NodeId {
+        self.node_ids.next_id()
     }
 
-    fn parse_block_expr(&mut self, lbrace_span: Span) -> Expr {
-        let mut exprs = Vec::new();
-
-        while !self.at(&Token::RBrace) && !self.at(&Token::Eof) {
-            let expr = self.parse_expr_bp(0);
-            exprs.push(expr);
-
-            if self.at(&Token::Semicolon) {
-                self.advance();
-            } else if !self.at(&Token::RBrace) {
-                self.bag.push(
-                    Diagnostic::error("se esperaba ';' o '}'")
-                        .with_label(self.peek_span(), "separador faltante en bloque"),
-                );
-                self.skip_until(&[Token::Semicolon, Token::RBrace, Token::Eof]);
-                if self.at(&Token::Semicolon) {
-                    self.advance();
-                }
-            }
-        }
-
-        let span = if let Some(rbrace) = self.expect(&Token::RBrace, "se esperaba '}' para cerrar bloque") {
-            lbrace_span.merge(rbrace.span)
-        } else {
-            lbrace_span
-        };
-
-        Expr::new(ExprKind::Block(exprs), span, self.node_ids.next_id())
-    }
-
-    fn infix_bp(&self) -> Option<(BinOpKind, u8, u8)> {
-        match self.peek() {
-            Token::Pipe => Some((BinOpKind::Or, 1, 2)),
-            Token::Ampersand => Some((BinOpKind::And, 3, 4)),
-            Token::EqualEqual => Some((BinOpKind::Eq, 5, 6)),
-            Token::BangEqual => Some((BinOpKind::Ne, 5, 6)),
-            Token::Less => Some((BinOpKind::Lt, 7, 8)),
-            Token::LessEqual => Some((BinOpKind::Le, 7, 8)),
-            Token::Greater => Some((BinOpKind::Gt, 7, 8)),
-            Token::GreaterEqual => Some((BinOpKind::Ge, 7, 8)),
-            Token::At => Some((BinOpKind::Concat, 9, 10)),
-            Token::AtAt => Some((BinOpKind::ConcatSpaced, 9, 10)),
-            Token::Plus => Some((BinOpKind::Add, 11, 12)),
-            Token::Minus => Some((BinOpKind::Sub, 11, 12)),
-            Token::Star => Some((BinOpKind::Mul, 13, 14)),
-            Token::Slash => Some((BinOpKind::Div, 13, 14)),
-            Token::Percent => Some((BinOpKind::Mod, 13, 14)),
-            Token::Caret => Some((BinOpKind::Pow, 15, 15)),
-            _ => None,
-        }
+    pub(crate) fn bag_mut(&mut self) -> &mut DiagnosticBag {
+        &mut self.bag
     }
 }
 
-/// Parses a token stream into a partial AST and collected diagnostics.
+/// Parses a token stream into a full [`Program`] AST and collected diagnostics.
+///
+/// The parser consumes every token down to `Eof`. Extra tokens past the final
+/// expression produce an "extra tokens" diagnostic but do not panic. If the
+/// source is empty, an empty `Block` is used as program body so that downstream
+/// phases always receive a well-formed `Program`.
 #[must_use]
 pub fn parse(tokens: Vec<SpannedToken>, source: &SourceFile) -> (Program, DiagnosticBag) {
-    let mut parser = Parser::new(tokens);
-    let body = parser.parse_expr_bp(0);
+    let file = Arc::new(source.clone());
+    let mut parser = Parser::new(tokens, source);
 
-    if parser.at(&Token::Semicolon) {
-        parser.advance();
+    // Empty input: produce an empty block body so consumers have a valid AST.
+    if matches!(parser.peek(), Token::Eof) {
+        let id = parser.next_node_id();
+        let program = Program {
+            functions: Vec::new(),
+            types: Vec::new(),
+            protocols: Vec::new(),
+            macros: Vec::new(),
+            body: Expr::new(ExprKind::Block(vec![]), Span::dummy(file), id),
+        };
+        return (program, parser.bag);
     }
+
+    let program = parser.parse_program();
 
     if !parser.at(&Token::Eof) {
+        let span = parser.peek_span();
         parser.bag.push(
             Diagnostic::error("tokens extra al final del programa")
-                .with_label(parser.peek_span(), "el parser esperaba EOF"),
+                .with_label(span, "el parser esperaba EOF"),
         );
     }
 
-    let program = Program {
-        functions: Vec::new(),
-        types: Vec::new(),
-        protocols: Vec::new(),
-        macros: Vec::new(),
-        body,
-    };
-
-    if parser.tokens.is_empty() {
-        let file = Arc::new(source.clone());
-        let dummy_body = Expr::new(
-            ExprKind::Block(vec![]),
-            Span::dummy(file),
-            parser.node_ids.next_id(),
-        );
-        (
-            Program {
-                body: dummy_body,
-                ..program
-            },
-            parser.bag,
-        )
-    } else {
-        (program, parser.bag)
-    }
+    (program, parser.bag)
 }
 
 fn same_variant(a: &Token, b: &Token) -> bool {
@@ -292,93 +204,4 @@ fn same_variant(a: &Token, b: &Token) -> bool {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use hulk_lexer::lex;
-
-    fn parse_expr(source: &str) -> (Program, DiagnosticBag) {
-        let source = SourceFile::new("test.hulk", source);
-        let mut lex_bag = DiagnosticBag::new();
-        let tokens = lex(&source, &mut lex_bag);
-        assert!(lex_bag.is_empty(), "lexer diagnostics: {:?}", lex_bag.diagnostics());
-        parse(tokens, &source)
-    }
-
-    #[test]
-    fn parses_arithmetic_precedence() {
-        let (program, bag) = parse_expr("1 + 2 * 3;");
-        assert!(bag.is_empty(), "parser diagnostics: {:?}", bag.diagnostics());
-
-        match &program.body.kind {
-            ExprKind::BinOp {
-                op: BinOpKind::Add,
-                left,
-                right,
-            } => {
-                assert!(matches!(left.kind, ExprKind::Number(1.0)));
-                match &right.kind {
-                    ExprKind::BinOp {
-                        op: BinOpKind::Mul,
-                        left: mul_l,
-                        right: mul_r,
-                    } => {
-                        assert!(matches!(mul_l.kind, ExprKind::Number(2.0)));
-                        assert!(matches!(mul_r.kind, ExprKind::Number(3.0)));
-                    }
-                    other => panic!("expected mul expression, got {other:?}"),
-                }
-            }
-            other => panic!("expected add expression, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn parses_unary_and_grouping() {
-        let (program, bag) = parse_expr("-(1 + 2);");
-        assert!(bag.is_empty(), "parser diagnostics: {:?}", bag.diagnostics());
-
-        match &program.body.kind {
-            ExprKind::UnaryOp {
-                op: UnaryOpKind::Neg,
-                expr,
-            } => match &expr.kind {
-                ExprKind::BinOp {
-                    op: BinOpKind::Add,
-                    ..
-                } => {}
-                other => panic!("expected grouped add expression, got {other:?}"),
-            },
-            other => panic!("expected unary negation, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn parses_boolean_and_concat() {
-        let (program, bag) = parse_expr("true & false | \"a\" @@ \"b\";");
-        assert!(bag.is_empty(), "parser diagnostics: {:?}", bag.diagnostics());
-
-        match &program.body.kind {
-            ExprKind::BinOp {
-                op: BinOpKind::Or,
-                left,
-                right,
-            } => {
-                assert!(matches!(
-                    left.kind,
-                    ExprKind::BinOp {
-                        op: BinOpKind::And,
-                        ..
-                    }
-                ));
-                assert!(matches!(
-                    right.kind,
-                    ExprKind::BinOp {
-                        op: BinOpKind::ConcatSpaced,
-                        ..
-                    }
-                ));
-            }
-            other => panic!("expected or expression, got {other:?}"),
-        }
-    }
-}
+mod tests;

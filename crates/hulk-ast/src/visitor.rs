@@ -583,6 +583,7 @@ mod tests {
                             span: s.clone(),
                             kind: ExprKind::LetBinding(LetBinding {
                                 name: "x".to_owned(),
+                                type_ann: None,
                                 value: Box::new(Expr {
                                     id: NodeId(4),
                                     span: s.clone(),
