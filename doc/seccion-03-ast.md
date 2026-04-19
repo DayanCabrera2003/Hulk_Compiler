@@ -66,6 +66,62 @@
 - El operador % no aparece en la lista inicial de arithmetic operators del texto, pero si aparece en ejemplos de conditionals. Se incluyo como Mod.
 - El operador @@ se incluye como binario separado (ConcatSpaced) para conservar intencion semantica en AST antes de desugaring.
 - Las anotaciones de tipo se modelan con `TypeAnn` en lugar de strings crudos para que parser y fases semanticas compartan una representacion estructural unica.
+- `NodeIdGen` hace panic en overflow de `u32` (más de 4 mil millones de nodos). En la práctica inalcanzable, pero documentado: las alternativas eran wrap-around silencioso (peor) o Result (ruido excesivo en API).
+- `f64::NAN` rompe la igualdad estructural de `Expr`: dos `ExprKind::Number(NaN)` no son `PartialEq`. El parser no produce NaN y el tipo checker detectaría cualquier aritmética que lo genere; aun así hay un test específico que documenta este quirk.
+
+## Bugs encontrados y corregidos en revisión exhaustiva
+
+Durante la revisión posterior a la implementación inicial se encontraron **cuatro bugs reales** que se corrigieron antes de cerrar la sesión:
+
+### Bug 1 — `FunctionDecl` sin `return_type`
+
+La struct original no tenía campo para el tipo de retorno, impidiendo representar `function tan(x: Number): Number => sin(x) / cos(x);` (sintaxis válida en HULK y usada por la spec de protocolos para verificar conformance).
+
+**Fix**: se añadió `return_type: Option<TypeAnn>` a `FunctionDecl`. `None` cuando el tipo se debe inferir, `Some(ann)` cuando está anotado.
+
+### Bug 2 — `MacroParam` descartaba las anotaciones de tipo
+
+La definición original era `enum MacroParam { Regular(String), Body(String), Symbolic(String), Placeholder(String) }`. La spec de HULK (sección Macros) especifica que cada parámetro de macro lleva su tipo: `def repeat(n: Number, *expr: Object)`, `def swap(@a: Object, @b: Object)`, `def repeat($iter: Number, ...)`. Sin el tipo, el verificador de macros no puede chequear que los argumentos coinciden con el parámetro declarado.
+
+**Fix**: cada variante ahora es `{ name: String, type_ann: TypeAnn, span: Span }`. Se añadieron métodos `name()` y `type_ann()` para acceso uniforme.
+
+### Bug 3 — `MemberKind::Attribute.value` era `Option<Expr>`
+
+La spec dice explícitamente: *"All attributes must be given an initialization expression"*. Tener `value: Option<Expr>` permitía representar programas sintácticamente inválidos (atributos sin inicializador), haciendo que el parser o el resolver tuvieran que validar lo que el AST ya debería garantizar.
+
+**Fix**: `value` ahora es `Expr` (obligatorio). El test `attribute_value_is_required_not_optional` en `tests/coverage.rs` hace un check a nivel de tipos que rompería la compilación si alguien vuelve a optional.
+
+### Bug 4 — `walk_expr` mezclaba tres variantes con re-match fragil
+
+El código original era:
+
+```rust
+ExprKind::Block(exprs) | ExprKind::VecLiteral(exprs) | ExprKind::Let { bindings: exprs, .. } => {
+    for item in exprs { visitor.visit_expr(item); }
+    if let ExprKind::Let { body, .. } = &expr.kind {
+        visitor.visit_expr(body);
+    }
+}
+```
+
+Funcionaba pero era fragil: si alguien añadía un campo nuevo a `Let` o introducía otra variante con un `Vec<Expr>`, el pattern podía matchear por accidente y silenciar un bug. Se separó en dos brazos independientes: uno para `Block | VecLiteral` y otro explícito para `Let`.
+
+**Fix + test de regresión**: `visitor_visits_let_body_after_bindings` verifica que el body de un `Let` se visita después de las bindings, usando NodeIds específicos que detectarían si el visitor se salta el body.
+
+## Cobertura de tests
+
+**Tests en `crates/hulk-ast/src/*.rs`** (unitarios): 4 tests.
+
+**Tests en `crates/hulk-ast/tests/coverage.rs`** (integración, 42 tests):
+
+- **`NodeIdGen`** (7 tests): secuencial, offset de inicio, 10.000 ids únicos, overflow panic, clonado independiente, copy + hashable, ordenable.
+- **`ExprKind`** (14 tests): cada grupo de variantes (literales, átomos, 16 BinOpKind, 2 UnaryOpKind, Call/MethodCall, FieldAccess/Index, Block/VecLiteral vacíos, VecGenerator, Let, Assign con los 3 targets, If 0..=5 elif, While/For, New/Is/As, Lambda).
+- **`TypeAnn`** (2 tests): nesting arbitrario (`Number[][]`, `Number*[]`, `(Number, Number) -> Boolean`, `(Number*) -> Number[]`), functor sin parámetros.
+- **Declaraciones** (6 tests): `FunctionDecl` con/sin return type, `TypeDecl` con herencia + mix de miembros, verificación compile-time de que attribute value no es Optional, ProtocolDecl con/sin extends, MethodSig con return type obligatorio, MacroDecl con los 4 tipos de parámetro.
+- **`Visitor`/`VisitorMut`** (7 tests): cobertura de cada variante en kitchen-sink (26 variantes de ExprKind visitadas), annotations de macro params alcanzadas, inicializadores de attribute alcanzados, args de parent spec alcanzados, Let.body visitado (regresión bug 4), transformación de números en árbol anidado.
+- **Robustez** (6 tests): nesting profundo (500 BinOps = 1001 nodos, sin stack overflow), strings UTF-8 multibyte (`"héllo 🦀 ñ"`), identificadores con dígitos y guiones bajos no-iniciales, clone estructural, programa vacío, NodeIds únicos en kitchen-sink.
+
+**Ejecución**: `cargo test -p hulk-ast` → 46/46 passed. `cargo clippy -p hulk-ast --all-targets -- -D warnings` limpio.
 
 ## Ejemplos de uso
 

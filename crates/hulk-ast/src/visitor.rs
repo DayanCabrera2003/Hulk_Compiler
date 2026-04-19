@@ -1,6 +1,6 @@
 use crate::decl::{
-    AssignTarget, FunctionDecl, LetBinding, MacroDecl, Member, MemberKind, MethodSig, Param,
-    Program, ProtocolDecl, TypeAnn, TypeDecl,
+    AssignTarget, FunctionDecl, LetBinding, MacroDecl, MacroParam, Member, MemberKind, MethodSig,
+    Param, Program, ProtocolDecl, TypeAnn, TypeDecl,
 };
 use crate::expr::{Expr, ExprKind};
 
@@ -150,6 +150,9 @@ pub fn walk_protocol_decl<V: Visitor + ?Sized>(visitor: &mut V, protocol: &Proto
 }
 
 pub fn walk_macro_decl<V: Visitor + ?Sized>(visitor: &mut V, mac: &MacroDecl) {
+    for param in &mac.params {
+        visitor.visit_type_ann(param.type_ann());
+    }
     visitor.visit_expr(&mac.body);
 }
 
@@ -161,9 +164,7 @@ pub fn walk_member<V: Visitor + ?Sized>(visitor: &mut V, member: &Member) {
             if let Some(ann) = type_ann {
                 visitor.visit_type_ann(ann);
             }
-            if let Some(expr) = value {
-                visitor.visit_expr(expr);
-            }
+            visitor.visit_expr(value);
         }
         MemberKind::Method(method) => visitor.visit_function_decl(method),
     }
@@ -227,13 +228,16 @@ pub fn walk_expr<V: Visitor + ?Sized>(visitor: &mut V, expr: &Expr) {
             visitor.visit_expr(target);
             visitor.visit_expr(index);
         }
-        ExprKind::Block(exprs) | ExprKind::VecLiteral(exprs) | ExprKind::Let { bindings: exprs, .. } => {
+        ExprKind::Block(exprs) | ExprKind::VecLiteral(exprs) => {
             for item in exprs {
                 visitor.visit_expr(item);
             }
-            if let ExprKind::Let { body, .. } = &expr.kind {
-                visitor.visit_expr(body);
+        }
+        ExprKind::Let { bindings, body } => {
+            for binding in bindings {
+                visitor.visit_expr(binding);
             }
+            visitor.visit_expr(body);
         }
         ExprKind::VecGenerator {
             element, iterable, ..
@@ -356,6 +360,15 @@ pub fn walk_protocol_decl_mut<V: VisitorMut + ?Sized>(visitor: &mut V, protocol:
 }
 
 pub fn walk_macro_decl_mut<V: VisitorMut + ?Sized>(visitor: &mut V, mac: &mut MacroDecl) {
+    for param in &mut mac.params {
+        let ann = match param {
+            MacroParam::Regular { type_ann, .. }
+            | MacroParam::Body { type_ann, .. }
+            | MacroParam::Symbolic { type_ann, .. }
+            | MacroParam::Placeholder { type_ann, .. } => type_ann,
+        };
+        visitor.visit_type_ann_mut(ann);
+    }
     visitor.visit_expr_mut(&mut mac.body);
 }
 
@@ -367,9 +380,7 @@ pub fn walk_member_mut<V: VisitorMut + ?Sized>(visitor: &mut V, member: &mut Mem
             if let Some(ann) = type_ann {
                 visitor.visit_type_ann_mut(ann);
             }
-            if let Some(expr) = value {
-                visitor.visit_expr_mut(expr);
-            }
+            visitor.visit_expr_mut(value);
         }
         MemberKind::Method(method) => visitor.visit_function_decl_mut(method),
     }
@@ -433,13 +444,16 @@ pub fn walk_expr_mut<V: VisitorMut + ?Sized>(visitor: &mut V, expr: &mut Expr) {
             visitor.visit_expr_mut(target);
             visitor.visit_expr_mut(index);
         }
-        ExprKind::Block(exprs) | ExprKind::VecLiteral(exprs) | ExprKind::Let { bindings: exprs, .. } => {
+        ExprKind::Block(exprs) | ExprKind::VecLiteral(exprs) => {
             for item in exprs {
                 visitor.visit_expr_mut(item);
             }
-            if let ExprKind::Let { body, .. } = &mut expr.kind {
-                visitor.visit_expr_mut(body);
+        }
+        ExprKind::Let { bindings, body } => {
+            for binding in bindings {
+                visitor.visit_expr_mut(binding);
             }
+            visitor.visit_expr_mut(body);
         }
         ExprKind::VecGenerator {
             element, iterable, ..
@@ -624,6 +638,7 @@ mod tests {
                     type_ann: Some(TypeAnn::Vector(Box::new(TypeAnn::Named("Number".to_owned())))),
                     span: s.clone(),
                 }],
+                return_type: None,
                 body: Expr {
                     id: NodeId(10),
                     span: s.clone(),

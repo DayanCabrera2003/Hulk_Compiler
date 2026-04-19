@@ -24,10 +24,14 @@ pub struct Program {
 }
 
 /// Function declaration shared by global functions and type members.
+///
+/// The `return_type` is optional because HULK allows both annotated
+/// (`function tan(x): Number => ...`) and fully-inferred functions.
 #[derive(Debug, Clone, PartialEq)]
 pub struct FunctionDecl {
     pub name: String,
     pub params: Vec<Param>,
+    pub return_type: Option<TypeAnn>,
     pub body: Expr,
     pub span: Span,
 }
@@ -76,12 +80,15 @@ pub struct Member {
 }
 
 /// Kind of member inside a type declaration.
+///
+/// HULK requires every attribute to be given an initialization expression
+/// (see Hulk.md, section "Types"), so `value` is always present.
 #[derive(Debug, Clone, PartialEq)]
 pub enum MemberKind {
     Attribute {
         name: String,
         type_ann: Option<TypeAnn>,
-        value: Option<Expr>,
+        value: Expr,
     },
     Method(FunctionDecl),
 }
@@ -104,12 +111,43 @@ pub struct MethodSig {
 }
 
 /// Macro parameter forms supported by HULK.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+///
+/// Each kind carries its type annotation, as HULK requires fully typed
+/// macro parameters (see Hulk.md, section "Macros"):
+/// - `Regular`: `n: Number`
+/// - `Body`: `*expr: Object` — receives the block following the invocation.
+/// - `Symbolic`: `@a: Object` — receives a symbol from the caller context.
+/// - `Placeholder`: `$iter: Number` — introduces a fresh symbol in the caller scope.
+#[derive(Debug, Clone, PartialEq)]
 pub enum MacroParam {
-    Regular(String),
-    Body(String),
-    Symbolic(String),
-    Placeholder(String),
+    Regular { name: String, type_ann: TypeAnn, span: Span },
+    Body { name: String, type_ann: TypeAnn, span: Span },
+    Symbolic { name: String, type_ann: TypeAnn, span: Span },
+    Placeholder { name: String, type_ann: TypeAnn, span: Span },
+}
+
+impl MacroParam {
+    /// Returns the bound parameter name regardless of the kind.
+    #[must_use]
+    pub fn name(&self) -> &str {
+        match self {
+            Self::Regular { name, .. }
+            | Self::Body { name, .. }
+            | Self::Symbolic { name, .. }
+            | Self::Placeholder { name, .. } => name,
+        }
+    }
+
+    /// Returns the declared type annotation regardless of the kind.
+    #[must_use]
+    pub fn type_ann(&self) -> &TypeAnn {
+        match self {
+            Self::Regular { type_ann, .. }
+            | Self::Body { type_ann, .. }
+            | Self::Symbolic { type_ann, .. }
+            | Self::Placeholder { type_ann, .. } => type_ann,
+        }
+    }
 }
 
 /// Binding form used by `let` expressions.
@@ -152,6 +190,7 @@ mod tests {
                 type_ann: None,
                 span: span.clone(),
             }],
+            return_type: None,
             body: Expr::new(ExprKind::Ident("x".to_owned()), span.clone(), NodeId(1)),
             span: span.clone(),
         };
@@ -159,6 +198,7 @@ mod tests {
         let block = FunctionDecl {
             name: "g".to_owned(),
             params: vec![],
+            return_type: Some(TypeAnn::Named("Number".to_owned())),
             body: Expr::new(
                 ExprKind::Block(vec![Expr::new(
                     ExprKind::Number(1.0),
@@ -172,6 +212,8 @@ mod tests {
         };
 
         assert!(matches!(inline.body.kind, ExprKind::Ident(_)));
+        assert!(inline.return_type.is_none());
         assert!(matches!(block.body.kind, ExprKind::Block(_)));
+        assert_eq!(block.return_type, Some(TypeAnn::Named("Number".to_owned())));
     }
 }
