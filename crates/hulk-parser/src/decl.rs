@@ -1,8 +1,8 @@
 //! Top-level declaration parsing: programs, functions, types, protocols, macros.
 
 use hulk_ast::{
-    Expr, ExprKind, FunctionDecl, MacroDecl, MacroParam, Member, MemberKind, MethodSig,
-    ParentSpec, Program, ProtocolDecl, TypeAnn, TypeDecl,
+    Expr, ExprKind, FunctionDecl, MacroDecl, MacroParam, Member, MemberKind, MethodSig, ParentSpec,
+    Program, ProtocolDecl, TypeAnn, TypeDecl,
 };
 use hulk_diagnostics::Diagnostic;
 use hulk_tokens::{Span, Token};
@@ -65,7 +65,10 @@ impl Parser {
             .expect_ident("se esperaba nombre de funcion")
             .unwrap_or_else(|| (String::new(), self.peek_span()));
 
-        self.expect(&Token::LParen, "se esperaba '(' despues del nombre de funcion");
+        self.expect(
+            &Token::LParen,
+            "se esperaba '(' despues del nombre de funcion",
+        );
         let params = self.parse_param_list();
         self.expect(&Token::RParen, "se esperaba ')' al cerrar parametros");
 
@@ -94,7 +97,10 @@ impl Parser {
             self.advance();
             let expr = self.parse_expression();
             // The trailing `;` is required by the spec for inline forms.
-            self.expect(&Token::Semicolon, "se esperaba ';' al terminar funcion inline");
+            self.expect(
+                &Token::Semicolon,
+                "se esperaba ';' al terminar funcion inline",
+            );
             expr
         } else if self.at(&Token::LBrace) {
             let lbrace = self.advance();
@@ -121,7 +127,10 @@ impl Parser {
         let params = if self.at(&Token::LParen) {
             self.advance();
             let p = self.parse_param_list();
-            self.expect(&Token::RParen, "se esperaba ')' al cerrar parametros de tipo");
+            self.expect(
+                &Token::RParen,
+                "se esperaba ')' al cerrar parametros de tipo",
+            );
             p
         } else {
             Vec::new()
@@ -221,7 +230,10 @@ impl Parser {
         } else {
             None
         };
-        self.expect(&Token::Equal, "se esperaba '=' en inicializador de atributo");
+        self.expect(
+            &Token::Equal,
+            "se esperaba '=' en inicializador de atributo",
+        );
         let value = self.parse_expression();
         self.expect(&Token::Semicolon, "se esperaba ';' al final de atributo");
         let span = name_span.merge(value.span.clone());
@@ -259,7 +271,10 @@ impl Parser {
             }
         }
 
-        self.expect(&Token::LBrace, "se esperaba '{' al abrir cuerpo de protocolo");
+        self.expect(
+            &Token::LBrace,
+            "se esperaba '{' al abrir cuerpo de protocolo",
+        );
         let mut methods = Vec::new();
         while !self.at(&Token::RBrace) && !self.at(&Token::Eof) {
             methods.push(self.parse_method_sig());
@@ -301,7 +316,10 @@ impl Parser {
             TypeAnn::Named(String::new())
         };
 
-        self.expect(&Token::Semicolon, "se esperaba ';' al final de firma de metodo");
+        self.expect(
+            &Token::Semicolon,
+            "se esperaba ';' al final de firma de metodo",
+        );
         let span = start_span.merge(self.previous_span());
         MethodSig {
             name,
@@ -319,9 +337,15 @@ impl Parser {
             .expect_ident("se esperaba nombre de macro")
             .unwrap_or_else(|| (String::new(), self.peek_span()));
 
-        self.expect(&Token::LParen, "se esperaba '(' al iniciar parametros de macro");
+        self.expect(
+            &Token::LParen,
+            "se esperaba '(' al iniciar parametros de macro",
+        );
         let params = self.parse_macro_param_list();
-        self.expect(&Token::RParen, "se esperaba ')' al cerrar parametros de macro");
+        self.expect(
+            &Token::RParen,
+            "se esperaba ')' al cerrar parametros de macro",
+        );
 
         // Optional return-type annotation (`: Type`). HULK allows `def foo(...): Object => ...`
         // but `MacroDecl` does not yet have a dedicated field for it, so for now we
@@ -383,16 +407,35 @@ impl Parser {
         let (name, name_span) = self
             .expect_ident("se esperaba nombre de parametro de macro")
             .unwrap_or_else(|| (String::new(), self.peek_span()));
-        self.expect(&Token::Colon, "los parametros de macro requieren anotacion de tipo");
+        self.expect(
+            &Token::Colon,
+            "los parametros de macro requieren anotacion de tipo",
+        );
         let type_ann = self.parse_type_ann();
         let span = start_span.merge(self.previous_span());
         let _ = name_span;
 
         match kind_tag {
-            "body" => MacroParam::Body { name, type_ann, span },
-            "symbolic" => MacroParam::Symbolic { name, type_ann, span },
-            "placeholder" => MacroParam::Placeholder { name, type_ann, span },
-            "regular" => MacroParam::Regular { name, type_ann, span },
+            "body" => MacroParam::Body {
+                name,
+                type_ann,
+                span,
+            },
+            "symbolic" => MacroParam::Symbolic {
+                name,
+                type_ann,
+                span,
+            },
+            "placeholder" => MacroParam::Placeholder {
+                name,
+                type_ann,
+                span,
+            },
+            "regular" => MacroParam::Regular {
+                name,
+                type_ann,
+                span,
+            },
             _ => unreachable!(),
         }
     }

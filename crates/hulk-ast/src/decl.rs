@@ -120,10 +120,26 @@ pub struct MethodSig {
 /// - `Placeholder`: `$iter: Number` — introduces a fresh symbol in the caller scope.
 #[derive(Debug, Clone, PartialEq)]
 pub enum MacroParam {
-    Regular { name: String, type_ann: TypeAnn, span: Span },
-    Body { name: String, type_ann: TypeAnn, span: Span },
-    Symbolic { name: String, type_ann: TypeAnn, span: Span },
-    Placeholder { name: String, type_ann: TypeAnn, span: Span },
+    Regular {
+        name: String,
+        type_ann: TypeAnn,
+        span: Span,
+    },
+    Body {
+        name: String,
+        type_ann: TypeAnn,
+        span: Span,
+    },
+    Symbolic {
+        name: String,
+        type_ann: TypeAnn,
+        span: Span,
+    },
+    Placeholder {
+        name: String,
+        type_ann: TypeAnn,
+        span: Span,
+    },
 }
 
 impl MacroParam {
@@ -166,14 +182,8 @@ pub struct LetBinding {
 #[derive(Debug, Clone, PartialEq)]
 pub enum AssignTarget {
     Ident(String),
-    Field {
-        receiver: Box<Expr>,
-        field: String,
-    },
-    Index {
-        target: Box<Expr>,
-        index: Box<Expr>,
-    },
+    Field { receiver: Box<Expr>, field: String },
+    Index { target: Box<Expr>, index: Box<Expr> },
 }
 
 #[cfg(test)]
@@ -184,7 +194,10 @@ mod tests {
 
     #[test]
     fn function_decl_supports_inline_and_block_bodies() {
-        let file = Arc::new(hulk_span::SourceFile::new("decl.hulk", "function f(x) => x;"));
+        let file = Arc::new(hulk_span::SourceFile::new(
+            "decl.hulk",
+            "function f(x) => x;",
+        ));
         let span = Span::new(file.clone(), 0, 19);
 
         let inline = FunctionDecl {

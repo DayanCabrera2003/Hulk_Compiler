@@ -1,7 +1,7 @@
 // Test de arquitectura: verifica dependencias entre crates y ciclos
 // Requiere cargo_metadata como dev-dependency
 
-use cargo_metadata::MetadataCommand;
+use cargo_metadata::{DependencyKind, MetadataCommand};
 use std::collections::{HashMap, HashSet};
 
 /// Define la whitelist de dependencias permitidas entre crates.
@@ -157,6 +157,12 @@ fn test_layer_dependencies() {
         }
         let mut local_deps = HashSet::new();
         for dep in &pkg.dependencies {
+            // Skip dev-dependencies and build-dependencies: they do not
+            // participate in the runtime layering contract (tests may
+            // reasonably depend on any crate in the workspace).
+            if !matches!(dep.kind, DependencyKind::Normal) {
+                continue;
+            }
             let dep_name = dep.name.as_str();
             if workspace_members.contains(dep_name) {
                 local_deps.insert(dep_name);

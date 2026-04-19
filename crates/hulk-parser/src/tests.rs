@@ -22,7 +22,11 @@ fn parse_expr(source: &str) -> (Program, DiagnosticBag) {
 #[test]
 fn parses_arithmetic_precedence() {
     let (program, bag) = parse_expr("1 + 2 * 3;");
-    assert!(bag.is_empty(), "parser diagnostics: {:?}", bag.diagnostics());
+    assert!(
+        bag.is_empty(),
+        "parser diagnostics: {:?}",
+        bag.diagnostics()
+    );
 
     match &program.body.kind {
         ExprKind::BinOp {
@@ -56,7 +60,11 @@ fn parses_arithmetic_precedence() {
 #[test]
 fn parses_unary_and_grouping() {
     let (program, bag) = parse_expr("-(1 + 2);");
-    assert!(bag.is_empty(), "parser diagnostics: {:?}", bag.diagnostics());
+    assert!(
+        bag.is_empty(),
+        "parser diagnostics: {:?}",
+        bag.diagnostics()
+    );
 
     match &program.body.kind {
         ExprKind::UnaryOp {
@@ -64,8 +72,7 @@ fn parses_unary_and_grouping() {
             expr,
         } => match &expr.kind {
             ExprKind::BinOp {
-                op: BinOpKind::Add,
-                ..
+                op: BinOpKind::Add, ..
             } => {}
             other => panic!("expected grouped add expression, got {other:?}"),
         },
@@ -76,7 +83,11 @@ fn parses_unary_and_grouping() {
 #[test]
 fn parses_boolean_and_concat() {
     let (program, bag) = parse_expr("true & false | \"a\" @@ \"b\";");
-    assert!(bag.is_empty(), "parser diagnostics: {:?}", bag.diagnostics());
+    assert!(
+        bag.is_empty(),
+        "parser diagnostics: {:?}",
+        bag.diagnostics()
+    );
 
     // Expected precedence: `&` binds tighter than `|` and `@@`.
     // Parser resolves the expression as:  (true & false) | ("a" @@ "b")

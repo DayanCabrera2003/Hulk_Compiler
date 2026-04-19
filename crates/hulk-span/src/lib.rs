@@ -105,7 +105,11 @@ impl Span {
     /// Returns a zero-length span at the start of `file`. Used for synthetic nodes in error recovery.
     #[must_use]
     pub fn dummy(file: Arc<SourceFile>) -> Self {
-        Self { file, start: 0, end: 0 }
+        Self {
+            file,
+            start: 0,
+            end: 0,
+        }
     }
 
     /// Merges two spans into the smallest span that contains both.

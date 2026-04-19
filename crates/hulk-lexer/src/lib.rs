@@ -132,7 +132,9 @@ impl<'a> Lexer<'a> {
             self.cursor += 1;
         }
 
-        if self.peek_char() == Some('.') && self.peek_next_char().is_some_and(|ch| ch.is_ascii_digit()) {
+        if self.peek_char() == Some('.')
+            && self.peek_next_char().is_some_and(|ch| ch.is_ascii_digit())
+        {
             self.cursor += 1;
             while self.peek_char().is_some_and(|ch| ch.is_ascii_digit()) {
                 self.cursor += 1;
@@ -197,10 +199,22 @@ impl<'a> Lexer<'a> {
             if ch == '\\' {
                 self.cursor += 1; // consume '\'
                 match self.peek_char() {
-                    Some('"')  => { value.push('"');  self.cursor += 1; }
-                    Some('n')  => { value.push('\n'); self.cursor += 1; }
-                    Some('t')  => { value.push('\t'); self.cursor += 1; }
-                    Some('\\') => { value.push('\\'); self.cursor += 1; }
+                    Some('"') => {
+                        value.push('"');
+                        self.cursor += 1;
+                    }
+                    Some('n') => {
+                        value.push('\n');
+                        self.cursor += 1;
+                    }
+                    Some('t') => {
+                        value.push('\t');
+                        self.cursor += 1;
+                    }
+                    Some('\\') => {
+                        value.push('\\');
+                        self.cursor += 1;
+                    }
                     Some(other) => {
                         let escape_start = self.cursor.saturating_sub(1);
                         self.cursor += other.len_utf8();
@@ -227,7 +241,11 @@ impl<'a> Lexer<'a> {
         if terminated {
             self.push_token(Token::StringLit(value), start, self.cursor);
         } else {
-            self.report_error(start, self.cursor.min(self.bytes.len()), "string sin cerrar");
+            self.report_error(
+                start,
+                self.cursor.min(self.bytes.len()),
+                "string sin cerrar",
+            );
         }
     }
 
@@ -323,7 +341,8 @@ mod tests {
 
     #[test]
     fn lexes_operators_family() {
-        let (tokens, diagnostics) = lex_tokens("== = := : <= < >= > != ! @@ @ => -> + - * / ^ % & | .");
+        let (tokens, diagnostics) =
+            lex_tokens("== = := : <= < >= > != ! @@ @ => -> + - * / ^ % & | .");
 
         assert_eq!(
             tokens,

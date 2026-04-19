@@ -178,7 +178,12 @@ fn all_binop_kinds_construct_and_preserve_operands() {
             i as u32,
         );
 
-        if let ExprKind::BinOp { op: got, left, right } = &e.kind {
+        if let ExprKind::BinOp {
+            op: got,
+            left,
+            right,
+        } = &e.kind
+        {
             assert_eq!(*got, op);
             assert!(matches!(left.kind, ExprKind::Number(_)));
             assert!(matches!(right.kind, ExprKind::Number(_)));
@@ -192,7 +197,10 @@ fn all_binop_kinds_construct_and_preserve_operands() {
 fn all_unary_op_kinds_are_constructible() {
     for (i, op) in [UnaryOpKind::Neg, UnaryOpKind::Not].into_iter().enumerate() {
         let e = expr(
-            ExprKind::UnaryOp { op, expr: Box::new(num(1.0, 100 + i as u32)) },
+            ExprKind::UnaryOp {
+                op,
+                expr: Box::new(num(1.0, 100 + i as u32)),
+            },
             i as u32,
         );
         if let ExprKind::UnaryOp { op: got, .. } = e.kind {
@@ -226,7 +234,9 @@ fn call_and_method_call_distinguish_callee_and_receiver() {
         _ => panic!(),
     }
     match method.kind {
-        ExprKind::MethodCall { method: name, args, .. } => {
+        ExprKind::MethodCall {
+            method: name, args, ..
+        } => {
             assert_eq!(name, "m");
             assert_eq!(args.len(), 1);
         }
@@ -369,13 +379,23 @@ fn if_expression_supports_zero_to_many_elif_branches() {
         0,
     );
 
-    if let ExprKind::If { elif_branches, else_branch, .. } = no_elif.kind {
+    if let ExprKind::If {
+        elif_branches,
+        else_branch,
+        ..
+    } = no_elif.kind
+    {
         assert!(elif_branches.is_empty());
         assert!(else_branch.is_none());
     } else {
         panic!();
     }
-    if let ExprKind::If { elif_branches, else_branch, .. } = many.kind {
+    if let ExprKind::If {
+        elif_branches,
+        else_branch,
+        ..
+    } = many.kind
+    {
         assert_eq!(elif_branches.len(), 5);
         assert!(else_branch.is_some());
     } else {
@@ -400,7 +420,10 @@ fn while_and_for_keep_their_body_and_iterable() {
         },
         0,
     );
-    if let ExprKind::While { .. } = w.kind {} else { panic!() }
+    if let ExprKind::While { .. } = w.kind {
+    } else {
+        panic!()
+    }
     if let ExprKind::For { binding, .. } = f.kind {
         assert_eq!(binding, "x");
     } else {
@@ -590,10 +613,7 @@ fn type_decl_supports_inheritance_and_mixed_members() {
         type_decl.members[0].kind,
         MemberKind::Attribute { .. }
     ));
-    assert!(matches!(
-        type_decl.members[1].kind,
-        MemberKind::Method(_)
-    ));
+    assert!(matches!(type_decl.members[1].kind, MemberKind::Method(_)));
 }
 
 #[test]
@@ -957,8 +977,22 @@ fn build_kitchen_sink_program() -> Program {
     });
 
     let block = f.e(ExprKind::Block(vec![
-        body_let, if_expr, while_expr, for_expr, binop, unary, call, method_call, field, index,
-        vec_lit, vec_gen, new_obj, is, as_expr, lambda,
+        body_let,
+        if_expr,
+        while_expr,
+        for_expr,
+        binop,
+        unary,
+        call,
+        method_call,
+        field,
+        index,
+        vec_lit,
+        vec_gen,
+        new_obj,
+        is,
+        as_expr,
+        lambda,
     ]));
 
     // --- declarations -----------------------------------------------------
@@ -1227,7 +1261,10 @@ fn visitor_visits_let_body_after_bindings() {
     let mut visited = Ids::default();
     visited.visit_expr(&let_expr);
     assert!(visited.0.contains(&NodeId(99)), "Let body was not visited");
-    assert!(visited.0.contains(&NodeId(5)), "Let binding was not visited");
+    assert!(
+        visited.0.contains(&NodeId(5)),
+        "Let binding was not visited"
+    );
 }
 
 /// Mutating visitor rewrites every number, reaching all nested locations.

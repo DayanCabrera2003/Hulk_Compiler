@@ -352,7 +352,10 @@ impl Parser {
         let Some(target) = lhs_to_assign_target(&lhs) else {
             self.bag_mut().push(
                 Diagnostic::error("objetivo de ':=' invalido")
-                    .with_label(lhs.span.clone(), "solo variables, campos o indices pueden asignarse")
+                    .with_label(
+                        lhs.span.clone(),
+                        "solo variables, campos o indices pueden asignarse",
+                    )
                     .with_note("por ejemplo: x := 1; pt.x := 1; v[0] := 1"),
             );
             // Produce a synthetic Assign anyway so downstream consumers still
@@ -376,11 +379,7 @@ impl Parser {
         };
 
         let target_id = self.next_node_id();
-        let target_expr = Expr::new(
-            ExprKind::AssignTarget(target),
-            lhs.span.clone(),
-            target_id,
-        );
+        let target_expr = Expr::new(ExprKind::AssignTarget(target), lhs.span.clone(), target_id);
         let span = lhs.span.clone().merge(rhs.span.clone());
         let id = self.next_node_id();
         let _ = op_span; // op_span unused; diagnostics rely on target span

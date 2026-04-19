@@ -1,7 +1,9 @@
 use std::collections::HashMap;
 use std::io::Write;
 
-use codespan_reporting::diagnostic::{Diagnostic as CodeDiagnostic, Label as CodeLabel, Severity as CodeSeverity};
+use codespan_reporting::diagnostic::{
+    Diagnostic as CodeDiagnostic, Label as CodeLabel, Severity as CodeSeverity,
+};
 use codespan_reporting::files::SimpleFiles;
 use codespan_reporting::term::termcolor::{ColorChoice, StandardStream};
 use codespan_reporting::term::{emit, Config};
@@ -172,7 +174,8 @@ impl DiagnosticBag {
                 };
 
                 labels.push(
-                    CodeLabel::primary(file_id, label.span.range()).with_message(label.message.clone()),
+                    CodeLabel::primary(file_id, label.span.range())
+                        .with_message(label.message.clone()),
                 );
             }
 

@@ -332,7 +332,10 @@ pub fn walk_program_mut<V: VisitorMut + ?Sized>(visitor: &mut V, program: &mut P
     visitor.visit_expr_mut(&mut program.body);
 }
 
-pub fn walk_function_decl_mut<V: VisitorMut + ?Sized>(visitor: &mut V, function: &mut FunctionDecl) {
+pub fn walk_function_decl_mut<V: VisitorMut + ?Sized>(
+    visitor: &mut V,
+    function: &mut FunctionDecl,
+) {
     for param in &mut function.params {
         visitor.visit_param_mut(param);
     }
@@ -353,7 +356,10 @@ pub fn walk_type_decl_mut<V: VisitorMut + ?Sized>(visitor: &mut V, ty: &mut Type
     }
 }
 
-pub fn walk_protocol_decl_mut<V: VisitorMut + ?Sized>(visitor: &mut V, protocol: &mut ProtocolDecl) {
+pub fn walk_protocol_decl_mut<V: VisitorMut + ?Sized>(
+    visitor: &mut V,
+    protocol: &mut ProtocolDecl,
+) {
     for method in &mut protocol.methods {
         visitor.visit_method_sig_mut(method);
     }
@@ -636,7 +642,9 @@ mod tests {
                 name: "id".to_owned(),
                 params: vec![Param {
                     name: "value".to_owned(),
-                    type_ann: Some(TypeAnn::Vector(Box::new(TypeAnn::Named("Number".to_owned())))),
+                    type_ann: Some(TypeAnn::Vector(Box::new(TypeAnn::Named(
+                        "Number".to_owned(),
+                    )))),
                     span: s.clone(),
                 }],
                 return_type: None,

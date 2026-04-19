@@ -145,10 +145,8 @@ impl Parser {
     /// Emit an error diagnostic pointing at the current token.
     pub(crate) fn error_here(&mut self, message: impl Into<String>, label: impl Into<String>) {
         let span = self.peek_span();
-        self.bag.push(
-            Diagnostic::error(message)
-                .with_label(span, label.into()),
-        );
+        self.bag
+            .push(Diagnostic::error(message).with_label(span, label.into()));
     }
 
     // -- node-id accessor for sub-modules ----------------------------------

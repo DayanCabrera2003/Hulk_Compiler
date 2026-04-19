@@ -115,7 +115,10 @@ fn let_with_block_body() {
 fn nested_let_right_associative() {
     // let a = 1 in let b = 2 in a + b
     let program = parse_ok("let a = 1 in let b = 2 in a + b;");
-    let ExprKind::Let { body: outer_body, .. } = &body(&program).kind else {
+    let ExprKind::Let {
+        body: outer_body, ..
+    } = &body(&program).kind
+    else {
         panic!()
     };
     assert!(matches!(outer_body.kind, ExprKind::Let { .. }));
@@ -192,7 +195,11 @@ fn while_with_destructive_assignment() {
     let ExprKind::Let { body: let_body, .. } = &body(&program).kind else {
         panic!()
     };
-    let ExprKind::While { condition, body: while_body } = &let_body.kind else {
+    let ExprKind::While {
+        condition,
+        body: while_body,
+    } = &let_body.kind
+    else {
         panic!()
     };
     assert!(matches!(
@@ -208,7 +215,12 @@ fn while_with_destructive_assignment() {
 #[test]
 fn for_in_range_iterates_binding() {
     let program = parse_ok("for (x in range(0, 10)) print(x);");
-    let ExprKind::For { binding, iterable, body: for_body } = &body(&program).kind else {
+    let ExprKind::For {
+        binding,
+        iterable,
+        body: for_body,
+    } = &body(&program).kind
+    else {
         panic!()
     };
     assert_eq!(binding, "x");
@@ -261,7 +273,10 @@ fn assign_to_index() {
 fn assign_right_associative() {
     // a := b := 1 parses as a := (b := 1)
     let program = parse_ok("a := b := 1;");
-    let ExprKind::Assign { value: outer_value, .. } = &body(&program).kind else {
+    let ExprKind::Assign {
+        value: outer_value, ..
+    } = &body(&program).kind
+    else {
         panic!()
     };
     assert!(matches!(outer_value.kind, ExprKind::Assign { .. }));
@@ -270,7 +285,10 @@ fn assign_right_associative() {
 #[test]
 fn assign_to_invalid_target_emits_diagnostic() {
     let (_, bag) = parse_with_errors("(1 + 2) := 3;");
-    assert!(bag.has_errors(), "expected diagnostic for invalid := target");
+    assert!(
+        bag.has_errors(),
+        "expected diagnostic for invalid := target"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -300,7 +318,12 @@ fn method_call_with_args() {
 #[test]
 fn method_call_chain() {
     let program = parse_ok("obj.a().b();");
-    let ExprKind::MethodCall { receiver, method, args } = &body(&program).kind else {
+    let ExprKind::MethodCall {
+        receiver,
+        method,
+        args,
+    } = &body(&program).kind
+    else {
         panic!()
     };
     assert_eq!(method, "b");
@@ -417,7 +440,12 @@ fn empty_vec_literal() {
 #[test]
 fn vec_generator() {
     let program = parse_ok("[x * 2 | x in range(0, 10)];");
-    let ExprKind::VecGenerator { binding, element, iterable } = &body(&program).kind else {
+    let ExprKind::VecGenerator {
+        binding,
+        element,
+        iterable,
+    } = &body(&program).kind
+    else {
         panic!()
     };
     assert_eq!(binding, "x");
@@ -441,7 +469,12 @@ fn vec_index_literal() {
 #[test]
 fn lambda_without_annotations() {
     let program = parse_ok("(x) => x + 1;");
-    let ExprKind::Lambda { params, return_type, body: lambda_body } = &body(&program).kind else {
+    let ExprKind::Lambda {
+        params,
+        return_type,
+        body: lambda_body,
+    } = &body(&program).kind
+    else {
         panic!()
     };
     assert_eq!(params.len(), 1);
@@ -454,7 +487,12 @@ fn lambda_without_annotations() {
 #[test]
 fn lambda_with_typed_param_and_return() {
     let program = parse_ok("(x: Number): Boolean => x > 0;");
-    let ExprKind::Lambda { params, return_type, .. } = &body(&program).kind else {
+    let ExprKind::Lambda {
+        params,
+        return_type,
+        ..
+    } = &body(&program).kind
+    else {
         panic!()
     };
     assert_eq!(params[0].type_ann, Some(TypeAnn::Named("Number".into())));
@@ -512,11 +550,13 @@ fn vector_type_annotation() {
 
 #[test]
 fn functor_type_annotation() {
-    let program =
-        parse_ok("function apply(f: (Number) -> Boolean, x: Number): Boolean => x > 0;");
+    let program = parse_ok("function apply(f: (Number) -> Boolean, x: Number): Boolean => x > 0;");
     let params = &program.functions[0].params;
     match &params[0].type_ann {
-        Some(TypeAnn::Functor { params: fn_params, ret }) => {
+        Some(TypeAnn::Functor {
+            params: fn_params,
+            ret,
+        }) => {
             assert_eq!(fn_params.len(), 1);
             assert_eq!(fn_params[0], TypeAnn::Named("Number".into()));
             assert_eq!(**ret, TypeAnn::Named("Boolean".into()));
@@ -674,10 +714,7 @@ fn type_with_constructor_params() {
     );
     let ty = &program.types[0];
     assert_eq!(ty.params.len(), 2);
-    assert_eq!(
-        ty.params[0].type_ann,
-        Some(TypeAnn::Named("Number".into()))
-    );
+    assert_eq!(ty.params[0].type_ann, Some(TypeAnn::Named("Number".into())));
 }
 
 #[test]
@@ -720,8 +757,14 @@ fn protocol_with_required_return_types() {
     let proto = &program.protocols[0];
     assert_eq!(proto.name, "Iterable");
     assert_eq!(proto.methods.len(), 2);
-    assert_eq!(proto.methods[0].return_type, TypeAnn::Named("Boolean".into()));
-    assert_eq!(proto.methods[1].return_type, TypeAnn::Named("Object".into()));
+    assert_eq!(
+        proto.methods[0].return_type,
+        TypeAnn::Named("Boolean".into())
+    );
+    assert_eq!(
+        proto.methods[1].return_type,
+        TypeAnn::Named("Object".into())
+    );
 }
 
 #[test]
@@ -732,7 +775,8 @@ fn protocol_without_extends() {
 
 #[test]
 fn protocol_with_extends() {
-    let program = parse_ok("protocol Equatable extends Hashable { equals(other: Object): Boolean; } 0;");
+    let program =
+        parse_ok("protocol Equatable extends Hashable { equals(other: Object): Boolean; } 0;");
     assert_eq!(program.protocols[0].extends, vec!["Hashable".to_string()]);
 }
 
@@ -851,12 +895,20 @@ fn postfix_binds_tighter_than_binary() {
 fn unary_binds_tighter_than_power() {
     // -x ^ 2 parses as (-x) ^ 2 in HULK (unary > pow per PIPELINE).
     let program = parse_ok("-x ^ 2;");
-    let ExprKind::BinOp { op: BinOpKind::Pow, left, .. } = &body(&program).kind else {
+    let ExprKind::BinOp {
+        op: BinOpKind::Pow,
+        left,
+        ..
+    } = &body(&program).kind
+    else {
         panic!("expected pow at root")
     };
     assert!(matches!(
         left.kind,
-        ExprKind::UnaryOp { op: UnaryOpKind::Neg, .. }
+        ExprKind::UnaryOp {
+            op: UnaryOpKind::Neg,
+            ..
+        }
     ));
 }
 
@@ -864,7 +916,12 @@ fn unary_binds_tighter_than_power() {
 fn power_is_right_associative() {
     // 2 ^ 3 ^ 2 parses as 2 ^ (3 ^ 2)
     let program = parse_ok("2 ^ 3 ^ 2;");
-    let ExprKind::BinOp { op: BinOpKind::Pow, right, .. } = &body(&program).kind else {
+    let ExprKind::BinOp {
+        op: BinOpKind::Pow,
+        right,
+        ..
+    } = &body(&program).kind
+    else {
         panic!()
     };
     assert!(matches!(
@@ -938,7 +995,10 @@ fn method_call_on_base() {
     // base is an expression; `base()` is a call; `base.foo()` is a method
     // call on base. Both are supported.
     let program = parse_ok("base.foo();");
-    let ExprKind::MethodCall { receiver, method, .. } = &body(&program).kind else {
+    let ExprKind::MethodCall {
+        receiver, method, ..
+    } = &body(&program).kind
+    else {
         panic!()
     };
     assert_eq!(method, "foo");

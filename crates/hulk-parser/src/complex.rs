@@ -25,7 +25,10 @@ impl Parser {
             break;
         }
 
-        self.expect(&Token::In, "se esperaba 'in' despues de las bindings de let");
+        self.expect(
+            &Token::In,
+            "se esperaba 'in' despues de las bindings de let",
+        );
         let body = self.parse_expression();
         let span = let_tok.span.merge(body.span.clone());
         self.make_expr(
@@ -190,7 +193,10 @@ impl Parser {
     pub(crate) fn parse_lambda_expr(&mut self) -> Expr {
         let lparen = self.advance(); // consume '('
         let params = self.parse_param_list();
-        self.expect(&Token::RParen, "se esperaba ')' al cerrar parametros de lambda");
+        self.expect(
+            &Token::RParen,
+            "se esperaba ')' al cerrar parametros de lambda",
+        );
 
         let return_type = if self.at(&Token::Colon) {
             self.advance();
