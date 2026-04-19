@@ -45,3 +45,26 @@ cargo install cargo-deny
 ```
 
 Las tres herramientas se ejecutan automáticamente en CI.
+
+## HULK features supported
+
+- [x] Expressions
+- [ ] Variables
+- [ ] Functions
+- [ ] Control flow (if, while, for)
+- [ ] OOP (classes, inheritance)
+- [ ] Pattern matching
+- [ ] Modules
+- [ ] Type inference
+- [ ] Error handling
+- [ ] Macros
+- [ ] Desugaring
+- [ ] Code generation (LLVM)
+- [ ] CLI interface
+
+## Meta
+
+- [PIPELINE.md](PIPELINE.md): Detalle del pipeline y tareas.
+- [CHANGELOG.md](CHANGELOG.md): Historial de cambios.
+- [LICENSE](LICENSE): MIT License.
+- [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md): Contributor Covenant.

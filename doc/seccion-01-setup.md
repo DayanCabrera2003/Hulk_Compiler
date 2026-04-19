@@ -161,3 +161,15 @@ cargo deny check
 
 ### CI
 Las tres herramientas se ejecutan en CI (ver `.github/workflows/ci.yml`). El pipeline falla si alguna no pasa.
+
+---
+
+## Decisión: Formato Keep a Changelog
+
+- **Qué se eligió**: Se utiliza el formato [Keep a Changelog](https://keepachangelog.com/) para el archivo `CHANGELOG.md`, con secciones por versión (`[Unreleased]`, `[0.0.1]`, etc.) y categorías (`Added`, `Changed`, `Fixed`, `Removed`).
+- **Justificación**: Permite un historial de cambios claro, estructurado y fácil de mantener. Facilita el seguimiento de features y correcciones a lo largo del desarrollo.
+
+## Decisión: Código de Conducta Contributor Covenant
+
+- **Qué se eligió**: Se adopta el [Contributor Covenant](https://www.contributor-covenant.org/version/2/1/code_of_conduct/) como `CODE_OF_CONDUCT.md`.
+- **Justificación**: Es el estándar de facto en proyectos open source, promueve un ambiente inclusivo y profesional, y facilita la colaboración futura.
