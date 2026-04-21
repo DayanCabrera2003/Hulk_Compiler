@@ -217,6 +217,7 @@ dependencies = [
  "hulk-banner",
  "hulk-codegen",
  "hulk-desugar",
+ "hulk-diagnostics",
  "hulk-hir",
  "hulk-lexer",
  "hulk-macros",
@@ -230,9 +231,6 @@ name = "hulk-hir"
 version = "0.0.1"
 dependencies = [
  "hulk-ast",
- "hulk-diagnostics",
- "hulk-lexer",
- "hulk-parser",
  "hulk-semantic",
  "hulk-types",
 ]

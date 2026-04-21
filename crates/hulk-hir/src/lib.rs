@@ -4,10 +4,6 @@
 //! inferred type information into a single structure that middleend and
 //! backend stages can consume.
 
-use hulk_diagnostics::DiagnosticBag;
-use hulk_lexer::lex;
-use hulk_parser::parse;
-
 pub use hulk_ast::*;
 pub use hulk_semantic::*;
 pub use hulk_types::*;
@@ -62,109 +58,12 @@ impl Hir {
     }
 }
 
-/// Builds a HIR value from source text by running lexing, parsing, name
-/// resolution, and type inference in sequence.
-#[must_use]
-pub fn build_hir(source: SourceFile, bag: &mut DiagnosticBag) -> Option<Hir> {
-    let mut lexer_bag = DiagnosticBag::new();
-    let tokens = lex(&source, &mut lexer_bag);
-    merge_diagnostics(bag, &lexer_bag);
-
-    let (program, parser_bag) = parse(tokens, &source);
-    merge_diagnostics(bag, &parser_bag);
-
-    let mut symbols = Resolver::new();
-    symbols.resolve_program(&program);
-    merge_diagnostics(bag, symbols.diagnostics());
-
-    let mut types = TypeEnv::new();
-    {
-        let mut inferer = TypeInferer::new(&mut types, &symbols, &*bag);
-        infer_program(&program, &mut inferer);
-    }
-
-    if bag.has_errors() {
-        None
-    } else {
-        Some(Hir::from_typed(TypedAst {
-            program,
-            symbols,
-            types,
-        }))
-    }
-}
-
-fn merge_diagnostics(target: &mut DiagnosticBag, source: &DiagnosticBag) {
-    for diagnostic in source.diagnostics() {
-        target.push(diagnostic.clone());
-    }
-}
-
-fn infer_program(program: &Program, inferer: &mut TypeInferer<'_>) {
-    for function in &program.functions {
-        inferer.infer_expr(&function.body);
-    }
-
-    for type_decl in &program.types {
-        if let Some(parent) = &type_decl.parent {
-            for arg in &parent.args {
-                inferer.infer_expr(arg);
-            }
-        }
-
-        for member in &type_decl.members {
-            match &member.kind {
-                MemberKind::Attribute { value, .. } => {
-                    inferer.infer_expr(value);
-                }
-                MemberKind::Method(method) => {
-                    inferer.infer_expr(&method.body);
-                }
-            }
-        }
-    }
-
-    for macro_decl in &program.macros {
-        inferer.infer_expr(&macro_decl.body);
-    }
-
-    inferer.infer_expr(&program.body);
-}
-
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
 
     use super::*;
 
-    fn source(text: &str) -> SourceFile {
-        SourceFile::new("test.hulk", text)
-    }
-
-    #[test]
-    fn build_hir_succeeds_for_valid_example() {
-        let source = SourceFile::new(
-            "hello.hulk",
-            include_str!("../../../examples/hello.hulk"),
-        );
-        let mut bag = DiagnosticBag::new();
-
-        let hir = build_hir(source, &mut bag);
-
-        assert!(bag.is_empty(), "unexpected diagnostics: {:?}", bag.diagnostics());
-        assert!(hir.is_some());
-    }
-
-    #[test]
-    fn build_hir_returns_none_when_semantic_phase_reports_errors() {
-        let source = source("missing(1);");
-        let mut bag = DiagnosticBag::new();
-
-        let hir = build_hir(source, &mut bag);
-
-        assert!(hir.is_none());
-        assert!(bag.has_errors());
-    }
     fn span() -> Span {
         let file = Arc::new(SourceFile::new("hir.hulk", "function x() => x; x"));
         Span::new(file, 0, 20)

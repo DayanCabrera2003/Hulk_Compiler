@@ -1,9 +1,9 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use hulk_ast::ExprKind;
 use hulk_diagnostics::DiagnosticBag;
-use hulk_hir::{build_hir, Hir, SourceFile, SymbolKind, TypeId};
+use hulk_driver::build_hir;
+use hulk_hir::{ExprKind, Hir, SourceFile, SymbolKind, TypeId};
 
 fn examples_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))

@@ -8,10 +8,14 @@ Archivos tocados:
 - `crates/hulk-hir/src/lib.rs`
 
 API pública añadida:
+
+En `hulk-hir`:
 - `TypedAst`, contenedor intermedio con `program`, `symbols` y `types`.
 - `Hir`, contenedor final con `program`, `symbols` y `types`.
 - `Hir::from_typed(TypedAst)`.
 - Consultas `expr_type(NodeId)`, `symbol_type(SymbolId)` y `resolved_symbol(NodeId)`.
+
+En `hulk-driver`:
 - `build_hir(SourceFile, &mut DiagnosticBag) -> Option<Hir>`.
 
 ## Decisiones de diseño
@@ -90,6 +94,7 @@ let hir = build_hir(source, &mut bag).expect("hello.hulk should be valid");
 
 - `cargo build -p hulk-hir`: correcto.
 - `cargo test -p hulk-hir`: 1/1 tests correctos.
+- `cargo test -p hulk-driver`: correcto (incluye los tests de integración de `build_hir`).
 
 ## Inspección del HIR
 
