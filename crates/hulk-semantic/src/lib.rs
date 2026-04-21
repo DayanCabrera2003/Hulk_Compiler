@@ -113,7 +113,7 @@ impl Scope {
 pub struct Resolver {
     table: SymbolTable,
     scopes: Vec<Scope>,
-    pub expr_symbols: HashMap<NodeId, SymbolId>,
+    expr_symbols: HashMap<NodeId, SymbolId>,
     type_parents: HashMap<SymbolId, Option<SymbolId>>,
     type_methods: HashMap<SymbolId, HashMap<String, SymbolId>>,
     bag: DiagnosticBag,
@@ -151,6 +151,18 @@ impl Resolver {
     #[must_use]
     pub fn diagnostics(&self) -> &DiagnosticBag {
         &self.bag
+    }
+
+    /// Returns the resolved symbol for an expression node, if available.
+    #[must_use]
+    pub fn expr_symbol(&self, node_id: NodeId) -> Option<SymbolId> {
+        self.expr_symbols.get(&node_id).copied()
+    }
+
+    /// Returns true when an expression node has an associated symbol.
+    #[must_use]
+    pub fn has_expr_symbol(&self, node_id: NodeId) -> bool {
+        self.expr_symbols.contains_key(&node_id)
     }
 
     /// Resolves all names in a program and records expression references.
@@ -874,8 +886,8 @@ mod tests {
 
         let f_symbol = resolver.lookup("f").expect("f should be registered");
         let g_symbol = resolver.lookup("g").expect("g should be registered");
-        assert_eq!(resolver.expr_symbols.get(&NodeId(1)), Some(&g_symbol));
-        assert_eq!(resolver.expr_symbols.get(&NodeId(3)), Some(&f_symbol));
+        assert_eq!(resolver.expr_symbol(NodeId(1)), Some(g_symbol));
+        assert_eq!(resolver.expr_symbol(NodeId(3)), Some(f_symbol));
     }
 
     #[test]
@@ -923,8 +935,8 @@ mod tests {
         let mut resolver = Resolver::new();
         resolver.resolve_program(&program);
 
-        assert!(resolver.expr_symbols.contains_key(&NodeId(12)));
-        assert!(resolver.expr_symbols.contains_key(&NodeId(14)));
+        assert!(resolver.has_expr_symbol(NodeId(12)));
+        assert!(resolver.has_expr_symbol(NodeId(14)));
     }
 
     #[test]
@@ -963,7 +975,7 @@ mod tests {
         let mut resolver = Resolver::new();
         resolver.resolve_program(&program);
 
-        assert!(resolver.expr_symbols.contains_key(&NodeId(20)));
+        assert!(resolver.has_expr_symbol(NodeId(20)));
     }
 
     fn diagnostic_messages(resolver: &Resolver) -> Vec<String> {
@@ -1193,6 +1205,6 @@ mod tests {
         let mut resolver = Resolver::new();
         resolver.resolve_program(&program);
 
-        assert!(resolver.expr_symbols.contains_key(&NodeId(41)));
+        assert!(resolver.has_expr_symbol(NodeId(41)));
     }
 }

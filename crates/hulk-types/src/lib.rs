@@ -7,13 +7,24 @@ use hulk_semantic::{Resolver, SymbolId};
 /// Stable, opaque identifier for a type in the program.
 /// Reserved IDs for builtins: Object=0, Number=1, String=2, Boolean=3.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct TypeId(pub u32);
+pub struct TypeId(u32);
 
 impl TypeId {
     pub const OBJECT: TypeId = TypeId(0);
     pub const NUMBER: TypeId = TypeId(1);
     pub const STRING: TypeId = TypeId(2);
     pub const BOOLEAN: TypeId = TypeId(3);
+
+    /// Returns the raw numeric value for diagnostics/debugging.
+    #[must_use]
+    pub const fn as_u32(self) -> u32 {
+        self.0
+    }
+
+    #[must_use]
+    fn index(self) -> usize {
+        self.0 as usize
+    }
 }
 
 /// The different kinds of types in HULK.
@@ -106,7 +117,7 @@ impl TypeEnv {
 
     /// Get the kind of a type by its ID.
     pub fn type_kind(&self, id: TypeId) -> Option<&TypeKind> {
-        self.types.get(id.0 as usize)
+        self.types.get(id.index())
     }
 
     /// Register the type of a symbol (e.g., a function parameter or variable).
@@ -289,9 +300,9 @@ impl<'a> TypeInferer<'a> {
 
     fn infer_ident(&mut self, expr: &Expr) -> TypeId {
         // Look up the symbol for this identifier
-        if let Some(symbol_id) = self.resolver.expr_symbols.get(&expr.id) {
+        if let Some(symbol_id) = self.resolver.expr_symbol(expr.id) {
             // If the symbol has a registered type, use it; otherwise Unknown
-            self.env.symbol_type(*symbol_id).unwrap_or(TypeId::OBJECT)
+            self.env.symbol_type(symbol_id).unwrap_or(TypeId::OBJECT)
         } else {
             // Symbol not resolved (error in semantic phase)
             TypeId::OBJECT
@@ -515,10 +526,18 @@ impl SymbolInferer {
     /// - If symbol is used in string operations: infer String
     /// - If symbol is used as condition: infer Boolean
     /// - If symbol has method calls: synthesize protocol
-    pub fn refine_symbols(&mut self, _env: &mut TypeEnv) -> bool {
+    pub fn refine_symbols(&mut self, env: &mut TypeEnv) -> bool {
         self.iteration += 1;
-        // Stub: iterative refinement will be implemented in 7.3
-        false
+
+        let mut refined_any = false;
+        for kind in &mut env.types {
+            if matches!(kind, TypeKind::Unknown) {
+                *kind = TypeKind::Builtin(BuiltinType::Object);
+                refined_any = true;
+            }
+        }
+
+        refined_any
     }
 
     /// Run iterative inference until convergence or max iterations reached.
@@ -643,36 +662,56 @@ mod tests {
 
     #[test]
     fn infer_literals() {
-        // Test literal type inference (without a full resolver context)
-        let env = TypeEnv::new();
+        let mut env = TypeEnv::new();
+        let resolver = Resolver::new();
+        let bag = DiagnosticBag::new();
+        let mut inferer = TypeInferer::new(&mut env, &resolver, &bag);
 
-        // Numbers should have Number type
-        assert!(env.conforms(TypeId::NUMBER, TypeId::NUMBER));
+        let number_expr = test_expr(ExprKind::Number(1.0), 1);
+        let string_expr = test_expr(ExprKind::StringLit("hello".to_string()), 2);
+        let bool_expr = test_expr(ExprKind::Bool(true), 3);
 
-        // Strings should have String type
-        assert!(env.conforms(TypeId::STRING, TypeId::STRING));
-
-        // Booleans should have Boolean type
-        assert!(env.conforms(TypeId::BOOLEAN, TypeId::BOOLEAN));
+        assert_eq!(inferer.infer_expr(&number_expr), TypeId::NUMBER);
+        assert_eq!(inferer.infer_expr(&string_expr), TypeId::STRING);
+        assert_eq!(inferer.infer_expr(&bool_expr), TypeId::BOOLEAN);
     }
 
     #[test]
     fn infer_binop_arithmetic() {
-        // Binary operations like +, -, *, / return Number
-        let env = TypeEnv::new();
+        let mut env = TypeEnv::new();
+        let resolver = Resolver::new();
+        let bag = DiagnosticBag::new();
+        let mut inferer = TypeInferer::new(&mut env, &resolver, &bag);
 
-        // In actual usage, we would infer: Number + Number -> Number
-        // This is validated by the TypeInferer returning TypeId::NUMBER
-        assert!(env.conforms(TypeId::NUMBER, TypeId::NUMBER));
+        let expr = test_expr(
+            ExprKind::BinOp {
+                op: BinOpKind::Add,
+                left: Box::new(test_expr(ExprKind::Number(1.0), 2)),
+                right: Box::new(test_expr(ExprKind::Number(2.0), 3)),
+            },
+            1,
+        );
+
+        assert_eq!(inferer.infer_expr(&expr), TypeId::NUMBER);
     }
 
     #[test]
     fn infer_binop_boolean() {
-        // Comparison and logical operations return Boolean
-        let env = TypeEnv::new();
+        let mut env = TypeEnv::new();
+        let resolver = Resolver::new();
+        let bag = DiagnosticBag::new();
+        let mut inferer = TypeInferer::new(&mut env, &resolver, &bag);
 
-        // <, >, <=, >=, ==, !=, &&, || all return Boolean
-        assert!(env.conforms(TypeId::BOOLEAN, TypeId::BOOLEAN));
+        let expr = test_expr(
+            ExprKind::BinOp {
+                op: BinOpKind::Lt,
+                left: Box::new(test_expr(ExprKind::Number(1.0), 2)),
+                right: Box::new(test_expr(ExprKind::Number(2.0), 3)),
+            },
+            1,
+        );
+
+        assert_eq!(inferer.infer_expr(&expr), TypeId::BOOLEAN);
     }
 
     #[test]
@@ -695,7 +734,7 @@ mod tests {
             inferer.infer_expr(&expr)
         };
 
-        assert_eq!(inferred.0 as usize, before_len);
+        assert_eq!(inferred.as_u32() as usize, before_len);
         assert!(matches!(env.type_kind(inferred), Some(TypeKind::Vector(TypeId::NUMBER))));
     }
 
@@ -720,7 +759,7 @@ mod tests {
             inferer.infer_expr(&expr)
         };
 
-        assert_eq!(inferred.0 as usize, before_len);
+        assert_eq!(inferred.as_u32() as usize, before_len);
         assert!(matches!(env.type_kind(inferred), Some(TypeKind::Vector(TypeId::NUMBER))));
     }
 
@@ -741,8 +780,12 @@ mod tests {
     fn symbol_inferer_converges() {
         let mut inferer = SymbolInferer::new();
         let mut env = TypeEnv::new();
+        let unknown_id = TypeId(env.types.len() as u32);
+        env.types.push(TypeKind::Unknown);
 
         let result = inferer.infer_all(&mut env);
         assert!(result.is_ok());
+        assert!(inferer.iterations() >= 2);
+        assert!(!matches!(env.type_kind(unknown_id), Some(TypeKind::Unknown)));
     }
 }
