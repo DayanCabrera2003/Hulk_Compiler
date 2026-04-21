@@ -9,4 +9,3 @@ repository.workspace = true
 [dependencies]
 hulk-ast = { path = "../hulk-ast" }
 hulk-diagnostics = { path = "../hulk-diagnostics" }
-hulk-span = { path = "../hulk-span" }

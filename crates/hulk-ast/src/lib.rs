@@ -8,3 +8,4 @@ pub use decl::{
 };
 pub use expr::{BinOpKind, Expr, ExprKind, NodeId, NodeIdGen, UnaryOpKind};
 pub use visitor::{Visitor, VisitorMut};
+pub use hulk_span::{SourceFile, Span};
