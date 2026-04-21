@@ -35,6 +35,74 @@ add(1, 2);
 }
 
 #[test]
+fn implicit_protocol_style_calls_keep_parameter_binding_and_string_result() {
+    let source = r#"
+type Speaker {
+    speak(): String => "hola";
+    title(): String => "mundo";
+}
+
+function decorate(x) => x.speak() @@ x.title();
+
+let speaker = new Speaker() in decorate(speaker);
+"#;
+
+    let (hir, bag) = build_source("implicit_protocol.hulk", source);
+
+    assert_no_errors(&bag, "implicit_protocol.hulk");
+    let hir = hir.expect("implicit_protocol.hulk should build a HIR");
+
+    let function = find_function(&hir.program, "decorate");
+    let ExprKind::BinOp {
+        op: hulk_ast::BinOpKind::ConcatSpaced,
+        left,
+        right,
+    } = &function.body.kind
+    else {
+        panic!("decorate should concatenate method call results with @@");
+    };
+
+    let ExprKind::MethodCall {
+        receiver: left_receiver,
+        ..
+    } = &left.kind
+    else {
+        panic!("left operand should be a method call");
+    };
+    let ExprKind::MethodCall {
+        receiver: right_receiver,
+        ..
+    } = &right.kind
+    else {
+        panic!("right operand should be a method call");
+    };
+
+    let left_symbol = hir
+        .resolved_symbol(left_receiver.id)
+        .expect("left receiver should resolve to the decorate parameter");
+    let right_symbol = hir
+        .resolved_symbol(right_receiver.id)
+        .expect("right receiver should resolve to the decorate parameter");
+
+    let left_entry = hir
+        .symbols
+        .table()
+        .get(left_symbol)
+        .expect("left resolved symbol must exist");
+    let right_entry = hir
+        .symbols
+        .table()
+        .get(right_symbol)
+        .expect("right resolved symbol must exist");
+
+    assert_eq!(left_entry.kind, SymbolKind::Parameter);
+    assert_eq!(right_entry.kind, SymbolKind::Parameter);
+    assert_eq!(left_entry.name, "x");
+    assert_eq!(right_entry.name, "x");
+    assert_eq!(node_type(&hir, function.body.id), TypeId::STRING);
+}
+
+#[test]
 fn is_and_as_chain_builds_and_keeps_boolean_test_nodes() {
     let source = r#"
 type Animal { }

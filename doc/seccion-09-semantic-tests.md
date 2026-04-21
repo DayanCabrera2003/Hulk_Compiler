@@ -12,18 +12,26 @@ Archivos tocados:
 
 ### Suite de programas válidos
 
-- `examples/*.hulk` se cargan y se verifican como programas válidos hasta HIR.
-- `hello.hulk` comprueba la resolución del builtin `print`.
-- `strings.hulk` comprueba la inferencia de `Concat` y `ConcatSpaced` como `String`.
-- `conditionals.hulk` comprueba que el `if` interno de tipo rama string también infiere `String`.
-- `classes.hulk` comprueba la resolución de `self` y `base` dentro de métodos.
-- `protocols.hulk` comprueba el registro de símbolos de tipo `Protocol`.
+`all_example_programs_build_hir` valida que todos los programas en `examples/` construyen HIR sin errores semánticos.
+
+Tabla de cobertura 9.1 (programa -> feature semántica principal -> verificación clave):
+
+| Programa | Feature principal | Verificación de tipo/símbolo clave |
+|---|---|---|
+| `hello.hulk` | Builtins globales | `print` resuelve como `BuiltinFunction`; `program.body` infiere `Object` |
+| `strings.hulk` | Concatenación `@` y `@@` | expresiones `Concat` y `ConcatSpaced` infieren `String` |
+| `conditionals.hulk` | Tipado de `if/elif/else` | `if` interno productor de texto infiere `String` |
+| `classes.hulk` | `self`/`base` + herencia | `self` resuelve a `SelfValue`; `base` resuelve al método padre |
+| `protocols.hulk` | Declaración de protocolos | símbolos `Hashable`, `Equatable`, `Iterable`, `Enumerable` como `Protocol` |
 
 ### Casos de inferencia adicionales
 
-- `function add(x, y) => x + y` valida que la expresión del cuerpo se infiere como `Number` y que ambos operandos resuelven a parámetros.
-- Una cadena `is` / `as` con herencia valida que la condición de `if` infiere `Boolean`.
-- Una jerarquía `A -> B -> C` valida que `base()` resuelve al método correcto en cada nivel.
+| Caso ad hoc | Feature principal | Verificación de tipo/símbolo clave |
+|---|---|---|
+| `add.hulk` | Función sin anotaciones | cuerpo `x + y` infiere `Number`; ambos operandos resuelven a `Parameter` |
+| `implicit_protocol.hulk` | Síntesis implícita por uso de métodos (`x.speak()`, `x.title()`) | receptor en ambos method calls resuelve al parámetro `x`; `@@` infiere `String` |
+| `inheritance.hulk` | Herencia multinivel con `base` | `base()` en `B.foo` y `C.foo` resuelve a símbolo de función `foo` |
+| `is_as.hulk` | Cadena polimórfica `is`/`as` | condición `is` infiere `Boolean`; rama `as` mantiene resolución simbólica |
 
 ## Decisiones de diseño
 
