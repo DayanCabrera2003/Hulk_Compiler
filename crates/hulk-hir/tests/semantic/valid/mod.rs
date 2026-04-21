@@ -1,6 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::support::merge_diagnostics;
 use hulk_ast::{Expr, ExprKind, FunctionDecl, MemberKind, NodeId, Program};
 use hulk_diagnostics::DiagnosticBag;
 use hulk_hir::{Hir, SourceFile, SymbolKind, TypeId};
@@ -56,12 +57,6 @@ fn build_source(name: &str, source: &str) -> (Option<Hir>, DiagnosticBag) {
             })),
             bag,
         )
-    }
-}
-
-fn merge_diagnostics(target: &mut DiagnosticBag, source: &DiagnosticBag) {
-    for diagnostic in source.diagnostics() {
-        target.push(diagnostic.clone());
     }
 }
 

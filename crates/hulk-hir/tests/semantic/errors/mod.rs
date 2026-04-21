@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use crate::support::merge_diagnostics;
 use hulk_ast::{AssignTarget, Expr, ExprKind, NodeId, Program, Span};
 use hulk_diagnostics::DiagnosticBag;
 use hulk_hir::SourceFile;
@@ -26,12 +27,6 @@ fn build_diagnostics(name: &str, source: &str) -> DiagnosticBag {
     bag
 }
 
-fn merge_diagnostics(target: &mut DiagnosticBag, source: &DiagnosticBag) {
-    for diagnostic in source.diagnostics() {
-        target.push(diagnostic.clone());
-    }
-}
-
 fn assert_contains_error_message(bag: &DiagnosticBag, needle: &str) {
     let found = bag
         .diagnostics()
@@ -41,6 +36,19 @@ fn assert_contains_error_message(bag: &DiagnosticBag, needle: &str) {
     assert!(
         found,
         "expected at least one diagnostic containing `{needle}`, got: {:?}",
+        bag.diagnostics()
+    );
+}
+
+fn assert_not_contains_error_message(bag: &DiagnosticBag, needle: &str) {
+    let found = bag
+        .diagnostics()
+        .iter()
+        .any(|diagnostic| diagnostic.message.contains(needle));
+
+    assert!(
+        !found,
+        "expected no diagnostic containing `{needle}`, got: {:?}",
         bag.diagnostics()
     );
 }
@@ -185,7 +193,7 @@ new A().missing();
 
     let bag = build_diagnostics("unknown_method.hulk", source);
 
-    assert_contains_error_message(&bag, "metodo no existe: missing");
+    assert_contains_error_message(&bag, "método no existe: missing");
 }
 
 #[test]
@@ -236,6 +244,26 @@ new A();
 
     // Must report exactly 1 cycle diagnostic, not duplicate per root
     assert_error_count_for_message(&bag, "ciclos en herencia", 1);
+}
+
+#[test]
+fn does_not_report_inheritance_cycle_for_linear_hierarchy() {
+    let source = r#"
+type A {
+}
+
+type B inherits A {
+}
+
+type C inherits B {
+}
+
+new C();
+"#;
+
+    let bag = build_diagnostics("inheritance_no_cycle.hulk", source);
+
+    assert_not_contains_error_message(&bag, "ciclos en herencia");
 }
 
 #[test]
