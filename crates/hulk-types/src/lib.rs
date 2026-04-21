@@ -57,7 +57,6 @@ pub enum BuiltinType {
 /// Type environment: stores all type information for a program.
 pub struct TypeEnv {
     types: Vec<TypeKind>,
-    next_type_id: u32,
     /// Maps SymbolId → TypeId for declarations.
     symbol_types: HashMap<SymbolId, TypeId>,
     /// Maps NodeId (expression) → TypeId for inferred types.
@@ -69,7 +68,6 @@ impl TypeEnv {
     pub fn new() -> Self {
         let mut env = TypeEnv {
             types: Vec::new(),
-            next_type_id: 0,
             symbol_types: HashMap::new(),
             expr_types: HashMap::new(),
         };
@@ -81,34 +79,28 @@ impl TypeEnv {
     fn register_builtins(&mut self) {
         // Object (ID 0)
         self.types.push(TypeKind::Builtin(BuiltinType::Object));
-        self.next_type_id = 1;
 
         // Number (ID 1)
         self.types.push(TypeKind::Builtin(BuiltinType::Number));
-        self.next_type_id = 2;
 
         // String (ID 2)
         self.types.push(TypeKind::Builtin(BuiltinType::String));
-        self.next_type_id = 3;
 
         // Boolean (ID 3)
         self.types.push(TypeKind::Builtin(BuiltinType::Boolean));
-        self.next_type_id = 4;
     }
 
     /// Register a new user-defined type in the environment.
     pub fn register_type(&mut self, name: String, parent: Option<TypeId>) -> TypeId {
-        let id = TypeId(self.next_type_id);
+        let id = TypeId(self.types.len() as u32);
         self.types.push(TypeKind::UserDefined { name, parent });
-        self.next_type_id += 1;
         id
     }
 
     /// Register a new protocol type.
     pub fn register_protocol(&mut self, name: String) -> TypeId {
-        let id = TypeId(self.next_type_id);
+        let id = TypeId(self.types.len() as u32);
         self.types.push(TypeKind::Protocol { name });
-        self.next_type_id += 1;
         id
     }
 
@@ -421,9 +413,8 @@ impl<'a> TypeInferer<'a> {
             .unwrap_or(TypeId::OBJECT);
 
         // Register and return Vector(LCA)
-        let vector_type = TypeId(self.env.next_type_id);
+        let vector_type = TypeId(self.env.types.len() as u32);
         self.env.types.push(TypeKind::Vector(lca_type));
-        self.env.next_type_id += 1;
         vector_type
     }
 
@@ -432,9 +423,8 @@ impl<'a> TypeInferer<'a> {
         let _iterable_type = self.infer_expr(iterable);
 
         // Register and return Vector(element_type)
-        let vector_type = TypeId(self.env.next_type_id);
+        let vector_type = TypeId(self.env.types.len() as u32);
         self.env.types.push(TypeKind::Vector(element_type));
-        self.env.next_type_id += 1;
         vector_type
     }
 
