@@ -45,6 +45,20 @@ fn assert_contains_error_message(bag: &DiagnosticBag, needle: &str) {
     );
 }
 
+fn assert_error_count_for_message(bag: &DiagnosticBag, needle: &str, expected_count: usize) {
+    let actual_count = bag
+        .diagnostics()
+        .iter()
+        .filter(|diagnostic| diagnostic.message.contains(needle))
+        .count();
+
+    assert_eq!(
+        actual_count, expected_count,
+        "expected exactly {expected_count} diagnostic(s) containing `{needle}`, got {actual_count}. All diagnostics: {:?}",
+        bag.diagnostics()
+    );
+}
+
 #[test]
 fn reports_undeclared_variable() {
     let source = "x;";
@@ -220,7 +234,8 @@ new A();
 
     let bag = build_diagnostics("inheritance_cycle.hulk", source);
 
-    assert_contains_error_message(&bag, "ciclos en herencia");
+    // Must report exactly 1 cycle diagnostic, not duplicate per root
+    assert_error_count_for_message(&bag, "ciclos en herencia", 1);
 }
 
 #[test]

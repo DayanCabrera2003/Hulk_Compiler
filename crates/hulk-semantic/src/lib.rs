@@ -1028,13 +1028,25 @@ impl Resolver {
 
     fn detect_inheritance_cycles(&mut self) {
         let type_ids = self.type_parents.keys().copied().collect::<Vec<_>>();
+        let mut nodes_in_reported_cycles = HashSet::new();
 
         for root in type_ids {
-            let mut seen = HashSet::new();
+            // Si este nodo ya fue parte de un ciclo reportado, skipéalo
+            if nodes_in_reported_cycles.contains(&root) {
+                continue;
+            }
+
+            let mut path = vec![];
             let mut cursor = Some(root);
 
             while let Some(current) = cursor {
-                if !seen.insert(current) {
+                if let Some(cycle_start_idx) = path.iter().position(|&n| n == current) {
+                    // Encontramos un ciclo: path[cycle_start_idx..] es el ciclo completo
+                    // Marcar todos los nodos en el ciclo como ya reportados
+                    for &node_in_cycle in &path[cycle_start_idx..] {
+                        nodes_in_reported_cycles.insert(node_in_cycle);
+                    }
+
                     let type_name = self
                         .table
                         .get(root)
@@ -1053,6 +1065,7 @@ impl Resolver {
                     break;
                 }
 
+                path.push(current);
                 cursor = self.type_parents.get(&current).and_then(|parent| *parent);
             }
         }
