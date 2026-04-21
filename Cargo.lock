@@ -230,6 +230,9 @@ name = "hulk-hir"
 version = "0.0.1"
 dependencies = [
  "hulk-ast",
+ "hulk-diagnostics",
+ "hulk-lexer",
+ "hulk-parser",
  "hulk-semantic",
  "hulk-types",
 ]

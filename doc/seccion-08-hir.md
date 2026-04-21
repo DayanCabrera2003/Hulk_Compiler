@@ -12,6 +12,7 @@ API pública añadida:
 - `Hir`, contenedor final con `program`, `symbols` y `types`.
 - `Hir::from_typed(TypedAst)`.
 - Consultas `expr_type(NodeId)`, `symbol_type(SymbolId)` y `resolved_symbol(NodeId)`.
+- `build_hir(SourceFile, &mut DiagnosticBag) -> Option<Hir>`.
 
 ## Decisiones de diseño
 
@@ -27,6 +28,21 @@ En lugar de crear una tabla de referencias paralela, `Hir` conserva el resolver 
 
 `TypedAst` representa el estado justo antes de entrar al middleend: programa parseado, nombres resueltos y tipos inferidos. `Hir::from_typed` consume ese paquete y lo convierte en la estructura final.
 
+### 4. El flujo de `build_hir`
+
+```text
+SourceFile
+    → lexer
+    → parser
+    → resolver
+    → type checker
+    → Hir
+```
+
+La función no se detiene al primer diagnóstico. Acumula errores de todas las fases para dar una vista completa del frontend en una sola ejecución.
+
+La única parada temprana real ocurre cuando el AST no puede construirse: en la práctica, el parser siempre retorna un `Program`, así que el flujo continúa hasta tipos y luego devuelve `None` si el bag contiene errores.
+
 ## Gotchas
 
 ### 1. Los identificadores resueltos viven en semántica, no en AST
@@ -36,6 +52,10 @@ En lugar de crear una tabla de referencias paralela, `Hir` conserva el resolver 
 ### 2. Los tipos de símbolos y expresiones ya están centralizados
 
 `hulk-types` ya ofrece consultas para símbolos y expresiones. El HIR solo las reexpone para dar un único punto de entrada al resto del compilador.
+
+### 3. El frontend completo depende de datos parciales
+
+Aunque haya errores semánticos, `build_hir` sigue adelante para inferir los nodos que sí son analizables. Esto evita perder diagnósticos posteriores y mantiene el bag como fuente única de errores.
 
 ## Ejemplos de uso
 
@@ -56,6 +76,14 @@ if let Some(symbol_id) = hir.resolved_symbol(node_id) {
     let symbol_ty = hir.symbol_type(symbol_id);
     let expr_ty = hir.expr_type(node_id);
 }
+```
+
+### Inspección de un ejemplo
+
+```rust
+let mut bag = DiagnosticBag::new();
+let source = SourceFile::new("hello.hulk", include_str!("../../../examples/hello.hulk"));
+let hir = build_hir(source, &mut bag).expect("hello.hulk should be valid");
 ```
 
 ## Validación
