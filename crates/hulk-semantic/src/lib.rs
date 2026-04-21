@@ -885,7 +885,8 @@ impl Resolver {
             return;
         };
 
-        let actual = match expr.kind {
+        // Only validate literal types that can be determined at resolve time
+        let actual = match &expr.kind {
             ExprKind::Number(_) => Some("Number"),
             ExprKind::StringLit(_) => Some("String"),
             ExprKind::Bool(_) => Some("Boolean"),
@@ -971,6 +972,9 @@ impl Resolver {
                 ..
             } => self.lookup(name),
             ExprKind::Self_ => self.current_type,
+            // Variables with type annotations could be resolved here,
+            // but type information is not available in the symbol table
+            // during the resolve phase. This will be handled in type inference.
             _ => None,
         }
     }

@@ -249,9 +249,35 @@ fn expr_strategy() -> impl Strategy<Value = String> {
 
 fn syntactically_valid_program_strategy() -> impl Strategy<Value = String> {
     (
+        // Optional functions
         prop::collection::vec(
             (
-                prop::sample::select(vec!["a", "b", "c", "x", "y", "z"]).prop_map(str::to_owned),
+                prop::sample::select(vec!["f", "g", "h", "p", "q"]).prop_map(str::to_owned),
+                prop::sample::select(vec!["x", "y", "z"]).prop_map(str::to_owned),
+                expr_strategy(),
+            ),
+            0..=3,
+        ),
+        // Optional type declarations
+        prop::collection::vec(
+            (
+                prop::sample::select(vec!["A", "B", "C", "T", "U"]).prop_map(str::to_owned),
+                prop::collection::vec(
+                    (
+                        prop::sample::select(vec!["x", "y", "z", "value", "data"])
+                            .prop_map(str::to_owned),
+                        prop::sample::select(vec!["Number", "String", "Boolean"]).prop_map(str::to_owned),
+                    ),
+                    0..=2,
+                ),
+            ),
+            0..=2,
+        ),
+        // Let bindings
+        prop::collection::vec(
+            (
+                prop::sample::select(vec!["a", "b", "c", "x", "y", "z"])
+                    .prop_map(str::to_owned),
                 expr_strategy(),
             ),
             1..=4,
@@ -260,21 +286,46 @@ fn syntactically_valid_program_strategy() -> impl Strategy<Value = String> {
         prop::sample::select(vec!["missing", "ghost", "unknown"]).prop_map(str::to_owned),
         any::<bool>(),
     )
-        .prop_map(|(bindings, body_expr, missing_name, use_missing_body)| {
-            let bindings_src = bindings
-                .iter()
-                .map(|(name, value)| format!("{name} = {value}"))
-                .collect::<Vec<_>>()
-                .join(", ");
+        .prop_map(
+            |(functions, types, bindings, body_expr, missing_name, use_missing_body)| {
+                let mut program = String::new();
 
-            let body = if use_missing_body {
-                missing_name
-            } else {
-                body_expr
-            };
+                // Add function declarations
+                for (fname, param, body) in functions {
+                    program.push_str(&format!("function {fname}({param}) => {body};\n"));
+                }
 
-            format!("let {bindings_src} in {body};")
-        })
+                // Add type declarations
+                for (tname, attrs) in types {
+                    if attrs.is_empty() {
+                        program.push_str(&format!("type {tname} {{}}\n"));
+                    } else {
+                        let attr_src = attrs
+                            .iter()
+                            .map(|(name, type_name)| format!("{name}: {type_name}"))
+                            .collect::<Vec<_>>()
+                            .join(", ");
+                        program.push_str(&format!("type {tname} {{ {attr_src}; }}\n"));
+                    }
+                }
+
+                // Add let bindings and body
+                let bindings_src = bindings
+                    .iter()
+                    .map(|(name, value)| format!("{name} = {value}"))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+
+                let body = if use_missing_body {
+                    missing_name
+                } else {
+                    body_expr
+                };
+
+                program.push_str(&format!("let {bindings_src} in {body};"));
+                program
+            },
+        )
 }
 
 proptest! {
