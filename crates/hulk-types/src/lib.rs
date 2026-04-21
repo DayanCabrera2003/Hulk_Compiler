@@ -417,19 +417,25 @@ impl<'a> TypeInferer<'a> {
         }
 
         // Find LCA of all element types
-        let _lca_type = element_types.iter().copied().reduce(|a, b| self.env.lca(a, b))
+        let lca_type = element_types.iter().copied().reduce(|a, b| self.env.lca(a, b))
             .unwrap_or(TypeId::OBJECT);
 
-        // Return Vector(LCA)
-        TypeId(self.env.types.len() as u32)
+        // Register and return Vector(LCA)
+        let vector_type = TypeId(self.env.next_type_id);
+        self.env.types.push(TypeKind::Vector(lca_type));
+        self.env.next_type_id += 1;
+        vector_type
     }
 
     fn infer_vec_generator(&mut self, _expr: &Expr, element: &Expr, iterable: &Expr) -> TypeId {
-        let _element_type = self.infer_expr(element);
+        let element_type = self.infer_expr(element);
         let _iterable_type = self.infer_expr(iterable);
 
-        // Return Vector(element_type)
-        TypeId(self.env.types.len() as u32)
+        // Register and return Vector(element_type)
+        let vector_type = TypeId(self.env.next_type_id);
+        self.env.types.push(TypeKind::Vector(element_type));
+        self.env.next_type_id += 1;
+        vector_type
     }
 
     fn infer_let(&mut self, _expr: &Expr, bindings: &[Expr], body: &Expr) -> TypeId {
@@ -557,6 +563,13 @@ impl Default for SymbolInferer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Arc;
+
+    fn test_expr(kind: ExprKind, id: u32) -> Expr {
+        let file = Arc::new(hulk_ast::SourceFile::new("test.hulk", ""));
+        let span = hulk_ast::Span::dummy(file);
+        Expr::new(kind, span, NodeId(id))
+    }
 
     #[test]
     fn type_env_registers_builtins() {
@@ -670,6 +683,55 @@ mod tests {
 
         // <, >, <=, >=, ==, !=, &&, || all return Boolean
         assert!(env.conforms(TypeId::BOOLEAN, TypeId::BOOLEAN));
+    }
+
+    #[test]
+    fn infer_vec_literal_registers_vector_type() {
+        let mut env = TypeEnv::new();
+        let resolver = Resolver::new();
+        let bag = DiagnosticBag::new();
+
+        let expr = test_expr(
+            ExprKind::VecLiteral(vec![
+                test_expr(ExprKind::Number(1.0), 2),
+                test_expr(ExprKind::Number(2.0), 3),
+            ]),
+            1,
+        );
+
+        let before_len = env.types.len();
+        let inferred = {
+            let mut inferer = TypeInferer::new(&mut env, &resolver, &bag);
+            inferer.infer_expr(&expr)
+        };
+
+        assert_eq!(inferred.0 as usize, before_len);
+        assert!(matches!(env.type_kind(inferred), Some(TypeKind::Vector(TypeId::NUMBER))));
+    }
+
+    #[test]
+    fn infer_vec_generator_registers_vector_type() {
+        let mut env = TypeEnv::new();
+        let resolver = Resolver::new();
+        let bag = DiagnosticBag::new();
+
+        let expr = test_expr(
+            ExprKind::VecGenerator {
+                element: Box::new(test_expr(ExprKind::Number(1.0), 2)),
+                binding: "x".to_string(),
+                iterable: Box::new(test_expr(ExprKind::Number(42.0), 3)),
+            },
+            1,
+        );
+
+        let before_len = env.types.len();
+        let inferred = {
+            let mut inferer = TypeInferer::new(&mut env, &resolver, &bag);
+            inferer.infer_expr(&expr)
+        };
+
+        assert_eq!(inferred.0 as usize, before_len);
+        assert!(matches!(env.type_kind(inferred), Some(TypeKind::Vector(TypeId::NUMBER))));
     }
 
     #[test]
