@@ -71,8 +71,8 @@ describe(new Dog());
 
     assert_eq!(node_type(&hir, condition.id), TypeId::BOOLEAN);
     assert_eq!(node_type(&hir, then_branch.id), TypeId::OBJECT);
-    assert_eq!(hir.resolved_symbol(is_operand.id).is_some(), true);
-    assert_eq!(hir.resolved_symbol(as_operand.id).is_some(), true);
+    assert!(hir.resolved_symbol(is_operand.id).is_some());
+    assert!(hir.resolved_symbol(as_operand.id).is_some());
 
     let else_expr = else_branch.as_ref().expect("describe should have an else branch");
     assert_eq!(node_type(&hir, else_expr.id), TypeId::OBJECT);

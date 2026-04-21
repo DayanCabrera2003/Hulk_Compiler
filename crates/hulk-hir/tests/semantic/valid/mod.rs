@@ -210,7 +210,7 @@ fn find_expr_by_predicate<'a>(expr: &'a Expr, predicate: &dyn Fn(&Expr) -> bool)
     }
 }
 
-fn first_expr<'a>(expr: &'a Expr, predicate: impl Fn(&Expr) -> bool) -> &'a Expr {
+fn first_expr(expr: &Expr, predicate: impl Fn(&Expr) -> bool) -> &Expr {
     find_expr_by_predicate(expr, &predicate)
         .unwrap_or_else(|| panic!("matching expression not found in {:?}", expr.kind))
 }

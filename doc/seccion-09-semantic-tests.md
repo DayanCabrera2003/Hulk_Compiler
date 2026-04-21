@@ -81,3 +81,35 @@ assert_eq!(hir.expr_type(expr.id), Some(TypeId::STRING));
 
 - La suite cubre todos los programas de `examples/`.
 - Incluye programas ad hoc para inferencia de binop, `if`, `is` / `as` y `base`.
+
+## Errores semánticos cubiertos (9.2)
+
+Se agregó una suite dedicada en `crates/hulk-hir/tests/semantic/errors/mod.rs` que valida mensajes canónicos de diagnósticos para casos de error semántico y de firma de protocolo.
+
+Tabla de casos cubiertos:
+
+| Caso | Programa de prueba | Mensaje esperado (canónico) |
+|---|---|---|
+| Variable no declarada | `x;` | `identificador no declarado: x` |
+| Redefinición en mismo scope | `function dup(x, x) => x;` | `redefinicion de x` |
+| Tipo no existe en anotación | `function id(x: MissingType): Number => x;` | `tipo no existe: MissingType` |
+| Asignar a `self` | método con `self := v;` | `no se puede asignar a self` |
+| `base` fuera de método | `base();` | `base usado fuera de un método` |
+| `base` en tipo sin padre | método `foo() => base();` en tipo sin `inherits` | `base usado en un tipo sin padre` |
+| Llamada a función inexistente | `missing();` | `funcion no existe: missing` |
+| Firma de protocolo sin retorno | `protocol P { foo(); }` | `firma de metodo sin tipo de retorno` |
+
+Adicionalmente, la suite verifica recuperación y reporte múltiple de errores en una sola pasada (redefinición + identificador no declarado + función no existente) para confirmar que el frontend no aborta en el primer fallo.
+
+### Cobertura pendiente para completar la lista ideal de 9.2
+
+Quedan como pendientes de implementación en el compilador (no en la suite de tests) los diagnósticos específicos para:
+
+- heredar de `Number`, `String` o `Boolean`
+- tipo inferido incompatible con anotación explícita
+- llamada a método inexistente sobre un receptor tipado
+- tipo no conforma a protocolo requerido
+- inferencia ambigua que obliga anotación
+- ciclos en herencia
+
+Estos casos no emiten todavía diagnósticos estables en las fases actuales (`hulk-semantic`/`hulk-types`), por lo que sus tests se activarán cuando esas reglas semánticas estén disponibles.
