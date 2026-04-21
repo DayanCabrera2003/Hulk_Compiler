@@ -267,16 +267,25 @@ impl Parser {
             return self.make_expr(ExprKind::VecLiteral(vec![]), span);
         }
 
-        // Parse the first item with a minimum binding power higher than `|`
-        // (Or has l_bp = 3, so bp = 4 stops there). This keeps the `|` that
-        // separates a generator's element from its binding out of the
-        // expression, allowing us to detect the generator form.
-        let first = self.parse_expr_bp(4);
-
-        if self.at(&Token::Pipe) {
-            return self.finish_vec_generator(first, lbracket.span);
+        // Scan forward from the current position (after `[`) to decide form
+        // before parsing anything.  This avoids the old `parse_expr_bp(4)`
+        // hack which broke lambda-bodies: a lambda calls `parse_expression()`
+        // (BP 0) internally, so the BP-4 guard did not propagate into it.
+        //
+        // If the scan finds `| ident in` at bracket depth 0 we know we are in
+        // a generator.  We then set `gen_depth` so that `infix_bp` treats `|`
+        // as a separator (returns None) for the entire sub-expression,
+        // including any nested lambda bodies.
+        if self.scan_is_generator() {
+            self.gen_depth += 1;
+            let element = self.parse_expression();
+            self.gen_depth -= 1;
+            // `|` is guaranteed to be here by the scan above.
+            return self.finish_vec_generator(element, lbracket.span);
         }
 
+        // Literal form: all items parsed at full BP (| works as Or normally).
+        let first = self.parse_expression();
         let mut items = vec![first];
         while self.at(&Token::Comma) {
             self.advance();

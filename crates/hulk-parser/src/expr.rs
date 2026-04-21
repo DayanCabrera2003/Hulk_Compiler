@@ -84,6 +84,20 @@ impl Parser {
             _ => {}
         }
 
+        // Declaration-level keywords belong to the outer scope.  Consuming
+        // them here would silently discard a declaration and produce deeply
+        // confusing recovery behavior.  Return a synthetic error node without
+        // advancing so the enclosing loop can break cleanly.
+        if self.peek_is_recovery_boundary() {
+            let span = self.peek_span();
+            self.bag_mut().push(
+                Diagnostic::error("se esperaba una expresion")
+                    .with_label(span.clone(), "este token no puede iniciar una expresion"),
+            );
+            let id = self.next_node_id();
+            return Expr::new(ExprKind::Block(vec![]), span, id);
+        }
+
         let token = self.advance();
         match token.token {
             Token::Number(value) => self.make_expr(ExprKind::Number(value), token.span),
@@ -290,6 +304,11 @@ impl Parser {
     pub(crate) fn parse_block_expr(&mut self, lbrace_span: Span) -> Expr {
         let mut exprs = Vec::new();
         while !self.at(&Token::RBrace) && !self.at(&Token::Eof) {
+            // parse_nud will not consume declaration-level tokens; break here
+            // to avoid an infinite loop and let the outer scope handle them.
+            if self.peek_is_recovery_boundary() {
+                break;
+            }
             let expr = self.parse_expression();
             exprs.push(expr);
             if self.at(&Token::Semicolon) {
@@ -326,7 +345,10 @@ impl Parser {
     /// right-associative ops have `l_bp > r_bp`.
     fn infix_bp(&self) -> Option<(BinOpKind, u8, u8)> {
         match self.peek() {
-            Token::Pipe => Some((BinOpKind::Or, 3, 4)),
+            // Inside a generator-element position `gen_depth > 0` means `|`
+            // is the separator between element and binding, not an Or operator.
+            Token::Pipe if self.gen_depth == 0 => Some((BinOpKind::Or, 3, 4)),
+            Token::Pipe => None,
             Token::Ampersand => Some((BinOpKind::And, 5, 6)),
             Token::EqualEqual => Some((BinOpKind::Eq, 7, 8)),
             Token::BangEqual => Some((BinOpKind::Ne, 7, 8)),

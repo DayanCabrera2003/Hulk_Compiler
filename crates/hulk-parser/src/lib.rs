@@ -27,6 +27,10 @@ pub struct Parser {
     bag: DiagnosticBag,
     node_ids: NodeIdGen,
     eof_span: Span,
+    /// Nesting depth of vector-generator element positions.  When > 0, `|` is
+    /// suppressed as a binary Or operator so it remains available as the
+    /// generator separator `[elem | binding in iter]`.
+    gen_depth: u32,
 }
 
 impl Parser {
@@ -43,6 +47,7 @@ impl Parser {
             bag: DiagnosticBag::new(),
             node_ids: NodeIdGen::new(),
             eof_span,
+            gen_depth: 0,
         }
     }
 
@@ -183,6 +188,45 @@ impl Parser {
             self.peek(),
             Token::Eof | Token::Function | Token::Type | Token::Protocol | Token::Def
         )
+    }
+
+    /// Scans forward from the current position (called *after* `[` has been
+    /// consumed) looking for the pattern `| ident in` at bracket depth 0.
+    /// Returns `true` iff the enclosing `[…]` is a vector generator.
+    ///
+    /// Depth is tracked relative to the opening `[` that was already consumed:
+    /// inner `[`, `(`, `{` each increment it; their matching closers decrement
+    /// it.  The search stops as soon as the outer `]` is reached (depth 0
+    /// before `]`).
+    pub(crate) fn scan_is_generator(&self) -> bool {
+        let mut depth: i32 = 0;
+        let mut i = self.pos;
+        while i < self.tokens.len() {
+            match &self.tokens[i].token {
+                Token::LBracket | Token::LParen | Token::LBrace => depth += 1,
+                Token::RBracket | Token::RParen | Token::RBrace => {
+                    if depth == 0 {
+                        break; // hit the closing delimiter of the outer [...]
+                    }
+                    depth -= 1;
+                }
+                Token::Pipe if depth == 0 => {
+                    let next_is_ident = matches!(
+                        self.tokens.get(i + 1).map(|t| &t.token),
+                        Some(Token::Ident(_))
+                    );
+                    let after_is_in = matches!(
+                        self.tokens.get(i + 2).map(|t| &t.token),
+                        Some(Token::In)
+                    );
+                    return next_is_ident && after_is_in;
+                }
+                Token::Eof => break,
+                _ => {}
+            }
+            i += 1;
+        }
+        false
     }
 
     /// Emit an error diagnostic pointing at the current token.

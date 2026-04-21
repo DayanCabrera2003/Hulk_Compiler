@@ -37,16 +37,17 @@ fn program_with_all_decl_kinds_plus_body() {
 
 #[test]
 fn lambda_coexists_with_vec_generator() {
-    // Nota: el parser trata `|` como operador binario (Or) con BP 3/4 — usar
-    // una lambda como elemento directo del generador (ej:
-    // `[ (y) => y*y | x in it ]`) colisiona con esa ambigüedad. El test
-    // coexiste lambda y generador via `let`.
-    let src = "let f = (y) => y * y in [ f(x) | x in range(0, 5) ];";
+    // La desambiguación por scan permite usar una lambda directamente como
+    // elemento del generador: `[ (y) => y*y | x in it ]`.  El `|` dentro del
+    // cuerpo de la lambda (ninguno en este caso) no interfiere porque
+    // `gen_depth > 0` suprime Or durante todo el sub-árbol del elemento.
+    let src = "[ (y) => y * y | x in range(0, 5) ];";
     let program = parse_ok("lambda_gen.hulk", src);
-    let ExprKind::Let { body, .. } = &program.body.kind else {
-        panic!("se esperaba Let en raíz");
-    };
-    assert!(matches!(body.kind, ExprKind::VecGenerator { .. }));
+    assert!(
+        matches!(program.body.kind, ExprKind::VecGenerator { .. }),
+        "se esperaba VecGenerator, obtuvo: {:?}",
+        program.body.kind
+    );
     assert!(contains_expr(&program, |k| matches!(
         k,
         ExprKind::Lambda { .. }
