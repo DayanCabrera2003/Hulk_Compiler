@@ -97,7 +97,11 @@ fn infer_program(program: &Program, inferer: &mut TypeInferer<'_>) {
 }
 
 fn assert_no_errors(bag: &DiagnosticBag, name: &str) {
-    assert!(bag.is_empty(), "unexpected diagnostics for {name}: {:?}", bag.diagnostics());
+    assert!(
+        bag.is_empty(),
+        "unexpected diagnostics for {name}: {:?}",
+        bag.diagnostics()
+    );
 }
 
 fn assert_symbol_kind(hir: &Hir, name: &str, kind: SymbolKind) {
@@ -143,42 +147,48 @@ fn find_method_expr<'a>(program: &'a Program, type_name: &str, method_name: &str
     }
 }
 
-fn find_expr_by_predicate<'a>(expr: &'a Expr, predicate: &dyn Fn(&Expr) -> bool) -> Option<&'a Expr> {
+fn find_expr_by_predicate<'a>(
+    expr: &'a Expr,
+    predicate: &dyn Fn(&Expr) -> bool,
+) -> Option<&'a Expr> {
     if predicate(expr) {
         return Some(expr);
     }
 
     match &expr.kind {
-        ExprKind::BinOp { left, right, .. } => {
-            find_expr_by_predicate(left, predicate).or_else(|| find_expr_by_predicate(right, predicate))
-        }
+        ExprKind::BinOp { left, right, .. } => find_expr_by_predicate(left, predicate)
+            .or_else(|| find_expr_by_predicate(right, predicate)),
         ExprKind::UnaryOp { expr: inner, .. } => find_expr_by_predicate(inner, predicate),
         ExprKind::Call { callee, args } => {
-            find_expr_by_predicate(callee, predicate)
-                .or_else(|| args.iter().find_map(|arg| find_expr_by_predicate(arg, predicate)))
+            find_expr_by_predicate(callee, predicate).or_else(|| {
+                args.iter()
+                    .find_map(|arg| find_expr_by_predicate(arg, predicate))
+            })
         }
-        ExprKind::MethodCall { receiver, args, .. } => {
-            find_expr_by_predicate(receiver, predicate)
-                .or_else(|| args.iter().find_map(|arg| find_expr_by_predicate(arg, predicate)))
-        }
+        ExprKind::MethodCall { receiver, args, .. } => find_expr_by_predicate(receiver, predicate)
+            .or_else(|| {
+                args.iter()
+                    .find_map(|arg| find_expr_by_predicate(arg, predicate))
+            }),
         ExprKind::FieldAccess { receiver, .. } => find_expr_by_predicate(receiver, predicate),
-        ExprKind::Index { target, index } => {
-            find_expr_by_predicate(target, predicate).or_else(|| find_expr_by_predicate(index, predicate))
-        }
-        ExprKind::Block(exprs) => exprs.iter().find_map(|child| find_expr_by_predicate(child, predicate)),
-        ExprKind::VecLiteral(exprs) => exprs.iter().find_map(|child| find_expr_by_predicate(child, predicate)),
-        ExprKind::VecGenerator { element, iterable, .. } => {
-            find_expr_by_predicate(element, predicate).or_else(|| find_expr_by_predicate(iterable, predicate))
-        }
-        ExprKind::Let { bindings, body } => {
-            bindings
-                .iter()
-                .find_map(|binding| find_expr_by_predicate(binding, predicate))
-                .or_else(|| find_expr_by_predicate(body, predicate))
-        }
-        ExprKind::Assign { target, value } => {
-            find_expr_by_predicate(target, predicate).or_else(|| find_expr_by_predicate(value, predicate))
-        }
+        ExprKind::Index { target, index } => find_expr_by_predicate(target, predicate)
+            .or_else(|| find_expr_by_predicate(index, predicate)),
+        ExprKind::Block(exprs) => exprs
+            .iter()
+            .find_map(|child| find_expr_by_predicate(child, predicate)),
+        ExprKind::VecLiteral(exprs) => exprs
+            .iter()
+            .find_map(|child| find_expr_by_predicate(child, predicate)),
+        ExprKind::VecGenerator {
+            element, iterable, ..
+        } => find_expr_by_predicate(element, predicate)
+            .or_else(|| find_expr_by_predicate(iterable, predicate)),
+        ExprKind::Let { bindings, body } => bindings
+            .iter()
+            .find_map(|binding| find_expr_by_predicate(binding, predicate))
+            .or_else(|| find_expr_by_predicate(body, predicate)),
+        ExprKind::Assign { target, value } => find_expr_by_predicate(target, predicate)
+            .or_else(|| find_expr_by_predicate(value, predicate)),
         ExprKind::AssignTarget(_) => None,
         ExprKind::LetBinding(binding) => find_expr_by_predicate(&binding.value, predicate),
         ExprKind::If {
@@ -186,27 +196,38 @@ fn find_expr_by_predicate<'a>(expr: &'a Expr, predicate: &dyn Fn(&Expr) -> bool)
             then_branch,
             elif_branches,
             else_branch,
-        } => {
-            find_expr_by_predicate(condition, predicate)
-                .or_else(|| find_expr_by_predicate(then_branch, predicate))
-                .or_else(|| {
-                    elif_branches.iter().find_map(|(elif_condition, elif_branch)| {
+        } => find_expr_by_predicate(condition, predicate)
+            .or_else(|| find_expr_by_predicate(then_branch, predicate))
+            .or_else(|| {
+                elif_branches
+                    .iter()
+                    .find_map(|(elif_condition, elif_branch)| {
                         find_expr_by_predicate(elif_condition, predicate)
                             .or_else(|| find_expr_by_predicate(elif_branch, predicate))
                     })
-                })
-                .or_else(|| else_branch.as_deref().and_then(|expr| find_expr_by_predicate(expr, predicate)))
+            })
+            .or_else(|| {
+                else_branch
+                    .as_deref()
+                    .and_then(|expr| find_expr_by_predicate(expr, predicate))
+            }),
+        ExprKind::While { condition, body } => find_expr_by_predicate(condition, predicate)
+            .or_else(|| find_expr_by_predicate(body, predicate)),
+        ExprKind::For { iterable, body, .. } => find_expr_by_predicate(iterable, predicate)
+            .or_else(|| find_expr_by_predicate(body, predicate)),
+        ExprKind::New { args, .. } => args
+            .iter()
+            .find_map(|arg| find_expr_by_predicate(arg, predicate)),
+        ExprKind::Is { expr, .. } | ExprKind::As { expr, .. } => {
+            find_expr_by_predicate(expr, predicate)
         }
-        ExprKind::While { condition, body } => {
-            find_expr_by_predicate(condition, predicate).or_else(|| find_expr_by_predicate(body, predicate))
-        }
-        ExprKind::For { iterable, body, .. } => {
-            find_expr_by_predicate(iterable, predicate).or_else(|| find_expr_by_predicate(body, predicate))
-        }
-        ExprKind::New { args, .. } => args.iter().find_map(|arg| find_expr_by_predicate(arg, predicate)),
-        ExprKind::Is { expr, .. } | ExprKind::As { expr, .. } => find_expr_by_predicate(expr, predicate),
         ExprKind::Lambda { body, .. } => find_expr_by_predicate(body, predicate),
-        ExprKind::Number(_) | ExprKind::StringLit(_) | ExprKind::Bool(_) | ExprKind::Ident(_) | ExprKind::Self_ | ExprKind::Base => None,
+        ExprKind::Number(_)
+        | ExprKind::StringLit(_)
+        | ExprKind::Bool(_)
+        | ExprKind::Ident(_)
+        | ExprKind::Self_
+        | ExprKind::Base => None,
     }
 }
 

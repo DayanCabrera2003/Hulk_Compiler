@@ -26,8 +26,16 @@ add(1, 2);
         .resolved_symbol(right.id)
         .expect("right operand should resolve to a parameter");
 
-    let left_entry = hir.symbols.table().get(left_symbol).expect("left symbol must exist");
-    let right_entry = hir.symbols.table().get(right_symbol).expect("right symbol must exist");
+    let left_entry = hir
+        .symbols
+        .table()
+        .get(left_symbol)
+        .expect("left symbol must exist");
+    let right_entry = hir
+        .symbols
+        .table()
+        .get(right_symbol)
+        .expect("right symbol must exist");
 
     assert_eq!(left_entry.kind, SymbolKind::Parameter);
     assert_eq!(right_entry.kind, SymbolKind::Parameter);
@@ -125,15 +133,22 @@ describe(new Dog());
         then_branch,
         else_branch,
         ..
-    } = &function.body.kind else {
+    } = &function.body.kind
+    else {
         panic!("describe should lower to an if expression");
     };
 
-    let ExprKind::Is { expr: is_operand, .. } = &condition.kind else {
+    let ExprKind::Is {
+        expr: is_operand, ..
+    } = &condition.kind
+    else {
         panic!("the if condition should be an is-expression");
     };
 
-    let ExprKind::As { expr: as_operand, .. } = &then_branch.kind else {
+    let ExprKind::As {
+        expr: as_operand, ..
+    } = &then_branch.kind
+    else {
         panic!("the then branch should use an as-expression");
     };
 
@@ -142,7 +157,9 @@ describe(new Dog());
     assert!(hir.resolved_symbol(is_operand.id).is_some());
     assert!(hir.resolved_symbol(as_operand.id).is_some());
 
-    let else_expr = else_branch.as_ref().expect("describe should have an else branch");
+    let else_expr = else_branch
+        .as_ref()
+        .expect("describe should have an else branch");
     assert_eq!(node_type(&hir, else_expr.id), TypeId::OBJECT);
 }
 
@@ -174,8 +191,16 @@ new C();
         .resolved_symbol(c_base.id)
         .expect("base in C.foo should resolve");
 
-    let b_entry = hir.symbols.table().get(b_symbol).expect("resolved symbol must exist");
-    let c_entry = hir.symbols.table().get(c_symbol).expect("resolved symbol must exist");
+    let b_entry = hir
+        .symbols
+        .table()
+        .get(b_symbol)
+        .expect("resolved symbol must exist");
+    let c_entry = hir
+        .symbols
+        .table()
+        .get(c_symbol)
+        .expect("resolved symbol must exist");
 
     assert_eq!(b_entry.name, "foo");
     assert_eq!(c_entry.name, "foo");

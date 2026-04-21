@@ -15,3 +15,4 @@ hulk-types = { path = "../hulk-types" }
 hulk-diagnostics = { path = "../hulk-diagnostics" }
 hulk-lexer = { path = "../hulk-lexer" }
 hulk-parser = { path = "../hulk-parser" }
+proptest.workspace = true

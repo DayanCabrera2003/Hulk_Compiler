@@ -355,7 +355,11 @@ impl Resolver {
         self.push_scope();
         for param in &type_decl.params {
             self.resolve_type_ann_option(&param.type_ann);
-            self.define(param.name.clone(), SymbolKind::Parameter, param.span.clone());
+            self.define(
+                param.name.clone(),
+                SymbolKind::Parameter,
+                param.span.clone(),
+            );
         }
 
         self.push_scope();
@@ -670,7 +674,11 @@ impl Resolver {
             return;
         };
 
-        let Some(parent_type) = self.type_parents.get(&current_type).and_then(|parent| *parent) else {
+        let Some(parent_type) = self
+            .type_parents
+            .get(&current_type)
+            .and_then(|parent| *parent)
+        else {
             self.bag.push(
                 Diagnostic::error("base usado en un tipo sin padre")
                     .with_label(span, "el tipo actual no hereda de otro"),
@@ -738,7 +746,11 @@ impl Resolver {
         if let ExprKind::Call { args, .. } = &call_expr.kind {
             self.resolve_exprs(args);
             if let Some(symbol_id) = callee_symbol {
-                self.validate_call_argument_protocol_conformance(symbol_id, args, call_expr.span.clone());
+                self.validate_call_argument_protocol_conformance(
+                    symbol_id,
+                    args,
+                    call_expr.span.clone(),
+                );
             }
         }
     }
@@ -766,7 +778,10 @@ impl Resolver {
             {
                 self.bag.push(
                     Diagnostic::error(format!("no se puede heredar de {}", parent_symbol.name))
-                        .with_label(parent.span.clone(), "los tipos primitivos no son heredables"),
+                        .with_label(
+                            parent.span.clone(),
+                            "los tipos primitivos no son heredables",
+                        ),
                 );
             }
         }
@@ -801,7 +816,23 @@ impl Resolver {
     }
 
     fn validate_symbol_use(&mut self, name: &str, symbol_id: SymbolId, span: Span) {
-        if matches!(name, "print" | "sqrt" | "sin" | "cos" | "exp" | "log" | "rand" | "range" | "PI" | "E" | "Object" | "Number" | "String" | "Boolean") {
+        if matches!(
+            name,
+            "print"
+                | "sqrt"
+                | "sin"
+                | "cos"
+                | "exp"
+                | "log"
+                | "rand"
+                | "range"
+                | "PI"
+                | "E"
+                | "Object"
+                | "Number"
+                | "String"
+                | "Boolean"
+        ) {
             return;
         }
 
@@ -841,8 +872,10 @@ impl Resolver {
 
         if is_untyped_param {
             self.bag.push(
-                Diagnostic::error("tipo no inferible, añade anotación")
-                    .with_label(function.span.clone(), "la función no aporta restricciones de tipo suficientes"),
+                Diagnostic::error("tipo no inferible, añade anotación").with_label(
+                    function.span.clone(),
+                    "la función no aporta restricciones de tipo suficientes",
+                ),
             );
         }
     }
@@ -862,11 +895,10 @@ impl Resolver {
         if let Some(actual_name) = actual {
             if actual_name != expected {
                 self.bag.push(
-                    Diagnostic::error("tipo inferido incompatible con anotación")
-                        .with_label(
-                            expr.span.clone(),
-                            format!("se esperaba {expected}, pero se infirió {actual_name}"),
-                        ),
+                    Diagnostic::error("tipo inferido incompatible con anotación").with_label(
+                        expr.span.clone(),
+                        format!("se esperaba {expected}, pero se infirió {actual_name}"),
+                    ),
                 );
             }
         }
@@ -896,7 +928,8 @@ impl Resolver {
         args: &[Expr],
         span: Span,
     ) {
-        let Some(param_annotations) = self.function_param_annotations.get(&callee_symbol).cloned() else {
+        let Some(param_annotations) = self.function_param_annotations.get(&callee_symbol).cloned()
+        else {
             return;
         };
 
@@ -922,7 +955,10 @@ impl Resolver {
                     Diagnostic::error(format!(
                         "tipo no conforma al protocolo requerido: {type_name}"
                     ))
-                    .with_label(span.clone(), "el argumento no implementa la interfaz esperada"),
+                    .with_label(
+                        span.clone(),
+                        "el argumento no implementa la interfaz esperada",
+                    ),
                 );
             }
         }
@@ -1009,10 +1045,11 @@ impl Resolver {
                         .get(root)
                         .map(|symbol| symbol.span.clone())
                         .unwrap_or_else(|| self.synthetic_span());
-                    self.bag.push(
-                        Diagnostic::error("ciclos en herencia")
-                            .with_label(span, format!("se detectó un ciclo que involucra a {type_name}")),
-                    );
+                    self.bag
+                        .push(Diagnostic::error("ciclos en herencia").with_label(
+                            span,
+                            format!("se detectó un ciclo que involucra a {type_name}"),
+                        ));
                     break;
                 }
 
@@ -1427,7 +1464,8 @@ mod tests {
 
     #[test]
     fn base_resolves_to_parent_method() {
-        let source = "type Parent() { method() => 1; } type Child() inherits Parent { method() => base; }";
+        let source =
+            "type Parent() { method() => 1; } type Child() inherits Parent { method() => base; }";
         let file = Arc::new(SourceFile::new("inherit.hulk", source));
         let span = Span::new(file, 0, source.len());
 

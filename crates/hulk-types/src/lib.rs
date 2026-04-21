@@ -140,6 +140,16 @@ impl TypeEnv {
         self.expr_types.get(&node).copied()
     }
 
+    /// Returns all expression nodes that currently have an inferred type.
+    pub fn expr_type_nodes(&self) -> impl Iterator<Item = NodeId> + '_ {
+        self.expr_types.keys().copied()
+    }
+
+    /// Returns all symbols that currently have a registered type.
+    pub fn symbol_type_symbols(&self) -> impl Iterator<Item = SymbolId> + '_ {
+        self.symbol_types.keys().copied()
+    }
+
     /// Check if type `t1` conforms to (is assignable to) type `t2`.
     ///
     /// Rules:
@@ -159,7 +169,11 @@ impl TypeEnv {
         }
 
         // Subtyping by inheritance: check if t1's parent chain includes t2
-        if let Some(TypeKind::UserDefined { parent: Some(parent), .. }) = self.type_kind(t1) {
+        if let Some(TypeKind::UserDefined {
+            parent: Some(parent),
+            ..
+        }) = self.type_kind(t1)
+        {
             if self.conforms(*parent, t2) {
                 return true;
             }
@@ -182,7 +196,11 @@ impl TypeEnv {
         }
 
         // Otherwise, climb the inheritance chain of t1 and test against t2
-        if let Some(TypeKind::UserDefined { parent: Some(parent), .. }) = self.type_kind(t1) {
+        if let Some(TypeKind::UserDefined {
+            parent: Some(parent),
+            ..
+        }) = self.type_kind(t1)
+        {
             return self.lca(*parent, t2);
         }
 
@@ -236,9 +254,11 @@ impl<'a> TypeInferer<'a> {
             ExprKind::Call { callee, args } => self.infer_call(expr, callee, args),
 
             // Method call
-            ExprKind::MethodCall { receiver, method, args } => {
-                self.infer_method_call(expr, receiver, method, args)
-            }
+            ExprKind::MethodCall {
+                receiver,
+                method,
+                args,
+            } => self.infer_method_call(expr, receiver, method, args),
 
             // Field access
             ExprKind::FieldAccess { receiver, field } => {
@@ -255,9 +275,11 @@ impl<'a> TypeInferer<'a> {
             ExprKind::VecLiteral(elements) => self.infer_vec_literal(expr, elements),
 
             // Vector generator: Vector(element type)
-            ExprKind::VecGenerator { element, binding: _, iterable } => {
-                self.infer_vec_generator(expr, element, iterable)
-            }
+            ExprKind::VecGenerator {
+                element,
+                binding: _,
+                iterable,
+            } => self.infer_vec_generator(expr, element, iterable),
 
             // Let: type of body (evaluated after binding scope)
             ExprKind::Let { bindings, body } => self.infer_let(expr, bindings, body),
@@ -266,29 +288,41 @@ impl<'a> TypeInferer<'a> {
             ExprKind::Assign { target: _, value } => self.infer_expr(value),
 
             // If/elif/else: LCA of all branches
-            ExprKind::If { condition, then_branch, elif_branches, else_branch } => {
-                self.infer_if(expr, condition, then_branch, elif_branches, else_branch)
-            }
+            ExprKind::If {
+                condition,
+                then_branch,
+                elif_branches,
+                else_branch,
+            } => self.infer_if(expr, condition, then_branch, elif_branches, else_branch),
 
             // While: body type (though body should not be used as value)
             ExprKind::While { condition: _, body } => self.infer_expr(body),
 
             // For: body type
-            ExprKind::For { binding: _, iterable: _, body } => self.infer_expr(body),
+            ExprKind::For {
+                binding: _,
+                iterable: _,
+                body,
+            } => self.infer_expr(body),
 
             // New T(...): type T
             ExprKind::New { type_ann, args: _ } => self.infer_new(expr, type_ann),
 
             // is T: always Boolean
-            ExprKind::Is { expr: _, type_ann: _ } => TypeId::BOOLEAN,
+            ExprKind::Is {
+                expr: _,
+                type_ann: _,
+            } => TypeId::BOOLEAN,
 
             // as T: type T
             ExprKind::As { expr: _, type_ann } => self.infer_type_ann(type_ann),
 
             // Lambda: Functor with parameter and return types
-            ExprKind::Lambda { params, return_type, body } => {
-                self.infer_lambda(expr, params, return_type, body)
-            }
+            ExprKind::Lambda {
+                params,
+                return_type,
+                body,
+            } => self.infer_lambda(expr, params, return_type, body),
 
             // These shouldn't appear at top-level in normal expressions
             ExprKind::AssignTarget(_) | ExprKind::LetBinding(_) => TypeId::OBJECT, // fallback
@@ -325,15 +359,23 @@ impl<'a> TypeInferer<'a> {
 
         match op {
             // Arithmetic operations: Number
-            BinOpKind::Add | BinOpKind::Sub | BinOpKind::Mul | BinOpKind::Div |
-            BinOpKind::Mod | BinOpKind::Pow => TypeId::NUMBER,
+            BinOpKind::Add
+            | BinOpKind::Sub
+            | BinOpKind::Mul
+            | BinOpKind::Div
+            | BinOpKind::Mod
+            | BinOpKind::Pow => TypeId::NUMBER,
 
             // String concatenation: String
             BinOpKind::Concat | BinOpKind::ConcatSpaced => TypeId::STRING,
 
             // Comparison operations: Boolean
-            BinOpKind::Lt | BinOpKind::Le | BinOpKind::Gt | BinOpKind::Ge |
-            BinOpKind::Eq | BinOpKind::Ne => TypeId::BOOLEAN,
+            BinOpKind::Lt
+            | BinOpKind::Le
+            | BinOpKind::Gt
+            | BinOpKind::Ge
+            | BinOpKind::Eq
+            | BinOpKind::Ne => TypeId::BOOLEAN,
 
             // Logical operations: Boolean
             BinOpKind::And | BinOpKind::Or => TypeId::BOOLEAN,
@@ -361,7 +403,13 @@ impl<'a> TypeInferer<'a> {
         TypeId::OBJECT
     }
 
-    fn infer_method_call(&mut self, _expr: &Expr, receiver: &Expr, _method: &str, args: &[Expr]) -> TypeId {
+    fn infer_method_call(
+        &mut self,
+        _expr: &Expr,
+        receiver: &Expr,
+        _method: &str,
+        args: &[Expr],
+    ) -> TypeId {
         // Infer receiver type
         let _receiver_type = self.infer_expr(receiver);
 
@@ -410,7 +458,9 @@ impl<'a> TypeInferer<'a> {
 
     fn infer_vec_literal(&mut self, _expr: &Expr, elements: &[Expr]) -> TypeId {
         if elements.is_empty() {
-            return self.env.register_type("Vector".to_string(), Some(TypeId::OBJECT));
+            return self
+                .env
+                .register_type("Vector".to_string(), Some(TypeId::OBJECT));
         }
 
         // Infer all element types
@@ -420,7 +470,10 @@ impl<'a> TypeInferer<'a> {
         }
 
         // Find LCA of all element types
-        let lca_type = element_types.iter().copied().reduce(|a, b| self.env.lca(a, b))
+        let lca_type = element_types
+            .iter()
+            .copied()
+            .reduce(|a, b| self.env.lca(a, b))
             .unwrap_or(TypeId::OBJECT);
 
         // Register and return Vector(LCA)
@@ -478,7 +531,10 @@ impl<'a> TypeInferer<'a> {
         }
 
         // Return LCA of all branch types
-        all_types.iter().copied().reduce(|a, b| self.env.lca(a, b))
+        all_types
+            .iter()
+            .copied()
+            .reduce(|a, b| self.env.lca(a, b))
             .unwrap_or(TypeId::OBJECT)
     }
 
@@ -492,7 +548,13 @@ impl<'a> TypeInferer<'a> {
         TypeId::OBJECT
     }
 
-    fn infer_lambda(&mut self, _expr: &Expr, _params: &[hulk_ast::Param], _return_type: &Option<hulk_ast::TypeAnn>, body: &Expr) -> TypeId {
+    fn infer_lambda(
+        &mut self,
+        _expr: &Expr,
+        _params: &[hulk_ast::Param],
+        _return_type: &Option<hulk_ast::TypeAnn>,
+        body: &Expr,
+    ) -> TypeId {
         // Infer body type (parameters will be resolved in 7.3)
         let _body_type = self.infer_expr(body);
 
@@ -583,10 +645,22 @@ mod tests {
     #[test]
     fn type_env_registers_builtins() {
         let env = TypeEnv::new();
-        assert!(matches!(env.type_kind(TypeId::OBJECT), Some(TypeKind::Builtin(BuiltinType::Object))));
-        assert!(matches!(env.type_kind(TypeId::NUMBER), Some(TypeKind::Builtin(BuiltinType::Number))));
-        assert!(matches!(env.type_kind(TypeId::STRING), Some(TypeKind::Builtin(BuiltinType::String))));
-        assert!(matches!(env.type_kind(TypeId::BOOLEAN), Some(TypeKind::Builtin(BuiltinType::Boolean))));
+        assert!(matches!(
+            env.type_kind(TypeId::OBJECT),
+            Some(TypeKind::Builtin(BuiltinType::Object))
+        ));
+        assert!(matches!(
+            env.type_kind(TypeId::NUMBER),
+            Some(TypeKind::Builtin(BuiltinType::Number))
+        ));
+        assert!(matches!(
+            env.type_kind(TypeId::STRING),
+            Some(TypeKind::Builtin(BuiltinType::String))
+        ));
+        assert!(matches!(
+            env.type_kind(TypeId::BOOLEAN),
+            Some(TypeKind::Builtin(BuiltinType::Boolean))
+        ));
     }
 
     #[test]
@@ -735,7 +809,10 @@ mod tests {
         };
 
         assert_eq!(inferred.as_u32() as usize, before_len);
-        assert!(matches!(env.type_kind(inferred), Some(TypeKind::Vector(TypeId::NUMBER))));
+        assert!(matches!(
+            env.type_kind(inferred),
+            Some(TypeKind::Vector(TypeId::NUMBER))
+        ));
     }
 
     #[test]
@@ -760,7 +837,10 @@ mod tests {
         };
 
         assert_eq!(inferred.as_u32() as usize, before_len);
-        assert!(matches!(env.type_kind(inferred), Some(TypeKind::Vector(TypeId::NUMBER))));
+        assert!(matches!(
+            env.type_kind(inferred),
+            Some(TypeKind::Vector(TypeId::NUMBER))
+        ));
     }
 
     #[test]
@@ -786,6 +866,9 @@ mod tests {
         let result = inferer.infer_all(&mut env);
         assert!(result.is_ok());
         assert!(inferer.iterations() >= 2);
-        assert!(!matches!(env.type_kind(unknown_id), Some(TypeKind::Unknown)));
+        assert!(!matches!(
+            env.type_kind(unknown_id),
+            Some(TypeKind::Unknown)
+        ));
     }
 }

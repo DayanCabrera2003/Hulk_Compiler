@@ -215,10 +215,8 @@ impl Parser {
                         self.tokens.get(i + 1).map(|t| &t.token),
                         Some(Token::Ident(_))
                     );
-                    let after_is_in = matches!(
-                        self.tokens.get(i + 2).map(|t| &t.token),
-                        Some(Token::In)
-                    );
+                    let after_is_in =
+                        matches!(self.tokens.get(i + 2).map(|t| &t.token), Some(Token::In));
                     return next_is_ident && after_is_in;
                 }
                 Token::Eof => break,

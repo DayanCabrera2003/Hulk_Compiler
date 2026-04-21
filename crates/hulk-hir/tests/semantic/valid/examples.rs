@@ -59,7 +59,15 @@ fn strings_example_infers_concat_expressions() {
             ExprKind::Call { args, .. } => args.first(),
             _ => None,
         })
-        .find(|expr| matches!(expr.kind, ExprKind::BinOp { op: hulk_ast::BinOpKind::Concat, .. }))
+        .find(|expr| {
+            matches!(
+                expr.kind,
+                ExprKind::BinOp {
+                    op: hulk_ast::BinOpKind::Concat,
+                    ..
+                }
+            )
+        })
         .expect("expected a concatenation expression");
 
     let spaced_concat = exprs
@@ -68,7 +76,15 @@ fn strings_example_infers_concat_expressions() {
             ExprKind::Call { args, .. } => args.first(),
             _ => None,
         })
-        .find(|expr| matches!(expr.kind, ExprKind::BinOp { op: hulk_ast::BinOpKind::ConcatSpaced, .. }))
+        .find(|expr| {
+            matches!(
+                expr.kind,
+                ExprKind::BinOp {
+                    op: hulk_ast::BinOpKind::ConcatSpaced,
+                    ..
+                }
+            )
+        })
         .expect("expected a spaced concatenation expression");
 
     assert_eq!(node_type(&hir, concat.id), TypeId::STRING);
@@ -103,21 +119,34 @@ fn conditionals_example_infers_string_if_expression() {
                     || args.iter().any(|arg| contains_string_literal(arg, target))
             }
             ExprKind::FieldAccess { receiver, .. } => contains_string_literal(receiver, target),
-            ExprKind::Index { target: target_expr, index } => {
-                contains_string_literal(target_expr, target) || contains_string_literal(index, target)
+            ExprKind::Index {
+                target: target_expr,
+                index,
+            } => {
+                contains_string_literal(target_expr, target)
+                    || contains_string_literal(index, target)
             }
-            ExprKind::Block(children) | ExprKind::VecLiteral(children) => {
-                children.iter().any(|child| contains_string_literal(child, target))
-            }
-            ExprKind::VecGenerator { element, iterable, .. } => {
-                contains_string_literal(element, target) || contains_string_literal(iterable, target)
+            ExprKind::Block(children) | ExprKind::VecLiteral(children) => children
+                .iter()
+                .any(|child| contains_string_literal(child, target)),
+            ExprKind::VecGenerator {
+                element, iterable, ..
+            } => {
+                contains_string_literal(element, target)
+                    || contains_string_literal(iterable, target)
             }
             ExprKind::Let { bindings, body } => {
-                bindings.iter().any(|binding| contains_string_literal(binding, target))
+                bindings
+                    .iter()
+                    .any(|binding| contains_string_literal(binding, target))
                     || contains_string_literal(body, target)
             }
-            ExprKind::Assign { target: target_expr, value } => {
-                contains_string_literal(target_expr, target) || contains_string_literal(value, target)
+            ExprKind::Assign {
+                target: target_expr,
+                value,
+            } => {
+                contains_string_literal(target_expr, target)
+                    || contains_string_literal(value, target)
             }
             ExprKind::LetBinding(binding) => contains_string_literal(&binding.value, target),
             ExprKind::If {
@@ -142,10 +171,19 @@ fn conditionals_example_infers_string_if_expression() {
             ExprKind::For { iterable, body, .. } => {
                 contains_string_literal(iterable, target) || contains_string_literal(body, target)
             }
-            ExprKind::New { args, .. } => args.iter().any(|arg| contains_string_literal(arg, target)),
-            ExprKind::Is { expr, .. } | ExprKind::As { expr, .. } => contains_string_literal(expr, target),
+            ExprKind::New { args, .. } => {
+                args.iter().any(|arg| contains_string_literal(arg, target))
+            }
+            ExprKind::Is { expr, .. } | ExprKind::As { expr, .. } => {
+                contains_string_literal(expr, target)
+            }
             ExprKind::Lambda { body, .. } => contains_string_literal(body, target),
-            ExprKind::Number(_) | ExprKind::Bool(_) | ExprKind::Ident(_) | ExprKind::Self_ | ExprKind::Base | ExprKind::AssignTarget(_) => false,
+            ExprKind::Number(_)
+            | ExprKind::Bool(_)
+            | ExprKind::Ident(_)
+            | ExprKind::Self_
+            | ExprKind::Base
+            | ExprKind::AssignTarget(_) => false,
         }
     }
 
@@ -156,7 +194,9 @@ fn conditionals_example_infers_string_if_expression() {
             _ => None,
         })
         .find(|body| contains_string_literal(body, "Magic"))
-        .and_then(|body| find_expr_by_predicate(body, &|expr| matches!(expr.kind, ExprKind::If { .. })))
+        .and_then(|body| {
+            find_expr_by_predicate(body, &|expr| matches!(expr.kind, ExprKind::If { .. }))
+        })
         .expect("expected the string-producing if expression inside the let body");
 
     assert_eq!(node_type(&hir, conditional.id), TypeId::STRING);

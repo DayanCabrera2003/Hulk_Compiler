@@ -9,6 +9,11 @@ Archivos tocados:
 - `crates/hulk-hir/tests/semantic/valid/mod.rs`
 - `crates/hulk-hir/tests/semantic/valid/examples.rs`
 - `crates/hulk-hir/tests/semantic/valid/inference.rs`
+- `crates/hulk-hir/tests/semantic/errors/mod.rs`
+- `crates/hulk-hir/tests/property.rs`
+- `crates/hulk-hir/tests/property/mod.rs`
+- `crates/hulk-hir/Cargo.toml`
+- `crates/hulk-types/src/lib.rs`
 
 ### Suite de programas válidos
 
@@ -114,3 +119,23 @@ Tabla de casos cubiertos:
 | Firma de protocolo sin retorno | `protocol P { foo(); }` | `firma de metodo sin tipo de retorno` |
 
 Adicionalmente, la suite verifica recuperación y reporte múltiple de errores en una sola pasada (redefinición + identificador no declarado + función no existente) para confirmar que el frontend no aborta en el primer fallo.
+
+## Property tests y robustez (9.3)
+
+Se agregó una suite de propiedades en `crates/hulk-hir/tests/property/` para validar robustez del pipeline semántico con generación aleatoria de programas sintácticamente válidos.
+
+Propiedades implementadas:
+
+- `generated_semantic_inputs_never_panic_and_report_result`: para cada programa generado, verifica que `lex -> parse -> resolve -> infer -> Hir` nunca paniquea y siempre retorna un resultado válido (`Some(Hir)` o diagnóstico en `DiagnosticBag`).
+- `hir_maps_are_consistent_with_ast_and_symbol_table`: cuando hay `HIR` exitoso, verifica invariantes internos: todo `NodeId` en `expr_types` existe en el AST y todo `SymbolId` en `symbol_types` existe en la `SymbolTable`.
+
+### Métricas (9.3)
+
+| Suite | Casos por propiedad | Propiedades | Total de casos generados |
+|---|---:|---:|---:|
+| `hulk-hir/tests/property.rs` | 256 | 2 | 512 |
+
+Validación ejecutada:
+
+- `cargo test -p hulk-hir --test property` (2/2 tests OK)
+- `cargo test --workspace` (workspace completo en verde)
