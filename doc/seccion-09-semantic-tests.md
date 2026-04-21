@@ -104,20 +104,13 @@ Tabla de casos cubiertos:
 | Asignar a `self` | método con `self := v;` | `no se puede asignar a self` |
 | `base` fuera de método | `base();` | `base usado fuera de un método` |
 | `base` en tipo sin padre | método `foo() => base();` en tipo sin `inherits` | `base usado en un tipo sin padre` |
+| Heredar de primitivo builtin | `type Bad inherits Number { }` | `no se puede heredar de Number` |
+| Tipo inferido incompatible con anotación | `let value: Number = "text" in value;` | `tipo inferido incompatible con anotación` |
+| Llamada a método inexistente | `new A().missing();` | `metodo no existe: missing` |
+| Tipo no conforma a protocolo requerido | `use_printable(new Plain());` con `Printable` | `tipo no conforma al protocolo requerido: Printable` |
+| Inferencia ambigua (requiere anotación) | `function identity(x) => x;` | `tipo no inferible, añade anotación` |
+| Ciclos en herencia | `type A inherits B` + `type B inherits A` | `ciclos en herencia` |
 | Llamada a función inexistente | `missing();` | `funcion no existe: missing` |
 | Firma de protocolo sin retorno | `protocol P { foo(); }` | `firma de metodo sin tipo de retorno` |
 
 Adicionalmente, la suite verifica recuperación y reporte múltiple de errores en una sola pasada (redefinición + identificador no declarado + función no existente) para confirmar que el frontend no aborta en el primer fallo.
-
-### Cobertura pendiente para completar la lista ideal de 9.2
-
-Quedan como pendientes de implementación en el compilador (no en la suite de tests) los diagnósticos específicos para:
-
-- heredar de `Number`, `String` o `Boolean`
-- tipo inferido incompatible con anotación explícita
-- llamada a método inexistente sobre un receptor tipado
-- tipo no conforma a protocolo requerido
-- inferencia ambigua que obliga anotación
-- ciclos en herencia
-
-Estos casos no emiten todavía diagnósticos estables en las fases actuales (`hulk-semantic`/`hulk-types`), por lo que sus tests se activarán cuando esas reglas semánticas estén disponibles.

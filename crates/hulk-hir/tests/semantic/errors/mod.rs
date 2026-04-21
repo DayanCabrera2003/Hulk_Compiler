@@ -136,6 +136,94 @@ new A().foo();
 }
 
 #[test]
+fn reports_inheriting_from_builtin_types() {
+    let source = r#"
+type Bad inherits Number {
+}
+
+new Bad();
+"#;
+
+    let bag = build_diagnostics("inherits_builtin.hulk", source);
+
+    assert_contains_error_message(&bag, "no se puede heredar de Number");
+}
+
+#[test]
+fn reports_incompatible_inferred_type_against_annotation() {
+    let source = r#"
+let value: Number = "text" in value;
+"#;
+
+    let bag = build_diagnostics("annotation_mismatch.hulk", source);
+
+    assert_contains_error_message(&bag, "tipo inferido incompatible con anotación");
+}
+
+#[test]
+fn reports_unknown_method_call() {
+    let source = r#"
+type A {
+}
+
+new A().missing();
+"#;
+
+    let bag = build_diagnostics("unknown_method.hulk", source);
+
+    assert_contains_error_message(&bag, "metodo no existe: missing");
+}
+
+#[test]
+fn reports_non_conforming_type_for_protocol_parameter() {
+    let source = r#"
+protocol Printable {
+    print(): Number;
+}
+
+type Plain {
+}
+
+function use_printable(p: Printable): Number => p.print();
+
+use_printable(new Plain());
+"#;
+
+    let bag = build_diagnostics("protocol_non_conformance.hulk", source);
+
+    assert_contains_error_message(&bag, "tipo no conforma al protocolo requerido: Printable");
+}
+
+#[test]
+fn reports_ambiguous_inference_without_annotation() {
+    let source = r#"
+function identity(x) => x;
+identity(1);
+"#;
+
+    let bag = build_diagnostics("ambiguous_inference.hulk", source);
+
+    assert_contains_error_message(&bag, "tipo no inferible, añade anotación");
+}
+
+#[test]
+fn reports_inheritance_cycles() {
+    let source = r#"
+type A inherits B {
+}
+
+type B inherits A {
+}
+
+new A();
+"#;
+
+    let bag = build_diagnostics("inheritance_cycle.hulk", source);
+
+    assert_contains_error_message(&bag, "ciclos en herencia");
+}
+
+#[test]
 fn reports_unknown_function_call() {
     let source = "missing();";
     let bag = build_diagnostics("unknown_function.hulk", source);
