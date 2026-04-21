@@ -90,3 +90,23 @@ let hir = build_hir(source, &mut bag).expect("hello.hulk should be valid");
 
 - `cargo build -p hulk-hir`: correcto.
 - `cargo test -p hulk-hir`: 1/1 tests correctos.
+
+## Inspección del HIR
+
+El HIR se usa como punto de entrada único para middleend y backend. La forma más práctica de consultarlo es construirlo desde un `SourceFile` y luego preguntar por símbolos y tipos ya resueltos.
+
+```rust
+let mut bag = DiagnosticBag::new();
+let source = SourceFile::new("hello.hulk", include_str!("../../../examples/hello.hulk"));
+let hir = build_hir(source, &mut bag).expect("hello.hulk debe ser válido");
+
+let ExprKind::Call { callee, .. } = &hir.program.body.kind else {
+    unreachable!("el ejemplo hello.hulk debe terminar en una llamada");
+};
+
+let symbol_id = hir.resolved_symbol(callee.id).expect("print debe resolverse");
+let symbol_ty = hir.symbol_type(symbol_id);
+let expr_ty = hir.expr_type(hir.program.body.id);
+```
+
+Con esto, el resto del compilador puede consultar el AST, la resolución semántica y la inferencia de tipos sin depender de tres estructuras separadas.

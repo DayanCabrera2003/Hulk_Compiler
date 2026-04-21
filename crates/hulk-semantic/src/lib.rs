@@ -275,8 +275,7 @@ impl Resolver {
                 SymbolKind::Type,
                 type_decl.span.clone(),
             );
-            let parent_id = self.resolve_parent_spec(type_decl.parent.as_ref());
-            self.type_parents.insert(type_id, parent_id);
+            self.type_parents.insert(type_id, None);
         }
 
         for protocol in &program.protocols {
@@ -314,14 +313,18 @@ impl Resolver {
             self.define(param.name.clone(), SymbolKind::Parameter, param.span.clone());
         }
 
-        if let Some(parent) = &type_decl.parent {
-            self.resolve_parent_spec(Some(parent));
+        self.push_scope();
+
+        if let Some(current_type) = self.current_type {
+            let parent_id = self.resolve_parent_spec(type_decl.parent.as_ref());
+            self.type_parents.insert(current_type, parent_id);
         }
 
         for member in &type_decl.members {
             self.resolve_member(member);
         }
 
+        self.pop_scope();
         self.pop_scope();
         self.current_type = previous_type;
     }
@@ -450,10 +453,13 @@ impl Resolver {
             }
             ExprKind::VecLiteral(exprs) => self.resolve_exprs(exprs),
             ExprKind::VecGenerator {
-                element, iterable, ..
+                element,
+                binding,
+                iterable,
             } => {
                 self.resolve_expr(iterable);
                 self.push_scope();
+                self.define(binding.clone(), SymbolKind::Variable, expr.span.clone());
                 self.resolve_expr(element);
                 self.pop_scope();
             }
@@ -648,7 +654,18 @@ impl Resolver {
         if let ExprKind::Ident(name) = &callee.kind {
             match self.lookup(name) {
                 Some(symbol_id) => {
-                    if matches!(self.table.get(symbol_id).map(|symbol| &symbol.kind), Some(SymbolKind::Function | SymbolKind::BuiltinFunction)) {
+                    let callable = matches!(
+                        self.table.get(symbol_id).map(|symbol| &symbol.kind),
+                        Some(
+                            SymbolKind::Function
+                                | SymbolKind::BuiltinFunction
+                                | SymbolKind::Parameter
+                                | SymbolKind::Variable
+                                | SymbolKind::SelfValue
+                        )
+                    );
+
+                    if callable {
                         self.expr_symbols.insert(callee.id, symbol_id);
                     } else {
                         self.bag.push(
@@ -736,7 +753,10 @@ impl Resolver {
 
     fn validate_type_symbol(&mut self, name: &str, symbol_id: SymbolId, span: Span) {
         if let Some(symbol) = self.table.get(symbol_id) {
-            if !matches!(symbol.kind, SymbolKind::Type | SymbolKind::BuiltinType) {
+            if !matches!(
+                symbol.kind,
+                SymbolKind::Type | SymbolKind::BuiltinType | SymbolKind::Protocol
+            ) {
                 self.bag.push(
                     Diagnostic::error(format!("tipo no existe: {name}"))
                         .with_label(span, "el nombre visible no corresponde a un tipo"),
