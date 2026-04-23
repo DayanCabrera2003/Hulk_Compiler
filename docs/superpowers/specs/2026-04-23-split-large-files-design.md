@@ -212,6 +212,19 @@ declarations/ops.rs       is, as, new, base_call
 
 Each submodule holds 5-15 related tests.
 
+**Rust integration test wiring**: `cargo` picks up each `tests/<name>.rs` as a separate integration test crate. To split one into submodules, keep a top-level `tests/coverage.rs` (or `tests/declarations.rs`) as the entry point and declare submodules from it:
+
+```rust
+// tests/coverage.rs
+mod coverage {
+    mod node_id;
+    mod expr;
+    // ...
+}
+```
+
+with the submodule files at `tests/coverage/node_id.rs`, etc. Helpers live in `tests/coverage/mod.rs` or `tests/coverage/helpers.rs`.
+
 **Commits**: 2 (one per test file).
 
 ## Behavior Preservation — TDD Strategy
