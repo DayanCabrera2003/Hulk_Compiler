@@ -1715,6 +1715,423 @@ mod tests {
         }
     }
 
+    #[test]
+    fn swap_symbolic_params_are_substituted_as_identifiers() {
+        let source = Arc::new(SourceFile::new("swap.hulk", "def swap ..."));
+        let mut node_ids = NodeIdGen::new();
+        let span = Span::new(source, 0, 10);
+
+        let swap_decl = MacroDecl {
+            name: "swap".to_owned(),
+            params: vec![
+                MacroParam::Symbolic {
+                    name: "x".to_owned(),
+                    type_ann: TypeAnn::Named("Object".to_owned()),
+                    span: span.clone(),
+                },
+                MacroParam::Symbolic {
+                    name: "y".to_owned(),
+                    type_ann: TypeAnn::Named("Object".to_owned()),
+                    span: span.clone(),
+                },
+            ],
+            body: Expr::new(
+                ExprKind::Block(vec![
+                    Expr::new(
+                        ExprKind::Assign {
+                            target: Box::new(Expr::new(
+                                ExprKind::AssignTarget(AssignTarget::Ident("x".to_owned())),
+                                span.clone(),
+                                node_ids.next_id(),
+                            )),
+                            value: Box::new(Expr::new(
+                                ExprKind::Ident("y".to_owned()),
+                                span.clone(),
+                                node_ids.next_id(),
+                            )),
+                        },
+                        span.clone(),
+                        node_ids.next_id(),
+                    ),
+                    Expr::new(
+                        ExprKind::Assign {
+                            target: Box::new(Expr::new(
+                                ExprKind::AssignTarget(AssignTarget::Ident("y".to_owned())),
+                                span.clone(),
+                                node_ids.next_id(),
+                            )),
+                            value: Box::new(Expr::new(
+                                ExprKind::Ident("x".to_owned()),
+                                span.clone(),
+                                node_ids.next_id(),
+                            )),
+                        },
+                        span.clone(),
+                        node_ids.next_id(),
+                    ),
+                ]),
+                span.clone(),
+                node_ids.next_id(),
+            ),
+            span: span.clone(),
+        };
+
+        let program = Program {
+            functions: vec![],
+            types: vec![],
+            protocols: vec![],
+            macros: vec![swap_decl],
+            body: intrinsic_call(
+                "swap",
+                vec![
+                    ident("left", &span, &mut node_ids),
+                    ident("right", &span, &mut node_ids),
+                ],
+                &span,
+                &mut node_ids,
+            ),
+        };
+
+        let mut symbols = Resolver::new();
+        symbols.resolve_program(&program);
+        let hir = Hir::from_typed(TypedAst {
+            program,
+            symbols,
+            types: TypeEnv::new(),
+        });
+
+        let mut bag = DiagnosticBag::new();
+        let expanded = expand_macros(hir, &mut bag);
+
+        assert!(!bag.has_errors());
+
+        match &expanded.program.body.kind {
+            ExprKind::Block(exprs) => {
+                assert_eq!(exprs.len(), 2);
+
+                match &exprs[0].kind {
+                    ExprKind::Assign { target, value } => {
+                        assert!(matches!(
+                            &target.kind,
+                            ExprKind::AssignTarget(AssignTarget::Ident(name)) if name == "left"
+                        ));
+                        assert!(matches!(&value.kind, ExprKind::Ident(name) if name == "right"));
+                    }
+                    _ => panic!("expected first expression to be assignment"),
+                }
+
+                match &exprs[1].kind {
+                    ExprKind::Assign { target, value } => {
+                        assert!(matches!(
+                            &target.kind,
+                            ExprKind::AssignTarget(AssignTarget::Ident(name)) if name == "right"
+                        ));
+                        assert!(matches!(&value.kind, ExprKind::Ident(name) if name == "left"));
+                    }
+                    _ => panic!("expected second expression to be assignment"),
+                }
+            }
+            _ => panic!("expected expanded swap macro to produce a block"),
+        }
+    }
+
+    #[test]
+    fn placeholder_params_register_symbol_type_and_substitute_identifier() {
+        let source = Arc::new(SourceFile::new("repeat.hulk", "def repeat ..."));
+        let mut node_ids = NodeIdGen::new();
+        let span = Span::new(source, 0, 12);
+
+        let repeat_decl = MacroDecl {
+            name: "repeat".to_owned(),
+            params: vec![
+                MacroParam::Placeholder {
+                    name: "iter".to_owned(),
+                    type_ann: TypeAnn::Named("Number".to_owned()),
+                    span: span.clone(),
+                },
+                MacroParam::Regular {
+                    name: "n".to_owned(),
+                    type_ann: TypeAnn::Named("Number".to_owned()),
+                    span: span.clone(),
+                },
+                MacroParam::Body {
+                    name: "expr".to_owned(),
+                    type_ann: TypeAnn::Named("Object".to_owned()),
+                    span: span.clone(),
+                },
+            ],
+            body: Expr::new(
+                ExprKind::Block(vec![
+                    Expr::new(
+                        ExprKind::Ident("iter".to_owned()),
+                        span.clone(),
+                        node_ids.next_id(),
+                    ),
+                    Expr::new(
+                        ExprKind::Ident("n".to_owned()),
+                        span.clone(),
+                        node_ids.next_id(),
+                    ),
+                    Expr::new(
+                        ExprKind::Ident("expr".to_owned()),
+                        span.clone(),
+                        node_ids.next_id(),
+                    ),
+                ]),
+                span.clone(),
+                node_ids.next_id(),
+            ),
+            span: span.clone(),
+        };
+
+        let program = Program {
+            functions: vec![],
+            types: vec![],
+            protocols: vec![],
+            macros: vec![repeat_decl],
+            body: intrinsic_call(
+                "repeat",
+                vec![
+                    ident("iter", &span, &mut node_ids),
+                    number(10.0, &span, &mut node_ids),
+                    Expr::new(
+                        ExprKind::Block(vec![intrinsic_call(
+                            "print",
+                            vec![ident("iter", &span, &mut node_ids)],
+                            &span,
+                            &mut node_ids,
+                        )]),
+                        span.clone(),
+                        node_ids.next_id(),
+                    ),
+                ],
+                &span,
+                &mut node_ids,
+            ),
+        };
+
+        let mut symbols = Resolver::new();
+        symbols.resolve_program(&program);
+        let hir = Hir::from_typed(TypedAst {
+            program,
+            symbols,
+            types: TypeEnv::new(),
+        });
+
+        let mut bag = DiagnosticBag::new();
+        let expanded = expand_macros(hir, &mut bag);
+        assert!(!bag.has_errors(), "unexpected diagnostics: {:?}", bag.diagnostics());
+
+        let iter_symbol = expanded
+            .types
+            .symbol_type_symbols()
+            .find(|symbol| expanded.symbols.table().name_of(*symbol) == Some("iter"));
+
+        assert!(iter_symbol.is_some(), "expected placeholder symbol for 'iter'");
+        assert_eq!(expanded.symbol_type(iter_symbol.unwrap()), Some(TypeId::NUMBER));
+
+        let mut idents = Vec::new();
+        collect_identifiers(&expanded.program.body, &mut idents);
+        assert!(idents.iter().any(|name| name == "iter"));
+        assert!(idents.iter().any(|name| name == "print"));
+        assert!(!idents.iter().any(|name| name == "repeat"));
+    }
+
+    #[test]
+    fn macro_local_sanitization_does_not_capture_outer_total() {
+        let source = Arc::new(SourceFile::new("sanitize.hulk", "def with_total ..."));
+        let mut node_ids = NodeIdGen::new();
+        let span = Span::new(source, 0, 16);
+
+        let with_total_decl = MacroDecl {
+            name: "with_total".to_owned(),
+            params: vec![MacroParam::Regular {
+                name: "n".to_owned(),
+                type_ann: TypeAnn::Named("Number".to_owned()),
+                span: span.clone(),
+            }],
+            body: Expr::new(
+                ExprKind::Let {
+                    bindings: vec![Expr::new(
+                        ExprKind::LetBinding(LetBinding {
+                            name: "total".to_owned(),
+                            type_ann: None,
+                            value: Box::new(Expr::new(
+                                ExprKind::Ident("n".to_owned()),
+                                span.clone(),
+                                node_ids.next_id(),
+                            )),
+                            span: span.clone(),
+                        }),
+                        span.clone(),
+                        node_ids.next_id(),
+                    )],
+                    body: Box::new(Expr::new(
+                        ExprKind::Ident("total".to_owned()),
+                        span.clone(),
+                        node_ids.next_id(),
+                    )),
+                },
+                span.clone(),
+                node_ids.next_id(),
+            ),
+            span: span.clone(),
+        };
+
+        let outer_total_binding = Expr::new(
+            ExprKind::LetBinding(LetBinding {
+                name: "total".to_owned(),
+                type_ann: None,
+                value: Box::new(number(100.0, &span, &mut node_ids)),
+                span: span.clone(),
+            }),
+            span.clone(),
+            node_ids.next_id(),
+        );
+
+        let program = Program {
+            functions: vec![],
+            types: vec![],
+            protocols: vec![],
+            macros: vec![with_total_decl],
+            body: Expr::new(
+                ExprKind::Let {
+                    bindings: vec![outer_total_binding],
+                    body: Box::new(Expr::new(
+                        ExprKind::BinOp {
+                            op: BinOpKind::Add,
+                            left: Box::new(ident("total", &span, &mut node_ids)),
+                            right: Box::new(intrinsic_call(
+                                "with_total",
+                                vec![number(5.0, &span, &mut node_ids)],
+                                &span,
+                                &mut node_ids,
+                            )),
+                        },
+                        span.clone(),
+                        node_ids.next_id(),
+                    )),
+                },
+                span.clone(),
+                node_ids.next_id(),
+            ),
+        };
+
+        let mut symbols = Resolver::new();
+        symbols.resolve_program(&program);
+        let hir = Hir::from_typed(TypedAst {
+            program,
+            symbols,
+            types: TypeEnv::new(),
+        });
+
+        let mut bag = DiagnosticBag::new();
+        let expanded = expand_macros(hir, &mut bag);
+        assert!(!bag.has_errors(), "unexpected diagnostics: {:?}", bag.diagnostics());
+
+        let mut idents = Vec::new();
+        collect_identifiers(&expanded.program.body, &mut idents);
+
+        assert!(idents.iter().any(|name| name == "total"));
+        assert!(idents
+            .iter()
+            .any(|name| name.starts_with("__hulk_macro_with_total_0_total")));
+    }
+
+    #[test]
+    fn invalid_macro_arguments_emit_errors() {
+        let source = Arc::new(SourceFile::new("errors.hulk", "def swap ..."));
+        let mut node_ids = NodeIdGen::new();
+        let span = Span::new(source, 0, 10);
+
+        let swap_decl = MacroDecl {
+            name: "swap".to_owned(),
+            params: vec![
+                MacroParam::Symbolic {
+                    name: "x".to_owned(),
+                    type_ann: TypeAnn::Named("Object".to_owned()),
+                    span: span.clone(),
+                },
+                MacroParam::Symbolic {
+                    name: "y".to_owned(),
+                    type_ann: TypeAnn::Named("Object".to_owned()),
+                    span: span.clone(),
+                },
+            ],
+            body: ident("x", &span, &mut node_ids),
+            span: span.clone(),
+        };
+
+        let repeat_decl = MacroDecl {
+            name: "repeat".to_owned(),
+            params: vec![MacroParam::Placeholder {
+                name: "iter".to_owned(),
+                type_ann: TypeAnn::Named("Number".to_owned()),
+                span: span.clone(),
+            }],
+            body: ident("iter", &span, &mut node_ids),
+            span: span.clone(),
+        };
+
+        let program = Program {
+            functions: vec![],
+            types: vec![],
+            protocols: vec![],
+            macros: vec![swap_decl, repeat_decl],
+            body: Expr::new(
+                ExprKind::Block(vec![
+                    intrinsic_call(
+                        "swap",
+                        vec![ident("left", &span, &mut node_ids)],
+                        &span,
+                        &mut node_ids,
+                    ),
+                    intrinsic_call(
+                        "repeat",
+                        vec![number(10.0, &span, &mut node_ids)],
+                        &span,
+                        &mut node_ids,
+                    ),
+                ]),
+                span.clone(),
+                node_ids.next_id(),
+            ),
+        };
+
+        let mut symbols = Resolver::new();
+        symbols.resolve_program(&program);
+        let hir = Hir::from_typed(TypedAst {
+            program,
+            symbols,
+            types: TypeEnv::new(),
+        });
+
+        let mut bag = DiagnosticBag::new();
+        let expanded = expand_macros(hir, &mut bag);
+
+        assert!(bag.has_errors());
+        let diagnostics = bag.diagnostics();
+        assert!(diagnostics.iter().any(|diagnostic| {
+            diagnostic
+                .message
+                .contains("cantidad de argumentos invalida para macro 'swap'")
+        }));
+        assert!(diagnostics.iter().any(|diagnostic| {
+            diagnostic
+                .message
+                .contains("el placeholder 'iter' requiere un identificador")
+        }));
+
+        match expanded.program.body.kind {
+            ExprKind::Block(ref exprs) => {
+                assert_eq!(exprs.len(), 2);
+                assert!(matches!(exprs[0].kind, ExprKind::Call { .. }));
+                assert!(matches!(exprs[1].kind, ExprKind::Call { .. }));
+            }
+            _ => panic!("expected top-level block with fallback calls"),
+        }
+    }
+
     fn intrinsic_call(name: &str, args: Vec<Expr>, span: &Span, ids: &mut NodeIdGen) -> Expr {
         Expr::new(
             ExprKind::Call {

@@ -114,3 +114,27 @@ Esta representacion permite validar la semantica de matching en `hulk-macros` si
 
 - La simplificacion aritmetica neutra se aplico como post-proceso local.
   - Esto permite que `simplify((42+0)*1)` termine en `42` aun cuando el primer caso de suma genere una expresion equivalente pero no final.
+
+## Cierre 10.3 - Tests + casos edge
+
+### Cobertura agregada
+
+- Tests nuevos en `crates/hulk-macros/src/lib.rs` para los casos requeridos por 10.3:
+  - `swap(@x, @y)`: verificacion de sustitucion simbolica en objetivos de asignacion y valores.
+  - `repeat($iter, 10) { print(iter); }`: verificacion de placeholder con registro de `SymbolId` y tipo `Number` en `TypeEnv`.
+  - Sanitizacion con colision de nombres (`total` en contexto externo y dentro de macro): se verifica no captura accidental.
+  - Errores por parametros mal pasados: cantidad invalida de argumentos y placeholder no-identificador.
+
+### Casos edge encontrados
+
+- Si una macro falla por argumentos invalidos, la expansion retorna el nodo original (fallback) y reporta diagnostico.
+  - Esto evita destruir estructura del AST/HIR cuando hay errores recuperables.
+
+- Los parametros simbolicos (`@`) solo aceptan identificadores como argumento.
+  - Pasar literales o expresiones compuestas reporta error semantico en esta fase.
+
+- Los placeholders (`$`) requieren identificador y ademas registran tipo en `TypeEnv`.
+  - Si el tipo anotado no es builtin conocido en esta fase, cae conservadoramente en `Object`.
+
+- La sanitizacion local debe respetar scope externo.
+  - El prefijo `__hulk_macro_<macro>_<id>_` evita interferencia incluso cuando el nombre externo coincide exactamente.
