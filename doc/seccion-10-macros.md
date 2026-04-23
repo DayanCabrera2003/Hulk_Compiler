@@ -27,9 +27,10 @@
   - Alternativa considerada: busqueda lineal en `program.macros` por cada llamada.
   - Decision: `HashMap` por simplicidad y menor costo amortizado.
 
-- En placeholders (`$`), el `SymbolId` nuevo se reserva mediante `Resolver::define` en un scope temporal.
-  - Alternativa considerada: no crear simbolo en esta fase y postergarlo.
-  - Decision: crear el simbolo en 10.1 para cumplir la semantica pedida en el pipeline.
+- En placeholders (`$`), el `SymbolId` nuevo se reserva mediante `Resolver::allocate_symbol`, que inserta directamente en la `SymbolTable` sin usar el scope stack.
+  - Alternativa considerada: `push_scope` + `define` + `pop_scope` (usado originalmente).
+  - Problema detectado: al popear el scope, el binding quedaba huerfano y ninguna fase posterior podia resolver el identificador.
+  - Decision: usar `allocate_symbol` para crear el simbolo y `record_expr_symbol` para registrar `NodeId -> SymbolId` en `expr_symbols` despues de `refresh_node_ids`, garantizando que todos los `Ident` con el nombre del placeholder (incluidos los que vienen dentro de un `*body`) resuelvan al simbolo fresco.
 
 - Para anotaciones de tipo de placeholders, el mapeo inicial se hace a builtins (`Number`, `String`, `Boolean`, `Object`) y el resto cae en `Object`.
   - Esto evita introducir logica de resolucion de tipos extra en esta subsesion.
@@ -99,6 +100,12 @@ Debido a que el parser actual aun no construye nodos AST para la sintaxis `match
 
 Esta representacion permite validar la semantica de matching en `hulk-macros` sin adelantar cambios de parser fuera del alcance de 10.2.
 
+### Desviacion conocida respecto al pipeline
+
+El pipeline pide "evaluacion de `match(expr) { case ... }` en tiempo de compilacion" sobre nodos reales. La implementacion actual usa codificacion por intrinsics (`__hulk_match`, `__hulk_case_*`) y solo dispara cuando `ExprKind::Call { callee: Ident("__hulk_match"), ... }`. Consecuencia: el flujo real `source -> parser -> HIR -> expander` todavia no ejercita pattern matching, solo tests que construyen el AST a mano.
+
+**Deferral**: promover `ExprKind::Match { subject, cases, default }` al AST/HIR queda pendiente para una sesion posterior (candidato: durante o despues de 11 Desugaring). Cuando se agregue el nodo, el expander puede consumirlo directamente y los intrinsics quedarian como fallback o se eliminarian.
+
 ### Verificacion agregada
 
 - Test de ejemplo `simplify((42+0)*1)` construido en AST dentro de `crates/hulk-macros/src/lib.rs`.
@@ -138,3 +145,15 @@ Esta representacion permite validar la semantica de matching en `hulk-macros` si
 
 - La sanitizacion local debe respetar scope externo.
   - El prefijo `__hulk_macro_<macro>_<id>_` evita interferencia incluso cuando el nombre externo coincide exactamente.
+
+- Los placeholders (`$`) deliberadamente sombrean el scope del caller.
+  - Si el caller tiene un binding con el mismo nombre (`let iter = ... in repeat($iter, ...)`), el `SymbolId` alocado para el placeholder es distinto del caller y todos los `Ident` con ese nombre en el cuerpo expandido apuntan al simbolo nuevo via `expr_symbols`.
+  - Regresion cubierta por `placeholder_does_not_reuse_caller_scope_symbol`.
+
+- El parametro `*body` exige un argumento de tipo `ExprKind::Block`.
+  - Pasar un literal o expresion simple como argumento `*body` emite diagnostico `el parametro de cuerpo '<name>' requiere un bloque` y devuelve el nodo original como fallback.
+
+- `simplify_algebraic` ya no se ejecuta como post-proceso de toda expansion de macro.
+  - Originalmente corria dentro de `expand_macro_call` y reescribia silenciosamente `x + 0`, `x * 1`, etc. en cualquier macro.
+  - Ahora solo aplica dentro de la rama `default` del pattern matching, donde es el contrato esperado.
+  - Las reducciones algebraicas deben expresarse como cases de patron especificos ordenados antes que los generales.

@@ -28,8 +28,12 @@
   - Se considera enumerable cuando el `TypeKind` es `Protocol { name: "Enumerable" }` o `UserDefined { name: "Enumerable", .. }`.
   - En otro caso se aplica la rama iterable por defecto.
 
-- No se introdujeron cambios de semantica fuera de 11.1.
-  - No se implementaron transformaciones de lambdas/functores ni de generadores de vector (corresponden a 11.2 y 11.3).
+- Para 11.2 se eligio representar lambdas y wrappers como tipos sinteticos concretos con metodo `invoke`.
+  - Esto permite reutilizar el mismo mecanismo de llamada de metodos en middleend.
+  - Los nombres generados siguen el esquema `__LambdaN` y `__Wrapper<Function>N`.
+
+- El wrapping de funciones como funtores usa la firma de la funcion original cuando esta disponible en `Program.functions`.
+  - Si no hay firma accesible, se genera `invoke` sin parametros como fallback seguro.
 
 ## Gotchas
 
@@ -40,6 +44,10 @@
   - `(a @ " ") @ b`.
 
 - Como la inferencia de protocolos en etapas previas es parcial, el desugar mantiene fallback seguro a rama iterable cuando no hay evidencia de `Enumerable`.
+
+- El tipo functor aun no tiene una API publica completa en `TypeEnv` para sintetizar `TypeKind::Functor` en tests de integracion de desugar.
+  - En 11.2 la deteccion de llamada functor-style se apoya en simbolos (`Variable`/`Parameter`) y forma del AST.
+  - Cuando avance el typer, esta heuristica se puede refinar con tipos functor reales.
 
 ## Ejemplos de uso
 
@@ -79,4 +87,41 @@ se transforma a:
 
 ```text
 (a @ " ") @ b
+```
+
+## Extension 11.2 - Lambdas y functores
+
+### Que se implemento
+
+- `Lambda { params, return_type, body }` se transforma a:
+  - `type __LambdaN { invoke(params): return_type => body; }`
+  - reemplazo del nodo lambda por `new __LambdaN()`.
+- Funciones pasadas como valor (por ejemplo `apply(inc, 1)`) se envuelven en tipos sinteticos:
+  - `type __WrapperincN { invoke(__arg_0, ...) => inc(__arg_0, ...); }`
+  - reemplazo del argumento funcion por `new __WrapperincN()`.
+- Llamadas estilo functor `filter(x)` cuando `filter` es valor invocable se reescriben a `filter.invoke(x)`.
+- Registro de tipos sinteticos en `TypeEnv` con parent `Object`.
+
+### Tests agregados
+
+- `lowers_lambda_into_synthetic_type_and_new`
+- `wraps_function_arguments_with_synthetic_wrapper_type`
+- `rewrites_functor_style_call_to_invoke_method_call`
+
+### Ejemplo conceptual
+
+Entrada:
+
+```text
+let f = (x: Number) => x + 1 in f(10)
+```
+
+Forma desazucarada:
+
+```text
+type __Lambda0 {
+  invoke(x: Number): Number => x + 1;
+}
+
+let f = new __Lambda0() in f.invoke(10)
 ```

@@ -1,5 +1,9 @@
 use hulk_diagnostics::DiagnosticBag;
-use hulk_hir::{BinOpKind, Expr, ExprKind, Hir, NodeIdGen, Program, Span, TypeKind};
+use hulk_hir::{
+    BinOpKind, Expr, ExprKind, FunctionDecl, Hir, Member, MemberKind, NodeId, NodeIdGen, Param,
+    Program, Resolver, Span, SymbolKind, TypeAnn, TypeEnv, TypeId, TypeKind, TypeDecl,
+};
+use std::collections::HashMap;
 
 /// Desugars high-level HULK constructs into their lower-level equivalents.
 ///
@@ -11,14 +15,20 @@ pub fn desugar(hir: Hir, _bag: &mut DiagnosticBag) -> Hir {
     let Hir {
         mut program,
         symbols,
-        types,
+        mut types,
     } = hir;
 
+    let function_sigs = collect_function_signatures(&program.functions);
     let start_id = max_node_id_in_program(&program).saturating_add(1);
     let mut desugarer = Desugarer {
         node_ids: NodeIdGen::with_start(start_id),
         temp_counter: 0,
-        types: &types,
+        type_counter: 0,
+        resolver: &symbols,
+        types: &mut types,
+        function_sigs,
+        wrapper_cache: HashMap::new(),
+        generated_types: Vec::new(),
     };
 
     for function in &mut program.functions {
@@ -43,6 +53,7 @@ pub fn desugar(hir: Hir, _bag: &mut DiagnosticBag) -> Hir {
     }
 
     program.body = desugarer.desugar_expr(program.body);
+    program.types.extend(desugarer.generated_types);
 
     Hir {
         program,
@@ -54,7 +65,12 @@ pub fn desugar(hir: Hir, _bag: &mut DiagnosticBag) -> Hir {
 struct Desugarer<'a> {
     node_ids: NodeIdGen,
     temp_counter: u64,
-    types: &'a hulk_hir::TypeEnv,
+    type_counter: u64,
+    resolver: &'a Resolver,
+    types: &'a mut TypeEnv,
+    function_sigs: HashMap<String, FunctionSignature>,
+    wrapper_cache: HashMap<String, String>,
+    generated_types: Vec<TypeDecl>,
 }
 
 impl<'a> Desugarer<'a> {
@@ -95,14 +111,35 @@ impl<'a> Desugarer<'a> {
                     )
                 }
             }
-            ExprKind::Call { callee, args } => Expr::new(
-                ExprKind::Call {
-                    callee: Box::new(self.desugar_expr(*callee)),
-                    args: args.into_iter().map(|arg| self.desugar_expr(arg)).collect(),
-                },
-                span,
-                id,
-            ),
+            ExprKind::Call { callee, args } => {
+                let callee_expr = self.desugar_expr(*callee);
+                let mut lowered_args = Vec::with_capacity(args.len());
+                for arg in args {
+                    let lowered = self.desugar_expr(arg);
+                    lowered_args.push(self.wrap_function_argument_if_needed(lowered));
+                }
+
+                if self.should_rewrite_functor_call(&callee_expr) {
+                    Expr::new(
+                        ExprKind::MethodCall {
+                            receiver: Box::new(callee_expr),
+                            method: "invoke".to_owned(),
+                            args: lowered_args,
+                        },
+                        span,
+                        id,
+                    )
+                } else {
+                    Expr::new(
+                        ExprKind::Call {
+                            callee: Box::new(callee_expr),
+                            args: lowered_args,
+                        },
+                        span,
+                        id,
+                    )
+                }
+            }
             ExprKind::MethodCall {
                 receiver,
                 method,
@@ -252,16 +289,172 @@ impl<'a> Desugarer<'a> {
                 params,
                 return_type,
                 body,
-            } => Expr::new(
-                ExprKind::Lambda {
-                    params,
-                    return_type,
-                    body: Box::new(self.desugar_expr(*body)),
-                },
-                span,
-                id,
-            ),
+            } => {
+                let lowered_body = self.desugar_expr(*body);
+                self.lower_lambda(params, return_type, lowered_body, span, id)
+            }
         }
+    }
+
+    fn lower_lambda(
+        &mut self,
+        params: Vec<Param>,
+        return_type: Option<TypeAnn>,
+        body: Expr,
+        span: Span,
+        id: NodeId,
+    ) -> Expr {
+        let type_name = self.fresh_type_name("Lambda");
+        self.register_generated_type(type_name.clone(), params, return_type, body, span.clone());
+
+        Expr::new(
+            ExprKind::New {
+                type_ann: TypeAnn::Named(type_name),
+                args: Vec::new(),
+            },
+            span,
+            id,
+        )
+    }
+
+    fn wrap_function_argument_if_needed(&mut self, arg: Expr) -> Expr {
+        let Some(function_name) = self.function_symbol_name(&arg) else {
+            return arg;
+        };
+
+        let wrapper_name = if let Some(existing) = self.wrapper_cache.get(&function_name) {
+            existing.clone()
+        } else {
+            let created = self.create_function_wrapper(&function_name, arg.span.clone());
+            self.wrapper_cache
+                .insert(function_name.clone(), created.clone());
+            created
+        };
+
+        Expr::new(
+            ExprKind::New {
+                type_ann: TypeAnn::Named(wrapper_name),
+                args: Vec::new(),
+            },
+            arg.span,
+            arg.id,
+        )
+    }
+
+    fn create_function_wrapper(&mut self, function_name: &str, span: Span) -> String {
+        let wrapper_name = self.fresh_type_name(&format!("Wrapper{function_name}"));
+        let signature = self.function_sigs.get(function_name).cloned();
+
+        let (invoke_params, invoke_return_type, call_args) = if let Some(sig) = signature {
+            let params = sig
+                .params
+                .iter()
+                .enumerate()
+                .map(|(idx, param)| Param {
+                    name: format!("__arg_{idx}"),
+                    type_ann: param.type_ann.clone(),
+                    span: param.span.clone(),
+                })
+                .collect::<Vec<_>>();
+            let args = params
+                .iter()
+                .map(|param| {
+                    Expr::new(
+                        ExprKind::Ident(param.name.clone()),
+                        span.clone(),
+                        self.node_ids.next_id(),
+                    )
+                })
+                .collect::<Vec<_>>();
+
+            (params, sig.return_type.clone(), args)
+        } else {
+            (Vec::new(), None, Vec::new())
+        };
+
+        let invoke_body = Expr::new(
+            ExprKind::Call {
+                callee: Box::new(Expr::new(
+                    ExprKind::Ident(function_name.to_owned()),
+                    span.clone(),
+                    self.node_ids.next_id(),
+                )),
+                args: call_args,
+            },
+            span.clone(),
+            self.node_ids.next_id(),
+        );
+
+        self.register_generated_type(
+            wrapper_name.clone(),
+            invoke_params,
+            invoke_return_type,
+            invoke_body,
+            span,
+        );
+
+        wrapper_name
+    }
+
+    fn register_generated_type(
+        &mut self,
+        type_name: String,
+        params: Vec<Param>,
+        return_type: Option<TypeAnn>,
+        body: Expr,
+        span: Span,
+    ) {
+        let invoke_method = FunctionDecl {
+            name: "invoke".to_owned(),
+            params,
+            return_type,
+            body,
+            span: span.clone(),
+        };
+
+        let generated = TypeDecl {
+            name: type_name.clone(),
+            params: Vec::new(),
+            parent: None,
+            members: vec![Member {
+                kind: MemberKind::Method(invoke_method),
+                span: span.clone(),
+            }],
+            span,
+        };
+
+        self.types
+            .register_type(type_name, Some(TypeId::OBJECT));
+        self.generated_types.push(generated);
+    }
+
+    fn function_symbol_name(&self, expr: &Expr) -> Option<String> {
+        let ExprKind::Ident(name) = &expr.kind else {
+            return None;
+        };
+
+        let symbol_id = self.resolver.expr_symbol(expr.id)?;
+        let symbol = self.resolver.table().get(symbol_id)?;
+        match symbol.kind {
+            SymbolKind::Function => Some(name.clone()),
+            _ => None,
+        }
+    }
+
+    fn should_rewrite_functor_call(&self, callee: &Expr) -> bool {
+        let ExprKind::Ident(_) = &callee.kind else {
+            return false;
+        };
+
+        let Some(symbol_id) = self.resolver.expr_symbol(callee.id) else {
+            return false;
+        };
+
+        let Some(symbol) = self.resolver.table().get(symbol_id) else {
+            return false;
+        };
+
+        matches!(symbol.kind, SymbolKind::Variable | SymbolKind::Parameter)
     }
 
     fn desugar_concat_spaced(&mut self, left: Expr, right: Expr, span: Span, id: hulk_hir::NodeId) -> Expr {
@@ -370,6 +563,12 @@ impl<'a> Desugarer<'a> {
         format!("__{suffix}_{current}")
     }
 
+    fn fresh_type_name(&mut self, suffix: &str) -> String {
+        let current = self.type_counter;
+        self.type_counter = self.type_counter.saturating_add(1);
+        format!("__{suffix}{current}")
+    }
+
     fn ident(&mut self, name: &str, span: &Span) -> Expr {
         Expr::new(
             ExprKind::Ident(name.to_owned()),
@@ -419,6 +618,26 @@ impl<'a> Desugarer<'a> {
 enum ForStrategy {
     Iterable,
     Enumerable,
+}
+
+#[derive(Clone)]
+struct FunctionSignature {
+    params: Vec<Param>,
+    return_type: Option<TypeAnn>,
+}
+
+fn collect_function_signatures(functions: &[FunctionDecl]) -> HashMap<String, FunctionSignature> {
+    let mut signatures = HashMap::new();
+    for function in functions {
+        signatures.insert(
+            function.name.clone(),
+            FunctionSignature {
+                params: function.params.clone(),
+                return_type: function.return_type.clone(),
+            },
+        );
+    }
+    signatures
 }
 
 fn is_enumerable_kind(kind: &TypeKind) -> bool {
@@ -664,6 +883,239 @@ mod tests {
         assert_for_let_while_shape(&transformed.program.body, true);
     }
 
+    #[test]
+    fn lowers_lambda_into_synthetic_type_and_new() {
+        let source = Arc::new(SourceFile::new("desugar.hulk", "(x) => x + 1"));
+        let span = Span::new(source, 0, 12);
+        let mut ids = NodeIdGen::new();
+
+        let lambda = Expr::new(
+            ExprKind::Lambda {
+                params: vec![Param {
+                    name: "x".to_owned(),
+                    type_ann: Some(TypeAnn::Named("Number".to_owned())),
+                    span: span.clone(),
+                }],
+                return_type: Some(TypeAnn::Named("Number".to_owned())),
+                body: Box::new(Expr::new(
+                    ExprKind::BinOp {
+                        op: BinOpKind::Add,
+                        left: Box::new(Expr::new(
+                            ExprKind::Ident("x".to_owned()),
+                            span.clone(),
+                            ids.next_id(),
+                        )),
+                        right: Box::new(Expr::new(
+                            ExprKind::Number(1.0),
+                            span.clone(),
+                            ids.next_id(),
+                        )),
+                    },
+                    span.clone(),
+                    ids.next_id(),
+                )),
+            },
+            span.clone(),
+            ids.next_id(),
+        );
+
+        let hir = make_hir(lambda);
+        let mut bag = DiagnosticBag::new();
+        let transformed = desugar(hir, &mut bag);
+
+        let generated_name = match &transformed.program.body.kind {
+            ExprKind::New {
+                type_ann: TypeAnn::Named(name),
+                args,
+            } => {
+                assert!(args.is_empty());
+                name.clone()
+            }
+            _ => panic!("expected lambda to be replaced by new synthetic type"),
+        };
+
+        let generated = transformed
+            .program
+            .types
+            .iter()
+            .find(|decl| decl.name == generated_name)
+            .expect("expected generated lambda type declaration");
+
+        assert_eq!(generated.members.len(), 1);
+        match &generated.members[0].kind {
+            MemberKind::Method(method) => {
+                assert_eq!(method.name, "invoke");
+                assert_eq!(method.params.len(), 1);
+                assert_eq!(method.params[0].name, "x");
+                assert!(matches!(
+                    method.body.kind,
+                    ExprKind::BinOp {
+                        op: BinOpKind::Add,
+                        ..
+                    }
+                ));
+            }
+            _ => panic!("expected invoke method in synthetic lambda type"),
+        }
+    }
+
+    #[test]
+    fn wraps_function_arguments_with_synthetic_wrapper_type() {
+        let source = Arc::new(SourceFile::new("desugar.hulk", "apply(inc, 1);"));
+        let span = Span::new(source, 0, 13);
+        let mut ids = NodeIdGen::new();
+
+        let inc_function = FunctionDecl {
+            name: "inc".to_owned(),
+            params: vec![Param {
+                name: "x".to_owned(),
+                type_ann: Some(TypeAnn::Named("Number".to_owned())),
+                span: span.clone(),
+            }],
+            return_type: Some(TypeAnn::Named("Number".to_owned())),
+            body: Expr::new(ExprKind::Ident("x".to_owned()), span.clone(), ids.next_id()),
+            span: span.clone(),
+        };
+
+        let apply_call = Expr::new(
+            ExprKind::Call {
+                callee: Box::new(Expr::new(
+                    ExprKind::Ident("apply".to_owned()),
+                    span.clone(),
+                    ids.next_id(),
+                )),
+                args: vec![
+                    Expr::new(
+                        ExprKind::Ident("inc".to_owned()),
+                        span.clone(),
+                        ids.next_id(),
+                    ),
+                    Expr::new(ExprKind::Number(1.0), span.clone(), ids.next_id()),
+                ],
+            },
+            span.clone(),
+            ids.next_id(),
+        );
+
+        let program = Program {
+            functions: vec![inc_function],
+            types: vec![],
+            protocols: vec![],
+            macros: vec![],
+            body: apply_call,
+        };
+
+        let hir = make_hir_from_program(program);
+        let mut bag = DiagnosticBag::new();
+        let transformed = desugar(hir, &mut bag);
+
+        let wrapper_name = match &transformed.program.body.kind {
+            ExprKind::Call { args, .. } => match &args[0].kind {
+                ExprKind::New {
+                    type_ann: TypeAnn::Named(name),
+                    args,
+                } => {
+                    assert!(args.is_empty());
+                    name.clone()
+                }
+                _ => panic!("expected first argument to be wrapper constructor"),
+            },
+            _ => panic!("expected call to remain call after wrapper injection"),
+        };
+
+        let wrapper = transformed
+            .program
+            .types
+            .iter()
+            .find(|decl| decl.name == wrapper_name)
+            .expect("expected generated wrapper type");
+
+        match &wrapper.members[0].kind {
+            MemberKind::Method(method) => {
+                assert_eq!(method.name, "invoke");
+                assert_eq!(method.params.len(), 1);
+                assert_eq!(method.params[0].name, "__arg_0");
+                assert!(matches!(
+                    method.body.kind,
+                    ExprKind::Call { ref callee, .. }
+                        if matches!(callee.kind, ExprKind::Ident(ref name) if name == "inc")
+                ));
+            }
+            _ => panic!("expected wrapper to expose invoke method"),
+        }
+    }
+
+    #[test]
+    fn rewrites_functor_style_call_to_invoke_method_call() {
+        let source = Arc::new(SourceFile::new("desugar.hulk", "filter(x);"));
+        let span = Span::new(source, 0, 10);
+        let mut ids = NodeIdGen::new();
+
+        let apply_functor = FunctionDecl {
+            name: "apply_functor".to_owned(),
+            params: vec![
+                Param {
+                    name: "filter".to_owned(),
+                    type_ann: Some(TypeAnn::Named("Object".to_owned())),
+                    span: span.clone(),
+                },
+                Param {
+                    name: "x".to_owned(),
+                    type_ann: Some(TypeAnn::Named("Number".to_owned())),
+                    span: span.clone(),
+                },
+            ],
+            return_type: Some(TypeAnn::Named("Object".to_owned())),
+            body: Expr::new(
+                ExprKind::Call {
+                    callee: Box::new(Expr::new(
+                        ExprKind::Ident("filter".to_owned()),
+                        span.clone(),
+                        ids.next_id(),
+                    )),
+                    args: vec![Expr::new(
+                        ExprKind::Ident("x".to_owned()),
+                        span.clone(),
+                        ids.next_id(),
+                    )],
+                },
+                span.clone(),
+                ids.next_id(),
+            ),
+            span: span.clone(),
+        };
+
+        let program = Program {
+            functions: vec![apply_functor],
+            types: vec![],
+            protocols: vec![],
+            macros: vec![],
+            body: Expr::new(ExprKind::Number(0.0), span.clone(), ids.next_id()),
+        };
+
+        let hir = make_hir_from_program(program);
+        let mut bag = DiagnosticBag::new();
+        let transformed = desugar(hir, &mut bag);
+
+        let fun = transformed
+            .program
+            .functions
+            .iter()
+            .find(|f| f.name == "apply_functor")
+            .expect("expected apply_functor function");
+
+        assert!(matches!(
+            fun.body.kind,
+            ExprKind::MethodCall {
+                ref method,
+                ref receiver,
+                ..
+            }
+                if method == "invoke"
+                    && matches!(receiver.kind, ExprKind::Ident(ref name) if name == "filter")
+        ));
+    }
+
     fn assert_for_let_while_shape(expr: &Expr, expect_enumerable: bool) {
         let ExprKind::Let { bindings, body } = &expr.kind else {
             panic!("expected outer let");
@@ -769,6 +1221,11 @@ mod tests {
             macros: vec![],
             body,
         };
+
+        make_hir_from_program(program)
+    }
+
+    fn make_hir_from_program(program: Program) -> Hir {
 
         let mut symbols = hulk_hir::Resolver::new();
         symbols.resolve_program(&program);

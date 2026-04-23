@@ -314,9 +314,13 @@ impl<'a> MacroExpander<'a> {
         }
 
         let mut substitutions = HashMap::new();
+        let mut placeholder_bindings: HashMap<String, SymbolId> = HashMap::new();
         for (param, arg) in macro_decl.params.iter().zip(args) {
             match self.build_substitution(param, arg) {
                 Some(substitution) => {
+                    if let Substitution::Placeholder { ident, symbol } = &substitution {
+                        placeholder_bindings.insert(ident.clone(), *symbol);
+                    }
                     substitutions.insert(param.name().to_owned(), substitution);
                 }
                 None => {
@@ -332,15 +336,25 @@ impl<'a> MacroExpander<'a> {
         sanitize_locals(&mut expanded, macro_name, expansion_id);
         substitute_params(&mut expanded, &substitutions, self.bag);
         self.expand_expr(&mut expanded);
-        simplify_algebraic(&mut expanded);
         refresh_node_ids(&mut expanded, &mut self.node_ids);
+        self.record_placeholder_bindings(&expanded, &placeholder_bindings);
         expanded.span = call_span;
         expanded
     }
 
     fn build_substitution(&mut self, param: &MacroParam, arg: &Expr) -> Option<Substitution> {
         match param {
-            MacroParam::Regular { .. } | MacroParam::Body { .. } => {
+            MacroParam::Regular { .. } => Some(Substitution::Expr(arg.clone())),
+            MacroParam::Body { name, .. } => {
+                if !matches!(arg.kind, ExprKind::Block(_)) {
+                    self.bag.push(
+                        Diagnostic::error(format!(
+                            "el parametro de cuerpo '{name}' requiere un bloque"
+                        ))
+                        .with_label(arg.span.clone(), "se esperaba una expresion de bloque"),
+                    );
+                    return None;
+                }
                 Some(Substitution::Expr(arg.clone()))
             }
             MacroParam::Symbolic { name, .. } => {
@@ -380,12 +394,19 @@ impl<'a> MacroExpander<'a> {
     }
 
     fn allocate_placeholder_symbol(&mut self, name: &str, span: Span) -> SymbolId {
-        self.symbols.push_scope();
-        let symbol_id = self
-            .symbols
-            .define(name.to_owned(), SymbolKind::Variable, span);
-        let _ = self.symbols.pop_scope();
-        symbol_id
+        self.symbols
+            .allocate_symbol(name.to_owned(), SymbolKind::Variable, span)
+    }
+
+    fn record_placeholder_bindings(
+        &mut self,
+        expr: &Expr,
+        placeholders: &HashMap<String, SymbolId>,
+    ) {
+        if placeholders.is_empty() {
+            return;
+        }
+        bind_placeholder_idents(expr, placeholders, self.symbols);
     }
 }
 
@@ -1119,6 +1140,118 @@ fn substitute_params(
     }
 }
 
+fn bind_placeholder_idents(
+    expr: &Expr,
+    placeholders: &HashMap<String, SymbolId>,
+    resolver: &mut Resolver,
+) {
+    if let ExprKind::Ident(name) = &expr.kind {
+        if let Some(&symbol) = placeholders.get(name) {
+            resolver.record_expr_symbol(expr.id, symbol);
+        }
+    }
+
+    match &expr.kind {
+        ExprKind::Number(_)
+        | ExprKind::StringLit(_)
+        | ExprKind::Bool(_)
+        | ExprKind::Ident(_)
+        | ExprKind::Self_
+        | ExprKind::Base => {}
+        ExprKind::BinOp { left, right, .. } => {
+            bind_placeholder_idents(left, placeholders, resolver);
+            bind_placeholder_idents(right, placeholders, resolver);
+        }
+        ExprKind::UnaryOp { expr, .. } => bind_placeholder_idents(expr, placeholders, resolver),
+        ExprKind::Call { callee, args } => {
+            bind_placeholder_idents(callee, placeholders, resolver);
+            for arg in args {
+                bind_placeholder_idents(arg, placeholders, resolver);
+            }
+        }
+        ExprKind::MethodCall { receiver, args, .. } => {
+            bind_placeholder_idents(receiver, placeholders, resolver);
+            for arg in args {
+                bind_placeholder_idents(arg, placeholders, resolver);
+            }
+        }
+        ExprKind::FieldAccess { receiver, .. } => {
+            bind_placeholder_idents(receiver, placeholders, resolver)
+        }
+        ExprKind::Index { target, index } => {
+            bind_placeholder_idents(target, placeholders, resolver);
+            bind_placeholder_idents(index, placeholders, resolver);
+        }
+        ExprKind::Block(exprs) | ExprKind::VecLiteral(exprs) => {
+            for item in exprs {
+                bind_placeholder_idents(item, placeholders, resolver);
+            }
+        }
+        ExprKind::VecGenerator {
+            element, iterable, ..
+        } => {
+            bind_placeholder_idents(element, placeholders, resolver);
+            bind_placeholder_idents(iterable, placeholders, resolver);
+        }
+        ExprKind::Let { bindings, body } => {
+            for binding in bindings {
+                bind_placeholder_idents(binding, placeholders, resolver);
+            }
+            bind_placeholder_idents(body, placeholders, resolver);
+        }
+        ExprKind::Assign { target, value } => {
+            bind_placeholder_idents(target, placeholders, resolver);
+            bind_placeholder_idents(value, placeholders, resolver);
+        }
+        ExprKind::AssignTarget(target) => match target {
+            AssignTarget::Ident(_) => {}
+            AssignTarget::Field { receiver, .. } => {
+                bind_placeholder_idents(receiver, placeholders, resolver)
+            }
+            AssignTarget::Index { target, index } => {
+                bind_placeholder_idents(target, placeholders, resolver);
+                bind_placeholder_idents(index, placeholders, resolver);
+            }
+        },
+        ExprKind::LetBinding(binding) => {
+            bind_placeholder_idents(&binding.value, placeholders, resolver)
+        }
+        ExprKind::If {
+            condition,
+            then_branch,
+            elif_branches,
+            else_branch,
+        } => {
+            bind_placeholder_idents(condition, placeholders, resolver);
+            bind_placeholder_idents(then_branch, placeholders, resolver);
+            for (elif_cond, elif_body) in elif_branches {
+                bind_placeholder_idents(elif_cond, placeholders, resolver);
+                bind_placeholder_idents(elif_body, placeholders, resolver);
+            }
+            if let Some(else_expr) = else_branch {
+                bind_placeholder_idents(else_expr, placeholders, resolver);
+            }
+        }
+        ExprKind::While { condition, body } => {
+            bind_placeholder_idents(condition, placeholders, resolver);
+            bind_placeholder_idents(body, placeholders, resolver);
+        }
+        ExprKind::For { iterable, body, .. } => {
+            bind_placeholder_idents(iterable, placeholders, resolver);
+            bind_placeholder_idents(body, placeholders, resolver);
+        }
+        ExprKind::New { args, .. } => {
+            for arg in args {
+                bind_placeholder_idents(arg, placeholders, resolver);
+            }
+        }
+        ExprKind::Is { expr, .. } | ExprKind::As { expr, .. } => {
+            bind_placeholder_idents(expr, placeholders, resolver)
+        }
+        ExprKind::Lambda { body, .. } => bind_placeholder_idents(body, placeholders, resolver),
+    }
+}
+
 fn refresh_node_ids(expr: &mut Expr, node_ids: &mut NodeIdGen) {
     expr.id = node_ids.next_id();
 
@@ -1582,41 +1715,13 @@ mod tests {
             span: span.clone(),
         };
 
+        // Pattern cases are ordered specific-first: `x + 0` and `x * 1` must
+        // match before the generic `x1 + x2` case so that the concrete
+        // reductions win without relying on algebraic post-processing.
         let simplify_body = intrinsic_call(
             MATCH_INTRINSIC,
             vec![
                 ident("expr", &span, &mut node_ids),
-                intrinsic_call(
-                    CASE_BINOP_INTRINSIC,
-                    vec![
-                        string_lit("+", &span, &mut node_ids),
-                        ident("x1", &span, &mut node_ids),
-                        string_lit("Number", &span, &mut node_ids),
-                        ident("x2", &span, &mut node_ids),
-                        string_lit("Number", &span, &mut node_ids),
-                        Expr::new(
-                            ExprKind::BinOp {
-                                op: BinOpKind::Add,
-                                left: Box::new(intrinsic_call(
-                                    "simplify",
-                                    vec![ident("x1", &span, &mut node_ids)],
-                                    &span,
-                                    &mut node_ids,
-                                )),
-                                right: Box::new(intrinsic_call(
-                                    "simplify",
-                                    vec![ident("x2", &span, &mut node_ids)],
-                                    &span,
-                                    &mut node_ids,
-                                )),
-                            },
-                            span.clone(),
-                            node_ids.next_id(),
-                        ),
-                    ],
-                    &span,
-                    &mut node_ids,
-                ),
                 intrinsic_call(
                     CASE_BINOP_RIGHT_LITERAL_INTRINSIC,
                     vec![
@@ -1646,6 +1751,37 @@ mod tests {
                             vec![ident("x1", &span, &mut node_ids)],
                             &span,
                             &mut node_ids,
+                        ),
+                    ],
+                    &span,
+                    &mut node_ids,
+                ),
+                intrinsic_call(
+                    CASE_BINOP_INTRINSIC,
+                    vec![
+                        string_lit("+", &span, &mut node_ids),
+                        ident("x1", &span, &mut node_ids),
+                        string_lit("Number", &span, &mut node_ids),
+                        ident("x2", &span, &mut node_ids),
+                        string_lit("Number", &span, &mut node_ids),
+                        Expr::new(
+                            ExprKind::BinOp {
+                                op: BinOpKind::Add,
+                                left: Box::new(intrinsic_call(
+                                    "simplify",
+                                    vec![ident("x1", &span, &mut node_ids)],
+                                    &span,
+                                    &mut node_ids,
+                                )),
+                                right: Box::new(intrinsic_call(
+                                    "simplify",
+                                    vec![ident("x2", &span, &mut node_ids)],
+                                    &span,
+                                    &mut node_ids,
+                                )),
+                            },
+                            span.clone(),
+                            node_ids.next_id(),
                         ),
                     ],
                     &span,
@@ -2159,6 +2295,99 @@ mod tests {
         )
     }
 
+    fn collect_ident_node_ids(expr: &Expr, target: &str, out: &mut Vec<hulk_hir::NodeId>) {
+        match &expr.kind {
+            ExprKind::Ident(name) => {
+                if name == target {
+                    out.push(expr.id);
+                }
+            }
+            ExprKind::Number(_)
+            | ExprKind::StringLit(_)
+            | ExprKind::Bool(_)
+            | ExprKind::Self_
+            | ExprKind::Base => {}
+            ExprKind::BinOp { left, right, .. } => {
+                collect_ident_node_ids(left, target, out);
+                collect_ident_node_ids(right, target, out);
+            }
+            ExprKind::UnaryOp { expr, .. } => collect_ident_node_ids(expr, target, out),
+            ExprKind::Call { callee, args } => {
+                collect_ident_node_ids(callee, target, out);
+                for arg in args {
+                    collect_ident_node_ids(arg, target, out);
+                }
+            }
+            ExprKind::MethodCall { receiver, args, .. } => {
+                collect_ident_node_ids(receiver, target, out);
+                for arg in args {
+                    collect_ident_node_ids(arg, target, out);
+                }
+            }
+            ExprKind::FieldAccess { receiver, .. } => collect_ident_node_ids(receiver, target, out),
+            ExprKind::Index { target: t, index } => {
+                collect_ident_node_ids(t, target, out);
+                collect_ident_node_ids(index, target, out);
+            }
+            ExprKind::Block(exprs) | ExprKind::VecLiteral(exprs) => {
+                for item in exprs {
+                    collect_ident_node_ids(item, target, out);
+                }
+            }
+            ExprKind::VecGenerator {
+                element, iterable, ..
+            } => {
+                collect_ident_node_ids(element, target, out);
+                collect_ident_node_ids(iterable, target, out);
+            }
+            ExprKind::Let { bindings, body } => {
+                for binding in bindings {
+                    collect_ident_node_ids(binding, target, out);
+                }
+                collect_ident_node_ids(body, target, out);
+            }
+            ExprKind::Assign { target: t, value } => {
+                collect_ident_node_ids(t, target, out);
+                collect_ident_node_ids(value, target, out);
+            }
+            ExprKind::AssignTarget(_) => {}
+            ExprKind::LetBinding(binding) => collect_ident_node_ids(&binding.value, target, out),
+            ExprKind::If {
+                condition,
+                then_branch,
+                elif_branches,
+                else_branch,
+            } => {
+                collect_ident_node_ids(condition, target, out);
+                collect_ident_node_ids(then_branch, target, out);
+                for (elif_cond, elif_body) in elif_branches {
+                    collect_ident_node_ids(elif_cond, target, out);
+                    collect_ident_node_ids(elif_body, target, out);
+                }
+                if let Some(else_expr) = else_branch {
+                    collect_ident_node_ids(else_expr, target, out);
+                }
+            }
+            ExprKind::While { condition, body } => {
+                collect_ident_node_ids(condition, target, out);
+                collect_ident_node_ids(body, target, out);
+            }
+            ExprKind::For { iterable, body, .. } => {
+                collect_ident_node_ids(iterable, target, out);
+                collect_ident_node_ids(body, target, out);
+            }
+            ExprKind::New { args, .. } => {
+                for arg in args {
+                    collect_ident_node_ids(arg, target, out);
+                }
+            }
+            ExprKind::Is { expr, .. } | ExprKind::As { expr, .. } => {
+                collect_ident_node_ids(expr, target, out);
+            }
+            ExprKind::Lambda { body, .. } => collect_ident_node_ids(body, target, out),
+        }
+    }
+
     fn collect_identifiers(expr: &Expr, out: &mut Vec<String>) {
         match &expr.kind {
             ExprKind::Ident(name) => out.push(name.clone()),
@@ -2252,6 +2481,313 @@ mod tests {
                 collect_identifiers(expr, out);
             }
             ExprKind::Lambda { body, .. } => collect_identifiers(body, out),
+        }
+    }
+
+    #[test]
+    fn placeholder_idents_resolve_to_allocated_symbol_after_expansion() {
+        // Regression: a `$placeholder` parameter used to create a SymbolId
+        // inside a temporary scope that was popped immediately, leaving the
+        // symbol orphaned. After expansion, every Ident in the expanded
+        // program whose name matches the placeholder must resolve (via
+        // expr_symbols) to the freshly allocated SymbolId.
+        let source = Arc::new(SourceFile::new("repeat.hulk", "def repeat ..."));
+        let mut node_ids = NodeIdGen::new();
+        let span = Span::new(source, 0, 12);
+
+        let repeat_decl = MacroDecl {
+            name: "repeat".to_owned(),
+            params: vec![
+                MacroParam::Placeholder {
+                    name: "iter".to_owned(),
+                    type_ann: TypeAnn::Named("Number".to_owned()),
+                    span: span.clone(),
+                },
+                MacroParam::Body {
+                    name: "expr".to_owned(),
+                    type_ann: TypeAnn::Named("Object".to_owned()),
+                    span: span.clone(),
+                },
+            ],
+            body: Expr::new(
+                ExprKind::Block(vec![Expr::new(
+                    ExprKind::Ident("iter".to_owned()),
+                    span.clone(),
+                    node_ids.next_id(),
+                )]),
+                span.clone(),
+                node_ids.next_id(),
+            ),
+            span: span.clone(),
+        };
+
+        let program = Program {
+            functions: vec![],
+            types: vec![],
+            protocols: vec![],
+            macros: vec![repeat_decl],
+            body: intrinsic_call(
+                "repeat",
+                vec![
+                    ident("iter", &span, &mut node_ids),
+                    Expr::new(
+                        ExprKind::Block(vec![ident("iter", &span, &mut node_ids)]),
+                        span.clone(),
+                        node_ids.next_id(),
+                    ),
+                ],
+                &span,
+                &mut node_ids,
+            ),
+        };
+
+        let mut symbols = Resolver::new();
+        symbols.resolve_program(&program);
+        let hir = Hir::from_typed(TypedAst {
+            program,
+            symbols,
+            types: TypeEnv::new(),
+        });
+
+        let mut bag = DiagnosticBag::new();
+        let expanded = expand_macros(hir, &mut bag);
+        assert!(!bag.has_errors(), "unexpected diagnostics: {:?}", bag.diagnostics());
+
+        let mut iter_ident_ids = Vec::new();
+        collect_ident_node_ids(&expanded.program.body, "iter", &mut iter_ident_ids);
+        assert!(
+            !iter_ident_ids.is_empty(),
+            "expected at least one `iter` ident in expanded body"
+        );
+
+        let first_symbol = expanded
+            .symbols
+            .expr_symbol(iter_ident_ids[0])
+            .expect("placeholder ident must resolve to a symbol");
+        assert_eq!(
+            expanded.symbol_type(first_symbol),
+            Some(TypeId::NUMBER),
+            "placeholder symbol must carry the declared type"
+        );
+
+        for node_id in &iter_ident_ids {
+            assert_eq!(
+                expanded.symbols.expr_symbol(*node_id),
+                Some(first_symbol),
+                "all `iter` idents should share the freshly allocated SymbolId"
+            );
+        }
+    }
+
+    #[test]
+    fn placeholder_does_not_reuse_caller_scope_symbol() {
+        // Regression: when the caller already has a binding sharing the
+        // placeholder's identifier, the expansion must introduce a DIFFERENT
+        // SymbolId for the placeholder. Caller references to the outer name
+        // remain bound to the caller's symbol.
+        let source = Arc::new(SourceFile::new("shadow.hulk", "def repeat ..."));
+        let mut node_ids = NodeIdGen::new();
+        let span = Span::new(source, 0, 12);
+
+        let repeat_decl = MacroDecl {
+            name: "repeat".to_owned(),
+            params: vec![MacroParam::Placeholder {
+                name: "iter".to_owned(),
+                type_ann: TypeAnn::Named("Number".to_owned()),
+                span: span.clone(),
+            }],
+            body: ident("iter", &span, &mut node_ids),
+            span: span.clone(),
+        };
+
+        let outer_ident = ident("iter", &span, &mut node_ids);
+        let outer_ident_id = outer_ident.id;
+        let call = intrinsic_call(
+            "repeat",
+            vec![ident("iter", &span, &mut node_ids)],
+            &span,
+            &mut node_ids,
+        );
+
+        let program = Program {
+            functions: vec![],
+            types: vec![],
+            protocols: vec![],
+            macros: vec![repeat_decl],
+            body: Expr::new(
+                ExprKind::Let {
+                    bindings: vec![Expr::new(
+                        ExprKind::LetBinding(LetBinding {
+                            name: "iter".to_owned(),
+                            type_ann: None,
+                            value: Box::new(number(1.0, &span, &mut node_ids)),
+                            span: span.clone(),
+                        }),
+                        span.clone(),
+                        node_ids.next_id(),
+                    )],
+                    body: Box::new(Expr::new(
+                        ExprKind::Block(vec![outer_ident, call]),
+                        span.clone(),
+                        node_ids.next_id(),
+                    )),
+                },
+                span.clone(),
+                node_ids.next_id(),
+            ),
+        };
+
+        let mut symbols = Resolver::new();
+        symbols.resolve_program(&program);
+        let caller_symbol = symbols
+            .expr_symbol(outer_ident_id)
+            .expect("outer `iter` should resolve to the caller's let binding");
+
+        let hir = Hir::from_typed(TypedAst {
+            program,
+            symbols,
+            types: TypeEnv::new(),
+        });
+
+        let mut bag = DiagnosticBag::new();
+        let expanded = expand_macros(hir, &mut bag);
+        assert!(!bag.has_errors());
+
+        let caller_symbol_after = expanded
+            .symbols
+            .expr_symbol(outer_ident_id)
+            .expect("caller ident mapping must survive expansion");
+        assert_eq!(
+            caller_symbol_after, caller_symbol,
+            "caller `iter` must keep its original SymbolId"
+        );
+
+        let mut expanded_iter_ids = Vec::new();
+        collect_ident_node_ids(&expanded.program.body, "iter", &mut expanded_iter_ids);
+        let placeholder_symbols: Vec<SymbolId> = expanded_iter_ids
+            .iter()
+            .filter(|id| **id != outer_ident_id)
+            .filter_map(|id| expanded.symbols.expr_symbol(*id))
+            .collect();
+        assert!(!placeholder_symbols.is_empty());
+        for symbol in placeholder_symbols {
+            assert_ne!(
+                symbol, caller_symbol,
+                "placeholder SymbolId must differ from caller's"
+            );
+        }
+    }
+
+    #[test]
+    fn body_param_requires_block_expression() {
+        // Regression: a `*body` parameter used to accept any expression
+        // silently. The spec says body parameters receive a block so the
+        // expander must reject non-block arguments with a diagnostic.
+        let source = Arc::new(SourceFile::new("block.hulk", "def run ..."));
+        let mut node_ids = NodeIdGen::new();
+        let span = Span::new(source, 0, 10);
+
+        let run_decl = MacroDecl {
+            name: "run".to_owned(),
+            params: vec![MacroParam::Body {
+                name: "expr".to_owned(),
+                type_ann: TypeAnn::Named("Object".to_owned()),
+                span: span.clone(),
+            }],
+            body: ident("expr", &span, &mut node_ids),
+            span: span.clone(),
+        };
+
+        let program = Program {
+            functions: vec![],
+            types: vec![],
+            protocols: vec![],
+            macros: vec![run_decl],
+            body: intrinsic_call(
+                "run",
+                vec![number(7.0, &span, &mut node_ids)],
+                &span,
+                &mut node_ids,
+            ),
+        };
+
+        let mut symbols = Resolver::new();
+        symbols.resolve_program(&program);
+        let hir = Hir::from_typed(TypedAst {
+            program,
+            symbols,
+            types: TypeEnv::new(),
+        });
+
+        let mut bag = DiagnosticBag::new();
+        let _expanded = expand_macros(hir, &mut bag);
+
+        assert!(bag.has_errors(), "expected diagnostic for non-block body argument");
+        assert!(bag.diagnostics().iter().any(|diag| diag
+            .message
+            .contains("el parametro de cuerpo 'expr' requiere un bloque")));
+    }
+
+    #[test]
+    fn expansion_preserves_algebraic_structure_outside_pattern_matching() {
+        // Regression: `simplify_algebraic` used to leak into every macro
+        // expansion and silently rewrite `x + 0` to `x`. A macro that is not
+        // doing pattern matching must produce the body literally.
+        let source = Arc::new(SourceFile::new("identity.hulk", "def id ..."));
+        let mut node_ids = NodeIdGen::new();
+        let span = Span::new(source, 0, 6);
+
+        let id_decl = MacroDecl {
+            name: "id".to_owned(),
+            params: vec![MacroParam::Regular {
+                name: "x".to_owned(),
+                type_ann: TypeAnn::Named("Number".to_owned()),
+                span: span.clone(),
+            }],
+            body: Expr::new(
+                ExprKind::BinOp {
+                    op: BinOpKind::Add,
+                    left: Box::new(ident("x", &span, &mut node_ids)),
+                    right: Box::new(number(0.0, &span, &mut node_ids)),
+                },
+                span.clone(),
+                node_ids.next_id(),
+            ),
+            span: span.clone(),
+        };
+
+        let program = Program {
+            functions: vec![],
+            types: vec![],
+            protocols: vec![],
+            macros: vec![id_decl],
+            body: intrinsic_call(
+                "id",
+                vec![number(42.0, &span, &mut node_ids)],
+                &span,
+                &mut node_ids,
+            ),
+        };
+
+        let mut symbols = Resolver::new();
+        symbols.resolve_program(&program);
+        let hir = Hir::from_typed(TypedAst {
+            program,
+            symbols,
+            types: TypeEnv::new(),
+        });
+
+        let mut bag = DiagnosticBag::new();
+        let expanded = expand_macros(hir, &mut bag);
+        assert!(!bag.has_errors());
+
+        match &expanded.program.body.kind {
+            ExprKind::BinOp { op, left, right } => {
+                assert_eq!(*op, BinOpKind::Add);
+                assert!(matches!(&left.kind, ExprKind::Number(v) if (*v - 42.0).abs() < f64::EPSILON));
+                assert!(matches!(&right.kind, ExprKind::Number(v) if v.abs() < f64::EPSILON));
+            }
+            other => panic!("expected `42 + 0` to be preserved, got {other:?}"),
         }
     }
 }

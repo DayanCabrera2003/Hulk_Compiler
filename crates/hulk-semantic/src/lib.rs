@@ -173,6 +173,25 @@ impl Resolver {
         self.expr_symbols.contains_key(&node_id)
     }
 
+    /// Binds an expression node to a resolved symbol. Later passes (e.g. the
+    /// macro expander) use this to record placeholder symbols that were
+    /// introduced outside the normal scope-walking phase.
+    pub fn record_expr_symbol(&mut self, node_id: NodeId, symbol_id: SymbolId) {
+        self.expr_symbols.insert(node_id, symbol_id);
+    }
+
+    /// Allocates a fresh symbol in the global symbol table, bypassing scope
+    /// insertion and redefinition checks. Intended for synthetic bindings
+    /// (macro placeholders) that must not clash with user-declared names.
+    pub fn allocate_symbol(
+        &mut self,
+        name: impl Into<String>,
+        symbol_kind: SymbolKind,
+        span: Span,
+    ) -> SymbolId {
+        self.table.add(name, symbol_kind, span)
+    }
+
     /// Resolves all names in a program and records expression references.
     pub fn resolve_program(&mut self, program: &Program) {
         self.expr_symbols.clear();
