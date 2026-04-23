@@ -7,6 +7,13 @@ use hulk_hir::{
     Resolver, SymbolId, SymbolKind, TypeAnn, TypeEnv, TypeId,
 };
 
+const MATCH_INTRINSIC: &str = "__hulk_match";
+const CASE_LITERAL_INTRINSIC: &str = "__hulk_case_lit";
+const CASE_VARIABLE_INTRINSIC: &str = "__hulk_case_var";
+const CASE_BINOP_INTRINSIC: &str = "__hulk_case_binop";
+const CASE_BINOP_RIGHT_LITERAL_INTRINSIC: &str = "__hulk_case_binop_right_lit";
+const DEFAULT_CASE_INTRINSIC: &str = "__hulk_default";
+
 /// Expands macro invocations in a HIR program.
 ///
 /// This pass applies three steps for each macro call:
@@ -92,6 +99,11 @@ impl<'a> MacroExpander<'a> {
     }
 
     fn expand_expr(&mut self, expr: &mut Expr) {
+        if let Some(evaluated) = self.evaluate_pattern_match(expr) {
+            *expr = evaluated;
+            return;
+        }
+
         self.expand_expr_children(expr);
 
         let macro_call = match &expr.kind {
@@ -111,6 +123,72 @@ impl<'a> MacroExpander<'a> {
             let expanded = self.expand_macro_call(&macro_name, &args, call_span, fallback);
             *expr = expanded;
         }
+    }
+
+    fn evaluate_pattern_match(&mut self, expr: &Expr) -> Option<Expr> {
+        let ExprKind::Call { callee, args } = &expr.kind else {
+            return None;
+        };
+
+        let ExprKind::Ident(name) = &callee.kind else {
+            return None;
+        };
+
+        if name != MATCH_INTRINSIC {
+            return None;
+        }
+
+        if args.is_empty() {
+            self.bag.push(
+                Diagnostic::error("match sin expresion objetivo")
+                    .with_label(expr.span.clone(), "se esperaba al menos un argumento"),
+            );
+            return Some(expr.clone());
+        }
+
+        let subject = args[0].clone();
+        let mut default_case: Option<Expr> = None;
+
+        for case_expr in args.iter().skip(1) {
+            let Some(case) = parse_match_case(case_expr) else {
+                self.bag.push(
+                    Diagnostic::error("case invalido en match")
+                        .with_label(case_expr.span.clone(), "formato de case no soportado"),
+                );
+                continue;
+            };
+
+            match case {
+                MatchCase::Default(body) => {
+                    default_case = Some(body);
+                }
+                MatchCase::Pattern { pattern, body } => {
+                    if let Some(bindings) = match_pattern(&pattern, &subject) {
+                        let mut result = body;
+                        substitute_params(&mut result, &bindings, self.bag);
+                        self.expand_expr(&mut result);
+                        refresh_node_ids(&mut result, &mut self.node_ids);
+                        result.span = expr.span.clone();
+                        return Some(result);
+                    }
+                }
+            }
+        }
+
+        if let Some(mut default_expr) = default_case {
+            self.expand_expr(&mut default_expr);
+            simplify_algebraic(&mut default_expr);
+            refresh_node_ids(&mut default_expr, &mut self.node_ids);
+            default_expr.span = expr.span.clone();
+            return Some(default_expr);
+        }
+
+        self.bag.push(
+            Diagnostic::error("match sin caso aplicable")
+                .with_label(expr.span.clone(), "ningun case matcheo y no hay default"),
+        );
+
+        Some(expr.clone())
     }
 
     fn expand_expr_children(&mut self, expr: &mut Expr) {
@@ -254,6 +332,7 @@ impl<'a> MacroExpander<'a> {
         sanitize_locals(&mut expanded, macro_name, expansion_id);
         substitute_params(&mut expanded, &substitutions, self.bag);
         self.expand_expr(&mut expanded);
+        simplify_algebraic(&mut expanded);
         refresh_node_ids(&mut expanded, &mut self.node_ids);
         expanded.span = call_span;
         expanded
@@ -315,6 +394,402 @@ enum Substitution {
     Expr(Expr),
     Symbol(String),
     Placeholder { ident: String, symbol: SymbolId },
+}
+
+enum MatchCase {
+    Pattern { pattern: PatternExpr, body: Expr },
+    Default(Expr),
+}
+
+enum PatternExpr {
+    Literal(Expr),
+    Variable {
+        name: String,
+        ty_name: String,
+    },
+    BinOp {
+        op: hulk_hir::BinOpKind,
+        left_name: String,
+        left_ty: String,
+        right_name: String,
+        right_ty: String,
+    },
+    BinOpRightLiteral {
+        op: hulk_hir::BinOpKind,
+        left_name: String,
+        left_ty: String,
+        right_literal: Expr,
+    },
+}
+
+fn parse_match_case(expr: &Expr) -> Option<MatchCase> {
+    let ExprKind::Call { callee, args } = &expr.kind else {
+        return None;
+    };
+    let ExprKind::Ident(case_kind) = &callee.kind else {
+        return None;
+    };
+
+    match case_kind.as_str() {
+        CASE_LITERAL_INTRINSIC => {
+            if args.len() != 2 {
+                return None;
+            }
+            Some(MatchCase::Pattern {
+                pattern: PatternExpr::Literal(args[0].clone()),
+                body: args[1].clone(),
+            })
+        }
+        CASE_VARIABLE_INTRINSIC => {
+            if args.len() != 3 {
+                return None;
+            }
+            let ExprKind::Ident(var_name) = &args[0].kind else {
+                return None;
+            };
+            let ExprKind::StringLit(ty_name) = &args[1].kind else {
+                return None;
+            };
+
+            Some(MatchCase::Pattern {
+                pattern: PatternExpr::Variable {
+                    name: var_name.clone(),
+                    ty_name: ty_name.clone(),
+                },
+                body: args[2].clone(),
+            })
+        }
+        CASE_BINOP_INTRINSIC => {
+            if args.len() != 6 {
+                return None;
+            }
+
+            let ExprKind::StringLit(op_name) = &args[0].kind else {
+                return None;
+            };
+            let op = parse_binop_name(op_name)?;
+
+            let ExprKind::Ident(left_name) = &args[1].kind else {
+                return None;
+            };
+            let ExprKind::StringLit(left_ty) = &args[2].kind else {
+                return None;
+            };
+            let ExprKind::Ident(right_name) = &args[3].kind else {
+                return None;
+            };
+            let ExprKind::StringLit(right_ty) = &args[4].kind else {
+                return None;
+            };
+
+            Some(MatchCase::Pattern {
+                pattern: PatternExpr::BinOp {
+                    op,
+                    left_name: left_name.clone(),
+                    left_ty: left_ty.clone(),
+                    right_name: right_name.clone(),
+                    right_ty: right_ty.clone(),
+                },
+                body: args[5].clone(),
+            })
+        }
+        CASE_BINOP_RIGHT_LITERAL_INTRINSIC => {
+            if args.len() != 5 {
+                return None;
+            }
+
+            let ExprKind::StringLit(op_name) = &args[0].kind else {
+                return None;
+            };
+            let op = parse_binop_name(op_name)?;
+
+            let ExprKind::Ident(left_name) = &args[1].kind else {
+                return None;
+            };
+            let ExprKind::StringLit(left_ty) = &args[2].kind else {
+                return None;
+            };
+
+            Some(MatchCase::Pattern {
+                pattern: PatternExpr::BinOpRightLiteral {
+                    op,
+                    left_name: left_name.clone(),
+                    left_ty: left_ty.clone(),
+                    right_literal: args[3].clone(),
+                },
+                body: args[4].clone(),
+            })
+        }
+        DEFAULT_CASE_INTRINSIC => {
+            if args.len() != 1 {
+                return None;
+            }
+            Some(MatchCase::Default(args[0].clone()))
+        }
+        _ => None,
+    }
+}
+
+fn parse_binop_name(op_name: &str) -> Option<hulk_hir::BinOpKind> {
+    match op_name {
+        "+" => Some(hulk_hir::BinOpKind::Add),
+        "-" => Some(hulk_hir::BinOpKind::Sub),
+        "*" => Some(hulk_hir::BinOpKind::Mul),
+        "/" => Some(hulk_hir::BinOpKind::Div),
+        "==" => Some(hulk_hir::BinOpKind::Eq),
+        "!=" => Some(hulk_hir::BinOpKind::Ne),
+        "<" => Some(hulk_hir::BinOpKind::Lt),
+        "<=" => Some(hulk_hir::BinOpKind::Le),
+        ">" => Some(hulk_hir::BinOpKind::Gt),
+        ">=" => Some(hulk_hir::BinOpKind::Ge),
+        _ => None,
+    }
+}
+
+fn match_pattern(
+    pattern: &PatternExpr,
+    subject: &Expr,
+) -> Option<HashMap<String, Substitution>> {
+    match pattern {
+        PatternExpr::Literal(expected) => {
+            if same_literal(expected, subject) {
+                Some(HashMap::new())
+            } else {
+                None
+            }
+        }
+        PatternExpr::Variable { name, ty_name } => {
+            if expr_conforms_type_name(subject, ty_name) {
+                Some(HashMap::from([(name.clone(), Substitution::Expr(subject.clone()))]))
+            } else {
+                None
+            }
+        }
+        PatternExpr::BinOp {
+            op,
+            left_name,
+            left_ty,
+            right_name,
+            right_ty,
+        } => {
+            let ExprKind::BinOp {
+                op: subject_op,
+                left,
+                right,
+            } = &subject.kind
+            else {
+                return None;
+            };
+
+            if subject_op != op {
+                return None;
+            }
+            if !expr_conforms_type_name(left, left_ty) {
+                return None;
+            }
+            if !expr_conforms_type_name(right, right_ty) {
+                return None;
+            }
+
+            Some(HashMap::from([
+                (left_name.clone(), Substitution::Expr((**left).clone())),
+                (right_name.clone(), Substitution::Expr((**right).clone())),
+            ]))
+        }
+        PatternExpr::BinOpRightLiteral {
+            op,
+            left_name,
+            left_ty,
+            right_literal,
+        } => {
+            let ExprKind::BinOp {
+                op: subject_op,
+                left,
+                right,
+            } = &subject.kind
+            else {
+                return None;
+            };
+
+            if subject_op != op {
+                return None;
+            }
+            if !expr_conforms_type_name(left, left_ty) {
+                return None;
+            }
+            if !same_literal(right_literal, right) {
+                return None;
+            }
+
+            Some(HashMap::from([(
+                left_name.clone(),
+                Substitution::Expr((**left).clone()),
+            )]))
+        }
+    }
+}
+
+fn same_literal(left: &Expr, right: &Expr) -> bool {
+    match (&left.kind, &right.kind) {
+        (ExprKind::Number(a), ExprKind::Number(b)) => (a - b).abs() < f64::EPSILON,
+        (ExprKind::StringLit(a), ExprKind::StringLit(b)) => a == b,
+        (ExprKind::Bool(a), ExprKind::Bool(b)) => a == b,
+        _ => false,
+    }
+}
+
+fn simplify_algebraic(expr: &mut Expr) {
+    match &mut expr.kind {
+        ExprKind::BinOp { left, right, op } => {
+            simplify_algebraic(left);
+            simplify_algebraic(right);
+
+            let replacement = match op {
+                hulk_hir::BinOpKind::Add => match (&left.kind, &right.kind) {
+                    (ExprKind::Number(value), _) if value.abs() < f64::EPSILON => {
+                        Some((**right).clone())
+                    }
+                    (_, ExprKind::Number(value)) if value.abs() < f64::EPSILON => {
+                        Some((**left).clone())
+                    }
+                    _ => None,
+                },
+                hulk_hir::BinOpKind::Sub => match &right.kind {
+                    ExprKind::Number(value) if value.abs() < f64::EPSILON => {
+                        Some((**left).clone())
+                    }
+                    _ => None,
+                },
+                hulk_hir::BinOpKind::Mul => match (&left.kind, &right.kind) {
+                    (ExprKind::Number(value), _) if (*value - 1.0).abs() < f64::EPSILON => {
+                        Some((**right).clone())
+                    }
+                    (_, ExprKind::Number(value)) if (*value - 1.0).abs() < f64::EPSILON => {
+                        Some((**left).clone())
+                    }
+                    (ExprKind::Number(value), _) if value.abs() < f64::EPSILON => {
+                        Some(Expr::new(ExprKind::Number(0.0), expr.span.clone(), expr.id))
+                    }
+                    (_, ExprKind::Number(value)) if value.abs() < f64::EPSILON => {
+                        Some(Expr::new(ExprKind::Number(0.0), expr.span.clone(), expr.id))
+                    }
+                    _ => None,
+                },
+                _ => None,
+            };
+
+            if let Some(mut replacement) = replacement {
+                replacement.span = expr.span.clone();
+                replacement.id = expr.id;
+                *expr = replacement;
+                simplify_algebraic(expr);
+            }
+        }
+        ExprKind::UnaryOp { expr: inner, .. } => simplify_algebraic(inner),
+        ExprKind::Call { callee, args } => {
+            simplify_algebraic(callee);
+            for arg in args {
+                simplify_algebraic(arg);
+            }
+        }
+        ExprKind::MethodCall { receiver, args, .. } => {
+            simplify_algebraic(receiver);
+            for arg in args {
+                simplify_algebraic(arg);
+            }
+        }
+        ExprKind::FieldAccess { receiver, .. } => simplify_algebraic(receiver),
+        ExprKind::Index { target, index } => {
+            simplify_algebraic(target);
+            simplify_algebraic(index);
+        }
+        ExprKind::Block(exprs) | ExprKind::VecLiteral(exprs) => {
+            for item in exprs {
+                simplify_algebraic(item);
+            }
+        }
+        ExprKind::VecGenerator {
+            element, iterable, ..
+        } => {
+            simplify_algebraic(element);
+            simplify_algebraic(iterable);
+        }
+        ExprKind::Let { bindings, body } => {
+            for binding in bindings {
+                simplify_algebraic(binding);
+            }
+            simplify_algebraic(body);
+        }
+        ExprKind::Assign { target, value } => {
+            simplify_algebraic(target);
+            simplify_algebraic(value);
+        }
+        ExprKind::AssignTarget(target) => match target {
+            AssignTarget::Ident(_) => {}
+            AssignTarget::Field { receiver, .. } => simplify_algebraic(receiver),
+            AssignTarget::Index { target, index } => {
+                simplify_algebraic(target);
+                simplify_algebraic(index);
+            }
+        },
+        ExprKind::LetBinding(binding) => simplify_algebraic(&mut binding.value),
+        ExprKind::If {
+            condition,
+            then_branch,
+            elif_branches,
+            else_branch,
+        } => {
+            simplify_algebraic(condition);
+            simplify_algebraic(then_branch);
+            for (elif_cond, elif_body) in elif_branches {
+                simplify_algebraic(elif_cond);
+                simplify_algebraic(elif_body);
+            }
+            if let Some(else_expr) = else_branch {
+                simplify_algebraic(else_expr);
+            }
+        }
+        ExprKind::While { condition, body } => {
+            simplify_algebraic(condition);
+            simplify_algebraic(body);
+        }
+        ExprKind::For { iterable, body, .. } => {
+            simplify_algebraic(iterable);
+            simplify_algebraic(body);
+        }
+        ExprKind::New { args, .. } => {
+            for arg in args {
+                simplify_algebraic(arg);
+            }
+        }
+        ExprKind::Is { expr: inner, .. } | ExprKind::As { expr: inner, .. } => {
+            simplify_algebraic(inner)
+        }
+        ExprKind::Lambda { body, .. } => simplify_algebraic(body),
+        ExprKind::Number(_) | ExprKind::StringLit(_) | ExprKind::Bool(_) | ExprKind::Ident(_) | ExprKind::Self_ | ExprKind::Base => {}
+    }
+}
+
+fn expr_conforms_type_name(expr: &Expr, ty_name: &str) -> bool {
+    match ty_name {
+        "Object" => true,
+        "Number" => is_number_expr(expr),
+        "String" => matches!(expr.kind, ExprKind::StringLit(_)),
+        "Boolean" => matches!(expr.kind, ExprKind::Bool(_)),
+        _ => false,
+    }
+}
+
+fn is_number_expr(expr: &Expr) -> bool {
+    match &expr.kind {
+        ExprKind::Number(_) => true,
+        ExprKind::UnaryOp {
+            op: hulk_hir::UnaryOpKind::Neg,
+            expr,
+        } => is_number_expr(expr),
+        ExprKind::BinOp { left, right, .. } => is_number_expr(left) && is_number_expr(right),
+        _ => false,
+    }
 }
 
 fn map_type_ann_to_type_id(type_ann: &TypeAnn) -> TypeId {
@@ -1093,6 +1568,178 @@ mod tests {
             ExprKind::Call { .. } => {}
             _ => panic!("expected call expression to remain unchanged"),
         }
+    }
+
+    #[test]
+    fn simplify_macro_pattern_matching_reduces_expression() {
+        let source = Arc::new(SourceFile::new("simplify.hulk", "def simplify ..."));
+        let mut node_ids = NodeIdGen::new();
+        let span = Span::new(source, 0, 14);
+
+        let expr_param = MacroParam::Regular {
+            name: "expr".to_owned(),
+            type_ann: TypeAnn::Named("Number".to_owned()),
+            span: span.clone(),
+        };
+
+        let simplify_body = intrinsic_call(
+            MATCH_INTRINSIC,
+            vec![
+                ident("expr", &span, &mut node_ids),
+                intrinsic_call(
+                    CASE_BINOP_INTRINSIC,
+                    vec![
+                        string_lit("+", &span, &mut node_ids),
+                        ident("x1", &span, &mut node_ids),
+                        string_lit("Number", &span, &mut node_ids),
+                        ident("x2", &span, &mut node_ids),
+                        string_lit("Number", &span, &mut node_ids),
+                        Expr::new(
+                            ExprKind::BinOp {
+                                op: BinOpKind::Add,
+                                left: Box::new(intrinsic_call(
+                                    "simplify",
+                                    vec![ident("x1", &span, &mut node_ids)],
+                                    &span,
+                                    &mut node_ids,
+                                )),
+                                right: Box::new(intrinsic_call(
+                                    "simplify",
+                                    vec![ident("x2", &span, &mut node_ids)],
+                                    &span,
+                                    &mut node_ids,
+                                )),
+                            },
+                            span.clone(),
+                            node_ids.next_id(),
+                        ),
+                    ],
+                    &span,
+                    &mut node_ids,
+                ),
+                intrinsic_call(
+                    CASE_BINOP_RIGHT_LITERAL_INTRINSIC,
+                    vec![
+                        string_lit("+", &span, &mut node_ids),
+                        ident("x1", &span, &mut node_ids),
+                        string_lit("Number", &span, &mut node_ids),
+                        number(0.0, &span, &mut node_ids),
+                        intrinsic_call(
+                            "simplify",
+                            vec![ident("x1", &span, &mut node_ids)],
+                            &span,
+                            &mut node_ids,
+                        ),
+                    ],
+                    &span,
+                    &mut node_ids,
+                ),
+                intrinsic_call(
+                    CASE_BINOP_RIGHT_LITERAL_INTRINSIC,
+                    vec![
+                        string_lit("*", &span, &mut node_ids),
+                        ident("x1", &span, &mut node_ids),
+                        string_lit("Number", &span, &mut node_ids),
+                        number(1.0, &span, &mut node_ids),
+                        intrinsic_call(
+                            "simplify",
+                            vec![ident("x1", &span, &mut node_ids)],
+                            &span,
+                            &mut node_ids,
+                        ),
+                    ],
+                    &span,
+                    &mut node_ids,
+                ),
+                intrinsic_call(
+                    DEFAULT_CASE_INTRINSIC,
+                    vec![ident("expr", &span, &mut node_ids)],
+                    &span,
+                    &mut node_ids,
+                ),
+            ],
+            &span,
+            &mut node_ids,
+        );
+
+        let simplify_decl = MacroDecl {
+            name: "simplify".to_owned(),
+            params: vec![expr_param],
+            body: simplify_body,
+            span: span.clone(),
+        };
+
+        let input_expr = Expr::new(
+            ExprKind::BinOp {
+                op: BinOpKind::Mul,
+                left: Box::new(Expr::new(
+                    ExprKind::BinOp {
+                        op: BinOpKind::Add,
+                        left: Box::new(number(42.0, &span, &mut node_ids)),
+                        right: Box::new(number(0.0, &span, &mut node_ids)),
+                    },
+                    span.clone(),
+                    node_ids.next_id(),
+                )),
+                right: Box::new(number(1.0, &span, &mut node_ids)),
+            },
+            span.clone(),
+            node_ids.next_id(),
+        );
+
+        let program = Program {
+            functions: vec![],
+            types: vec![],
+            protocols: vec![],
+            macros: vec![simplify_decl],
+            body: intrinsic_call("simplify", vec![input_expr], &span, &mut node_ids),
+        };
+
+        let mut symbols = Resolver::new();
+        symbols.resolve_program(&program);
+        let hir = Hir::from_typed(TypedAst {
+            program,
+            symbols,
+            types: TypeEnv::new(),
+        });
+
+        let mut bag = DiagnosticBag::new();
+        let expanded = expand_macros(hir, &mut bag);
+
+        assert!(!bag.has_errors(), "unexpected diagnostics: {:?}", bag.diagnostics());
+        match expanded.program.body.kind {
+            ExprKind::Number(value) => {
+                assert!((value - 42.0).abs() < f64::EPSILON);
+            }
+            other => panic!("unexpected simplified expression: {other:?}"),
+        }
+    }
+
+    fn intrinsic_call(name: &str, args: Vec<Expr>, span: &Span, ids: &mut NodeIdGen) -> Expr {
+        Expr::new(
+            ExprKind::Call {
+                callee: Box::new(ident(name, span, ids)),
+                args,
+            },
+            span.clone(),
+            ids.next_id(),
+        )
+    }
+
+    fn ident(name: &str, span: &Span, ids: &mut NodeIdGen) -> Expr {
+        Expr::new(ExprKind::Ident(name.to_owned()), span.clone(), ids.next_id())
+    }
+
+    fn number(value: f64, span: &Span, ids: &mut NodeIdGen) -> Expr {
+        Expr::new(ExprKind::Number(value), span.clone(), ids.next_id())
+    }
+
+    fn string_lit(value: &str, span: &Span, ids: &mut NodeIdGen) -> Expr {
+        Expr::new(
+            ExprKind::StringLit(value.to_owned()),
+            span.clone(),
+            ids.next_id(),
+        )
     }
 
     fn collect_identifiers(expr: &Expr, out: &mut Vec<String>) {
