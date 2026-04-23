@@ -2,9 +2,10 @@ use std::collections::HashMap;
 
 use hulk_diagnostics::{Diagnostic, DiagnosticBag};
 use hulk_hir::Span;
+use hulk_hir::visitor::{walk_expr, walk_expr_mut};
 use hulk_hir::{
     AssignTarget, Expr, ExprKind, Hir, MacroDecl, MacroParam, MemberKind, NodeIdGen, Param,
-    Resolver, SymbolId, SymbolKind, TypeAnn, TypeEnv, TypeId,
+    Resolver, SymbolId, SymbolKind, TypeAnn, TypeEnv, TypeId, Visitor, VisitorMut,
 };
 
 const MATCH_INTRINSIC: &str = "__hulk_match";
@@ -1252,100 +1253,19 @@ fn bind_placeholder_idents(
     }
 }
 
-fn refresh_node_ids(expr: &mut Expr, node_ids: &mut NodeIdGen) {
-    expr.id = node_ids.next_id();
+struct RefreshNodeIds<'a> {
+    node_ids: &'a mut NodeIdGen,
+}
 
-    match &mut expr.kind {
-        ExprKind::Number(_)
-        | ExprKind::StringLit(_)
-        | ExprKind::Bool(_)
-        | ExprKind::Ident(_)
-        | ExprKind::Self_
-        | ExprKind::Base => {}
-        ExprKind::BinOp { left, right, .. } => {
-            refresh_node_ids(left, node_ids);
-            refresh_node_ids(right, node_ids);
-        }
-        ExprKind::UnaryOp { expr, .. } => refresh_node_ids(expr, node_ids),
-        ExprKind::Call { callee, args } => {
-            refresh_node_ids(callee, node_ids);
-            for arg in args {
-                refresh_node_ids(arg, node_ids);
-            }
-        }
-        ExprKind::MethodCall { receiver, args, .. } => {
-            refresh_node_ids(receiver, node_ids);
-            for arg in args {
-                refresh_node_ids(arg, node_ids);
-            }
-        }
-        ExprKind::FieldAccess { receiver, .. } => refresh_node_ids(receiver, node_ids),
-        ExprKind::Index { target, index } => {
-            refresh_node_ids(target, node_ids);
-            refresh_node_ids(index, node_ids);
-        }
-        ExprKind::Block(exprs) | ExprKind::VecLiteral(exprs) => {
-            for item in exprs {
-                refresh_node_ids(item, node_ids);
-            }
-        }
-        ExprKind::VecGenerator {
-            element, iterable, ..
-        } => {
-            refresh_node_ids(element, node_ids);
-            refresh_node_ids(iterable, node_ids);
-        }
-        ExprKind::Let { bindings, body } => {
-            for binding in bindings {
-                refresh_node_ids(binding, node_ids);
-            }
-            refresh_node_ids(body, node_ids);
-        }
-        ExprKind::Assign { target, value } => {
-            refresh_node_ids(target, node_ids);
-            refresh_node_ids(value, node_ids);
-        }
-        ExprKind::AssignTarget(target) => match target {
-            AssignTarget::Ident(_) => {}
-            AssignTarget::Field { receiver, .. } => refresh_node_ids(receiver, node_ids),
-            AssignTarget::Index { target, index } => {
-                refresh_node_ids(target, node_ids);
-                refresh_node_ids(index, node_ids);
-            }
-        },
-        ExprKind::LetBinding(binding) => refresh_node_ids(&mut binding.value, node_ids),
-        ExprKind::If {
-            condition,
-            then_branch,
-            elif_branches,
-            else_branch,
-        } => {
-            refresh_node_ids(condition, node_ids);
-            refresh_node_ids(then_branch, node_ids);
-            for (elif_cond, elif_body) in elif_branches {
-                refresh_node_ids(elif_cond, node_ids);
-                refresh_node_ids(elif_body, node_ids);
-            }
-            if let Some(else_expr) = else_branch {
-                refresh_node_ids(else_expr, node_ids);
-            }
-        }
-        ExprKind::While { condition, body } => {
-            refresh_node_ids(condition, node_ids);
-            refresh_node_ids(body, node_ids);
-        }
-        ExprKind::For { iterable, body, .. } => {
-            refresh_node_ids(iterable, node_ids);
-            refresh_node_ids(body, node_ids);
-        }
-        ExprKind::New { args, .. } => {
-            for arg in args {
-                refresh_node_ids(arg, node_ids);
-            }
-        }
-        ExprKind::Is { expr, .. } | ExprKind::As { expr, .. } => refresh_node_ids(expr, node_ids),
-        ExprKind::Lambda { body, .. } => refresh_node_ids(body, node_ids),
+impl<'a> VisitorMut for RefreshNodeIds<'a> {
+    fn visit_expr_mut(&mut self, expr: &mut Expr) {
+        expr.id = self.node_ids.next_id();
+        walk_expr_mut(self, expr);
     }
+}
+
+fn refresh_node_ids(expr: &mut Expr, node_ids: &mut NodeIdGen) {
+    RefreshNodeIds { node_ids }.visit_expr_mut(expr);
 }
 
 fn max_node_id_in_program(program: &hulk_hir::Program) -> u32 {
@@ -1370,100 +1290,21 @@ fn max_node_id_in_program(program: &hulk_hir::Program) -> u32 {
     max_id
 }
 
-fn visit_max_node_id(expr: &Expr, max_id: &mut u32) {
-    *max_id = (*max_id).max(expr.id.0);
+struct MaxNodeId {
+    max: u32,
+}
 
-    match &expr.kind {
-        ExprKind::Number(_)
-        | ExprKind::StringLit(_)
-        | ExprKind::Bool(_)
-        | ExprKind::Ident(_)
-        | ExprKind::Self_
-        | ExprKind::Base => {}
-        ExprKind::BinOp { left, right, .. } => {
-            visit_max_node_id(left, max_id);
-            visit_max_node_id(right, max_id);
-        }
-        ExprKind::UnaryOp { expr, .. } => visit_max_node_id(expr, max_id),
-        ExprKind::Call { callee, args } => {
-            visit_max_node_id(callee, max_id);
-            for arg in args {
-                visit_max_node_id(arg, max_id);
-            }
-        }
-        ExprKind::MethodCall { receiver, args, .. } => {
-            visit_max_node_id(receiver, max_id);
-            for arg in args {
-                visit_max_node_id(arg, max_id);
-            }
-        }
-        ExprKind::FieldAccess { receiver, .. } => visit_max_node_id(receiver, max_id),
-        ExprKind::Index { target, index } => {
-            visit_max_node_id(target, max_id);
-            visit_max_node_id(index, max_id);
-        }
-        ExprKind::Block(exprs) | ExprKind::VecLiteral(exprs) => {
-            for item in exprs {
-                visit_max_node_id(item, max_id);
-            }
-        }
-        ExprKind::VecGenerator {
-            element, iterable, ..
-        } => {
-            visit_max_node_id(element, max_id);
-            visit_max_node_id(iterable, max_id);
-        }
-        ExprKind::Let { bindings, body } => {
-            for binding in bindings {
-                visit_max_node_id(binding, max_id);
-            }
-            visit_max_node_id(body, max_id);
-        }
-        ExprKind::Assign { target, value } => {
-            visit_max_node_id(target, max_id);
-            visit_max_node_id(value, max_id);
-        }
-        ExprKind::AssignTarget(target) => match target {
-            AssignTarget::Ident(_) => {}
-            AssignTarget::Field { receiver, .. } => visit_max_node_id(receiver, max_id),
-            AssignTarget::Index { target, index } => {
-                visit_max_node_id(target, max_id);
-                visit_max_node_id(index, max_id);
-            }
-        },
-        ExprKind::LetBinding(binding) => visit_max_node_id(&binding.value, max_id),
-        ExprKind::If {
-            condition,
-            then_branch,
-            elif_branches,
-            else_branch,
-        } => {
-            visit_max_node_id(condition, max_id);
-            visit_max_node_id(then_branch, max_id);
-            for (elif_cond, elif_body) in elif_branches {
-                visit_max_node_id(elif_cond, max_id);
-                visit_max_node_id(elif_body, max_id);
-            }
-            if let Some(else_expr) = else_branch {
-                visit_max_node_id(else_expr, max_id);
-            }
-        }
-        ExprKind::While { condition, body } => {
-            visit_max_node_id(condition, max_id);
-            visit_max_node_id(body, max_id);
-        }
-        ExprKind::For { iterable, body, .. } => {
-            visit_max_node_id(iterable, max_id);
-            visit_max_node_id(body, max_id);
-        }
-        ExprKind::New { args, .. } => {
-            for arg in args {
-                visit_max_node_id(arg, max_id);
-            }
-        }
-        ExprKind::Is { expr, .. } | ExprKind::As { expr, .. } => visit_max_node_id(expr, max_id),
-        ExprKind::Lambda { body, .. } => visit_max_node_id(body, max_id),
+impl Visitor for MaxNodeId {
+    fn visit_expr(&mut self, expr: &Expr) {
+        self.max = self.max.max(expr.id.0);
+        walk_expr(self, expr);
     }
+}
+
+fn visit_max_node_id(expr: &Expr, max_id: &mut u32) {
+    let mut v = MaxNodeId { max: *max_id };
+    v.visit_expr(expr);
+    *max_id = v.max;
 }
 
 #[cfg(test)]
