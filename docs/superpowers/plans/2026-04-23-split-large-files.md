@@ -26,9 +26,9 @@ Replace hand-written recursive `match &expr.kind` walks with `impl VisitorMut fo
 
 **Files:**
 - Modify: `crates/hulk-macros/Cargo.toml` (add `hulk-ast` re-use if not already transitive)
-- Modify: `crates/hulk-macros/src/lib.rs` (13 walkers → VisitorMut impls)
+- Modify: `crates/hulk-macros/src/lib.rs` (9 walkers → VisitorMut/Visitor impls)
 
-**Walkers to migrate (9 production + 2 test helpers)**:
+**Walkers to migrate (7 production + 2 test helpers)**:
 1. `MacroExpander::expand_expr_children` (lines ~194-286)
 2. `substitute_params` (lines ~987-1119)
 3. `bind_placeholder_idents` (lines ~1143-1253)
@@ -352,15 +352,6 @@ git add crates/hulk-desugar/src/lib.rs
 git commit -m "refactor(hulk-desugar): migrate walks to VisitorMut with in-place desugar_expr"
 # Option B chosen (default):
 git commit -m "refactor(hulk-desugar): migrate visit_max_node_id to Visitor (desugar_expr kept by-value)"
-```
-
-- [ ] **Step 4: Tests and commit**
-
-```bash
-cargo test -p hulk-desugar
-cargo clippy -p hulk-desugar --all-targets -- -D warnings
-git add crates/hulk-desugar/src/lib.rs
-git commit -m "refactor(hulk-desugar): migrate AST walks to VisitorMut"
 ```
 
 ---
