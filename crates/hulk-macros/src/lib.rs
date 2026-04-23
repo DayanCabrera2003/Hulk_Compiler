@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use hulk_diagnostics::{Diagnostic, DiagnosticBag};
 use hulk_hir::Span;
-use hulk_hir::visitor::{walk_expr, walk_expr_mut};
+use hulk_hir::visitor::{walk_assign_target_mut, walk_expr, walk_expr_mut};
 use hulk_hir::{
     AssignTarget, Expr, ExprKind, Hir, MacroDecl, MacroParam, MemberKind, NodeIdGen, Param,
     Resolver, SymbolId, SymbolKind, TypeAnn, TypeEnv, TypeId, Visitor, VisitorMut,
@@ -193,97 +193,7 @@ impl<'a> MacroExpander<'a> {
     }
 
     fn expand_expr_children(&mut self, expr: &mut Expr) {
-        match &mut expr.kind {
-            ExprKind::Number(_)
-            | ExprKind::StringLit(_)
-            | ExprKind::Bool(_)
-            | ExprKind::Ident(_)
-            | ExprKind::Self_
-            | ExprKind::Base => {}
-            ExprKind::BinOp { left, right, .. } => {
-                self.expand_expr(left);
-                self.expand_expr(right);
-            }
-            ExprKind::UnaryOp { expr, .. } => self.expand_expr(expr),
-            ExprKind::Call { callee, args } => {
-                self.expand_expr(callee);
-                for arg in args {
-                    self.expand_expr(arg);
-                }
-            }
-            ExprKind::MethodCall { receiver, args, .. } => {
-                self.expand_expr(receiver);
-                for arg in args {
-                    self.expand_expr(arg);
-                }
-            }
-            ExprKind::FieldAccess { receiver, .. } => self.expand_expr(receiver),
-            ExprKind::Index { target, index } => {
-                self.expand_expr(target);
-                self.expand_expr(index);
-            }
-            ExprKind::Block(exprs) | ExprKind::VecLiteral(exprs) => {
-                for item in exprs {
-                    self.expand_expr(item);
-                }
-            }
-            ExprKind::VecGenerator {
-                element, iterable, ..
-            } => {
-                self.expand_expr(element);
-                self.expand_expr(iterable);
-            }
-            ExprKind::Let { bindings, body } => {
-                for binding in bindings {
-                    self.expand_expr(binding);
-                }
-                self.expand_expr(body);
-            }
-            ExprKind::Assign { target, value } => {
-                self.expand_expr(target);
-                self.expand_expr(value);
-            }
-            ExprKind::AssignTarget(target) => match target {
-                AssignTarget::Ident(_) => {}
-                AssignTarget::Field { receiver, .. } => self.expand_expr(receiver),
-                AssignTarget::Index { target, index } => {
-                    self.expand_expr(target);
-                    self.expand_expr(index);
-                }
-            },
-            ExprKind::LetBinding(binding) => self.expand_expr(&mut binding.value),
-            ExprKind::If {
-                condition,
-                then_branch,
-                elif_branches,
-                else_branch,
-            } => {
-                self.expand_expr(condition);
-                self.expand_expr(then_branch);
-                for (elif_cond, elif_body) in elif_branches {
-                    self.expand_expr(elif_cond);
-                    self.expand_expr(elif_body);
-                }
-                if let Some(else_expr) = else_branch {
-                    self.expand_expr(else_expr);
-                }
-            }
-            ExprKind::While { condition, body } => {
-                self.expand_expr(condition);
-                self.expand_expr(body);
-            }
-            ExprKind::For { iterable, body, .. } => {
-                self.expand_expr(iterable);
-                self.expand_expr(body);
-            }
-            ExprKind::New { args, .. } => {
-                for arg in args {
-                    self.expand_expr(arg);
-                }
-            }
-            ExprKind::Is { expr, .. } | ExprKind::As { expr, .. } => self.expand_expr(expr),
-            ExprKind::Lambda { body, .. } => self.expand_expr(body),
-        }
+        walk_expr_mut(self, expr);
     }
 
     fn expand_macro_call(
@@ -408,6 +318,12 @@ impl<'a> MacroExpander<'a> {
             return;
         }
         bind_placeholder_idents(expr, placeholders, self.symbols);
+    }
+}
+
+impl<'a> VisitorMut for MacroExpander<'a> {
+    fn visit_expr_mut(&mut self, expr: &mut Expr) {
+        self.expand_expr(expr);
     }
 }
 
@@ -660,11 +576,16 @@ fn same_literal(left: &Expr, right: &Expr) -> bool {
     }
 }
 
-fn simplify_algebraic(expr: &mut Expr) {
-    match &mut expr.kind {
-        ExprKind::BinOp { left, right, op } => {
-            simplify_algebraic(left);
-            simplify_algebraic(right);
+struct Simplify;
+
+impl VisitorMut for Simplify {
+    fn visit_expr_mut(&mut self, expr: &mut Expr) {
+        walk_expr_mut(self, expr);
+
+        loop {
+            let ExprKind::BinOp { op, left, right } = &expr.kind else {
+                return;
+            };
 
             let replacement = match op {
                 hulk_hir::BinOpKind::Add => match (&left.kind, &right.kind) {
@@ -700,96 +621,19 @@ fn simplify_algebraic(expr: &mut Expr) {
                 _ => None,
             };
 
-            if let Some(mut replacement) = replacement {
-                replacement.span = expr.span.clone();
-                replacement.id = expr.id;
-                *expr = replacement;
-                simplify_algebraic(expr);
-            }
+            let Some(mut replacement) = replacement else {
+                return;
+            };
+
+            replacement.span = expr.span.clone();
+            replacement.id = expr.id;
+            *expr = replacement;
         }
-        ExprKind::UnaryOp { expr: inner, .. } => simplify_algebraic(inner),
-        ExprKind::Call { callee, args } => {
-            simplify_algebraic(callee);
-            for arg in args {
-                simplify_algebraic(arg);
-            }
-        }
-        ExprKind::MethodCall { receiver, args, .. } => {
-            simplify_algebraic(receiver);
-            for arg in args {
-                simplify_algebraic(arg);
-            }
-        }
-        ExprKind::FieldAccess { receiver, .. } => simplify_algebraic(receiver),
-        ExprKind::Index { target, index } => {
-            simplify_algebraic(target);
-            simplify_algebraic(index);
-        }
-        ExprKind::Block(exprs) | ExprKind::VecLiteral(exprs) => {
-            for item in exprs {
-                simplify_algebraic(item);
-            }
-        }
-        ExprKind::VecGenerator {
-            element, iterable, ..
-        } => {
-            simplify_algebraic(element);
-            simplify_algebraic(iterable);
-        }
-        ExprKind::Let { bindings, body } => {
-            for binding in bindings {
-                simplify_algebraic(binding);
-            }
-            simplify_algebraic(body);
-        }
-        ExprKind::Assign { target, value } => {
-            simplify_algebraic(target);
-            simplify_algebraic(value);
-        }
-        ExprKind::AssignTarget(target) => match target {
-            AssignTarget::Ident(_) => {}
-            AssignTarget::Field { receiver, .. } => simplify_algebraic(receiver),
-            AssignTarget::Index { target, index } => {
-                simplify_algebraic(target);
-                simplify_algebraic(index);
-            }
-        },
-        ExprKind::LetBinding(binding) => simplify_algebraic(&mut binding.value),
-        ExprKind::If {
-            condition,
-            then_branch,
-            elif_branches,
-            else_branch,
-        } => {
-            simplify_algebraic(condition);
-            simplify_algebraic(then_branch);
-            for (elif_cond, elif_body) in elif_branches {
-                simplify_algebraic(elif_cond);
-                simplify_algebraic(elif_body);
-            }
-            if let Some(else_expr) = else_branch {
-                simplify_algebraic(else_expr);
-            }
-        }
-        ExprKind::While { condition, body } => {
-            simplify_algebraic(condition);
-            simplify_algebraic(body);
-        }
-        ExprKind::For { iterable, body, .. } => {
-            simplify_algebraic(iterable);
-            simplify_algebraic(body);
-        }
-        ExprKind::New { args, .. } => {
-            for arg in args {
-                simplify_algebraic(arg);
-            }
-        }
-        ExprKind::Is { expr: inner, .. } | ExprKind::As { expr: inner, .. } => {
-            simplify_algebraic(inner)
-        }
-        ExprKind::Lambda { body, .. } => simplify_algebraic(body),
-        ExprKind::Number(_) | ExprKind::StringLit(_) | ExprKind::Bool(_) | ExprKind::Ident(_) | ExprKind::Self_ | ExprKind::Base => {}
     }
+}
+
+fn simplify_algebraic(expr: &mut Expr) {
+    Simplify.visit_expr_mut(expr);
 }
 
 fn expr_conforms_type_name(expr: &Expr, ty_name: &str) -> bool {
@@ -832,7 +676,7 @@ fn sanitize_locals(expr: &mut Expr, macro_name: &str, expansion_id: u64) {
         expansion_id,
         scopes: Vec::new(),
     };
-    sanitizer.visit_expr(expr);
+    sanitizer.visit_expr_mut(expr);
 }
 
 struct LocalSanitizer<'a> {
@@ -841,142 +685,67 @@ struct LocalSanitizer<'a> {
     scopes: Vec<HashMap<String, String>>,
 }
 
-impl<'a> LocalSanitizer<'a> {
-    fn visit_expr(&mut self, expr: &mut Expr) {
+impl<'a> VisitorMut for LocalSanitizer<'a> {
+    fn visit_expr_mut(&mut self, expr: &mut Expr) {
         match &mut expr.kind {
             ExprKind::Ident(name) => {
                 if let Some(renamed) = self.lookup(name) {
                     *name = renamed;
                 }
             }
-            ExprKind::Number(_)
-            | ExprKind::StringLit(_)
-            | ExprKind::Bool(_)
-            | ExprKind::Self_
-            | ExprKind::Base => {}
-            ExprKind::BinOp { left, right, .. } => {
-                self.visit_expr(left);
-                self.visit_expr(right);
-            }
-            ExprKind::UnaryOp { expr, .. } => self.visit_expr(expr),
-            ExprKind::Call { callee, args } => {
-                self.visit_expr(callee);
-                for arg in args {
-                    self.visit_expr(arg);
-                }
-            }
-            ExprKind::MethodCall { receiver, args, .. } => {
-                self.visit_expr(receiver);
-                for arg in args {
-                    self.visit_expr(arg);
-                }
-            }
-            ExprKind::FieldAccess { receiver, .. } => self.visit_expr(receiver),
-            ExprKind::Index { target, index } => {
-                self.visit_expr(target);
-                self.visit_expr(index);
-            }
             ExprKind::Block(exprs) => {
                 self.scopes.push(HashMap::new());
                 for item in exprs {
-                    self.visit_expr(item);
+                    self.visit_expr_mut(item);
                 }
                 let _ = self.scopes.pop();
-            }
-            ExprKind::VecLiteral(items) => {
-                for item in items {
-                    self.visit_expr(item);
-                }
             }
             ExprKind::VecGenerator {
                 element,
                 binding,
                 iterable,
             } => {
-                self.visit_expr(iterable);
+                self.visit_expr_mut(iterable);
                 let fresh = self.fresh_name(binding);
                 self.scopes
                     .push(HashMap::from([(binding.clone(), fresh.clone())]));
                 *binding = fresh;
-                self.visit_expr(element);
+                self.visit_expr_mut(element);
                 let _ = self.scopes.pop();
             }
             ExprKind::Let { bindings, body } => {
                 let mut pushed = 0usize;
                 for binding_expr in bindings {
                     if let ExprKind::LetBinding(binding) = &mut binding_expr.kind {
-                        self.visit_expr(&mut binding.value);
+                        self.visit_expr_mut(&mut binding.value);
                         let fresh = self.fresh_name(&binding.name);
                         self.scopes
                             .push(HashMap::from([(binding.name.clone(), fresh.clone())]));
                         binding.name = fresh;
                         pushed = pushed.saturating_add(1);
                     } else {
-                        self.visit_expr(binding_expr);
+                        self.visit_expr_mut(binding_expr);
                     }
                 }
 
-                self.visit_expr(body);
+                self.visit_expr_mut(body);
                 for _ in 0..pushed {
                     let _ = self.scopes.pop();
                 }
-            }
-            ExprKind::Assign { target, value } => {
-                self.visit_expr(target);
-                self.visit_expr(value);
-            }
-            ExprKind::AssignTarget(target) => match target {
-                AssignTarget::Ident(name) => {
-                    if let Some(renamed) = self.lookup(name) {
-                        *name = renamed;
-                    }
-                }
-                AssignTarget::Field { receiver, .. } => self.visit_expr(receiver),
-                AssignTarget::Index { target, index } => {
-                    self.visit_expr(target);
-                    self.visit_expr(index);
-                }
-            },
-            ExprKind::LetBinding(binding) => self.visit_expr(&mut binding.value),
-            ExprKind::If {
-                condition,
-                then_branch,
-                elif_branches,
-                else_branch,
-            } => {
-                self.visit_expr(condition);
-                self.visit_expr(then_branch);
-                for (elif_cond, elif_body) in elif_branches {
-                    self.visit_expr(elif_cond);
-                    self.visit_expr(elif_body);
-                }
-                if let Some(else_expr) = else_branch {
-                    self.visit_expr(else_expr);
-                }
-            }
-            ExprKind::While { condition, body } => {
-                self.visit_expr(condition);
-                self.visit_expr(body);
             }
             ExprKind::For {
                 binding,
                 iterable,
                 body,
             } => {
-                self.visit_expr(iterable);
+                self.visit_expr_mut(iterable);
                 let fresh = self.fresh_name(binding);
                 self.scopes
                     .push(HashMap::from([(binding.clone(), fresh.clone())]));
                 *binding = fresh;
-                self.visit_expr(body);
+                self.visit_expr_mut(body);
                 let _ = self.scopes.pop();
             }
-            ExprKind::New { args, .. } => {
-                for arg in args {
-                    self.visit_expr(arg);
-                }
-            }
-            ExprKind::Is { expr, .. } | ExprKind::As { expr, .. } => self.visit_expr(expr),
             ExprKind::Lambda { params, body, .. } => {
                 let mut frame = HashMap::new();
                 for Param { name, .. } in params {
@@ -985,12 +754,25 @@ impl<'a> LocalSanitizer<'a> {
                     *name = fresh;
                 }
                 self.scopes.push(frame);
-                self.visit_expr(body);
+                self.visit_expr_mut(body);
                 let _ = self.scopes.pop();
             }
+            _ => walk_expr_mut(self, expr),
         }
     }
 
+    fn visit_assign_target_mut(&mut self, target: &mut AssignTarget) {
+        if let AssignTarget::Ident(name) = target {
+            if let Some(renamed) = self.lookup(name) {
+                *name = renamed;
+            }
+            return;
+        }
+        walk_assign_target_mut(self, target);
+    }
+}
+
+impl<'a> LocalSanitizer<'a> {
     fn lookup(&self, name: &str) -> Option<String> {
         self.scopes
             .iter()
@@ -1006,14 +788,15 @@ impl<'a> LocalSanitizer<'a> {
     }
 }
 
-fn substitute_params(
-    expr: &mut Expr,
-    substitutions: &HashMap<String, Substitution>,
-    bag: &mut DiagnosticBag,
-) {
-    match &mut expr.kind {
-        ExprKind::Ident(name) => {
-            if let Some(sub) = substitutions.get(name).cloned() {
+struct Substituter<'a> {
+    substitutions: &'a HashMap<String, Substitution>,
+    bag: &'a mut DiagnosticBag,
+}
+
+impl<'a> VisitorMut for Substituter<'a> {
+    fn visit_expr_mut(&mut self, expr: &mut Expr) {
+        if let ExprKind::Ident(name) = &mut expr.kind {
+            if let Some(sub) = self.substitutions.get(name).cloned() {
                 match sub {
                     Substitution::Expr(value) => {
                         *expr = value;
@@ -1026,118 +809,58 @@ fn substitute_params(
                         *name = ident;
                     }
                 }
+                return;
             }
         }
-        ExprKind::Number(_)
-        | ExprKind::StringLit(_)
-        | ExprKind::Bool(_)
-        | ExprKind::Self_
-        | ExprKind::Base => {}
-        ExprKind::BinOp { left, right, .. } => {
-            substitute_params(left, substitutions, bag);
-            substitute_params(right, substitutions, bag);
-        }
-        ExprKind::UnaryOp { expr, .. } => substitute_params(expr, substitutions, bag),
-        ExprKind::Call { callee, args } => {
-            substitute_params(callee, substitutions, bag);
-            for arg in args {
-                substitute_params(arg, substitutions, bag);
-            }
-        }
-        ExprKind::MethodCall { receiver, args, .. } => {
-            substitute_params(receiver, substitutions, bag);
-            for arg in args {
-                substitute_params(arg, substitutions, bag);
-            }
-        }
-        ExprKind::FieldAccess { receiver, .. } => substitute_params(receiver, substitutions, bag),
-        ExprKind::Index { target, index } => {
-            substitute_params(target, substitutions, bag);
-            substitute_params(index, substitutions, bag);
-        }
-        ExprKind::Block(exprs) | ExprKind::VecLiteral(exprs) => {
-            for item in exprs {
-                substitute_params(item, substitutions, bag);
-            }
-        }
-        ExprKind::VecGenerator {
-            element, iterable, ..
-        } => {
-            substitute_params(element, substitutions, bag);
-            substitute_params(iterable, substitutions, bag);
-        }
-        ExprKind::Let { bindings, body } => {
-            for binding in bindings {
-                substitute_params(binding, substitutions, bag);
-            }
-            substitute_params(body, substitutions, bag);
-        }
-        ExprKind::Assign { target, value } => {
-            substitute_params(target, substitutions, bag);
-            substitute_params(value, substitutions, bag);
-        }
-        ExprKind::AssignTarget(target) => match target {
-            AssignTarget::Ident(name) => {
-                if let Some(sub) = substitutions.get(name) {
-                    match sub {
-                        Substitution::Expr(_) => {
-                            bag.push(
-                                Diagnostic::error(
-                                    "un parametro de expresion no puede ser destino de asignacion",
-                                )
-                                .with_label(expr.span.clone(), "destino de asignacion invalido"),
-                            );
-                        }
-                        Substitution::Symbol(symbol_name) => {
-                            *name = symbol_name.clone();
-                        }
-                        Substitution::Placeholder { ident, symbol } => {
-                            let _ = symbol;
-                            *name = ident.clone();
-                        }
+
+        if let ExprKind::AssignTarget(AssignTarget::Ident(name)) = &mut expr.kind {
+            if let Some(sub) = self.substitutions.get(name) {
+                match sub {
+                    Substitution::Expr(_) => {
+                        self.bag.push(
+                            Diagnostic::error(
+                                "un parametro de expresion no puede ser destino de asignacion",
+                            )
+                            .with_label(expr.span.clone(), "destino de asignacion invalido"),
+                        );
+                    }
+                    Substitution::Symbol(symbol_name) => {
+                        *name = symbol_name.clone();
+                    }
+                    Substitution::Placeholder { ident, symbol } => {
+                        let _ = symbol;
+                        *name = ident.clone();
                     }
                 }
-            }
-            AssignTarget::Field { receiver, .. } => substitute_params(receiver, substitutions, bag),
-            AssignTarget::Index { target, index } => {
-                substitute_params(target, substitutions, bag);
-                substitute_params(index, substitutions, bag);
-            }
-        },
-        ExprKind::LetBinding(binding) => substitute_params(&mut binding.value, substitutions, bag),
-        ExprKind::If {
-            condition,
-            then_branch,
-            elif_branches,
-            else_branch,
-        } => {
-            substitute_params(condition, substitutions, bag);
-            substitute_params(then_branch, substitutions, bag);
-            for (elif_cond, elif_body) in elif_branches {
-                substitute_params(elif_cond, substitutions, bag);
-                substitute_params(elif_body, substitutions, bag);
-            }
-            if let Some(else_expr) = else_branch {
-                substitute_params(else_expr, substitutions, bag);
+                return;
             }
         }
-        ExprKind::While { condition, body } => {
-            substitute_params(condition, substitutions, bag);
-            substitute_params(body, substitutions, bag);
-        }
-        ExprKind::For { iterable, body, .. } => {
-            substitute_params(iterable, substitutions, bag);
-            substitute_params(body, substitutions, bag);
-        }
-        ExprKind::New { args, .. } => {
-            for arg in args {
-                substitute_params(arg, substitutions, bag);
+
+        walk_expr_mut(self, expr);
+    }
+}
+
+fn substitute_params(
+    expr: &mut Expr,
+    substitutions: &HashMap<String, Substitution>,
+    bag: &mut DiagnosticBag,
+) {
+    Substituter { substitutions, bag }.visit_expr_mut(expr);
+}
+
+struct BindPlaceholders<'a> {
+    placeholders: &'a HashMap<String, SymbolId>,
+    resolver: &'a mut Resolver,
+}
+
+impl<'a> Visitor for BindPlaceholders<'a> {
+    fn visit_expr(&mut self, expr: &Expr) {
+        if let ExprKind::Ident(name) = &expr.kind {
+            if let Some(&symbol) = self.placeholders.get(name) {
+                self.resolver.record_expr_symbol(expr.id, symbol);
             }
         }
-        ExprKind::Is { expr, .. } | ExprKind::As { expr, .. } => {
-            substitute_params(expr, substitutions, bag);
-        }
-        ExprKind::Lambda { body, .. } => substitute_params(body, substitutions, bag),
+        walk_expr(self, expr);
     }
 }
 
@@ -1146,111 +869,11 @@ fn bind_placeholder_idents(
     placeholders: &HashMap<String, SymbolId>,
     resolver: &mut Resolver,
 ) {
-    if let ExprKind::Ident(name) = &expr.kind {
-        if let Some(&symbol) = placeholders.get(name) {
-            resolver.record_expr_symbol(expr.id, symbol);
-        }
+    BindPlaceholders {
+        placeholders,
+        resolver,
     }
-
-    match &expr.kind {
-        ExprKind::Number(_)
-        | ExprKind::StringLit(_)
-        | ExprKind::Bool(_)
-        | ExprKind::Ident(_)
-        | ExprKind::Self_
-        | ExprKind::Base => {}
-        ExprKind::BinOp { left, right, .. } => {
-            bind_placeholder_idents(left, placeholders, resolver);
-            bind_placeholder_idents(right, placeholders, resolver);
-        }
-        ExprKind::UnaryOp { expr, .. } => bind_placeholder_idents(expr, placeholders, resolver),
-        ExprKind::Call { callee, args } => {
-            bind_placeholder_idents(callee, placeholders, resolver);
-            for arg in args {
-                bind_placeholder_idents(arg, placeholders, resolver);
-            }
-        }
-        ExprKind::MethodCall { receiver, args, .. } => {
-            bind_placeholder_idents(receiver, placeholders, resolver);
-            for arg in args {
-                bind_placeholder_idents(arg, placeholders, resolver);
-            }
-        }
-        ExprKind::FieldAccess { receiver, .. } => {
-            bind_placeholder_idents(receiver, placeholders, resolver)
-        }
-        ExprKind::Index { target, index } => {
-            bind_placeholder_idents(target, placeholders, resolver);
-            bind_placeholder_idents(index, placeholders, resolver);
-        }
-        ExprKind::Block(exprs) | ExprKind::VecLiteral(exprs) => {
-            for item in exprs {
-                bind_placeholder_idents(item, placeholders, resolver);
-            }
-        }
-        ExprKind::VecGenerator {
-            element, iterable, ..
-        } => {
-            bind_placeholder_idents(element, placeholders, resolver);
-            bind_placeholder_idents(iterable, placeholders, resolver);
-        }
-        ExprKind::Let { bindings, body } => {
-            for binding in bindings {
-                bind_placeholder_idents(binding, placeholders, resolver);
-            }
-            bind_placeholder_idents(body, placeholders, resolver);
-        }
-        ExprKind::Assign { target, value } => {
-            bind_placeholder_idents(target, placeholders, resolver);
-            bind_placeholder_idents(value, placeholders, resolver);
-        }
-        ExprKind::AssignTarget(target) => match target {
-            AssignTarget::Ident(_) => {}
-            AssignTarget::Field { receiver, .. } => {
-                bind_placeholder_idents(receiver, placeholders, resolver)
-            }
-            AssignTarget::Index { target, index } => {
-                bind_placeholder_idents(target, placeholders, resolver);
-                bind_placeholder_idents(index, placeholders, resolver);
-            }
-        },
-        ExprKind::LetBinding(binding) => {
-            bind_placeholder_idents(&binding.value, placeholders, resolver)
-        }
-        ExprKind::If {
-            condition,
-            then_branch,
-            elif_branches,
-            else_branch,
-        } => {
-            bind_placeholder_idents(condition, placeholders, resolver);
-            bind_placeholder_idents(then_branch, placeholders, resolver);
-            for (elif_cond, elif_body) in elif_branches {
-                bind_placeholder_idents(elif_cond, placeholders, resolver);
-                bind_placeholder_idents(elif_body, placeholders, resolver);
-            }
-            if let Some(else_expr) = else_branch {
-                bind_placeholder_idents(else_expr, placeholders, resolver);
-            }
-        }
-        ExprKind::While { condition, body } => {
-            bind_placeholder_idents(condition, placeholders, resolver);
-            bind_placeholder_idents(body, placeholders, resolver);
-        }
-        ExprKind::For { iterable, body, .. } => {
-            bind_placeholder_idents(iterable, placeholders, resolver);
-            bind_placeholder_idents(body, placeholders, resolver);
-        }
-        ExprKind::New { args, .. } => {
-            for arg in args {
-                bind_placeholder_idents(arg, placeholders, resolver);
-            }
-        }
-        ExprKind::Is { expr, .. } | ExprKind::As { expr, .. } => {
-            bind_placeholder_idents(expr, placeholders, resolver)
-        }
-        ExprKind::Lambda { body, .. } => bind_placeholder_idents(body, placeholders, resolver),
-    }
+    .visit_expr(expr);
 }
 
 struct RefreshNodeIds<'a> {
@@ -2136,193 +1759,52 @@ mod tests {
         )
     }
 
+    use hulk_hir::visitor::walk_assign_target;
+
+    struct CollectIdentNodeIds<'a> {
+        target: &'a str,
+        out: &'a mut Vec<hulk_hir::NodeId>,
+    }
+
+    impl<'a> Visitor for CollectIdentNodeIds<'a> {
+        fn visit_expr(&mut self, expr: &Expr) {
+            if let ExprKind::Ident(name) = &expr.kind {
+                if name == self.target {
+                    self.out.push(expr.id);
+                }
+            }
+            walk_expr(self, expr);
+        }
+
+        fn visit_assign_target(&mut self, _target: &AssignTarget) {
+            // Preserve original behavior: do not descend into AssignTarget.
+        }
+    }
+
     fn collect_ident_node_ids(expr: &Expr, target: &str, out: &mut Vec<hulk_hir::NodeId>) {
-        match &expr.kind {
-            ExprKind::Ident(name) => {
-                if name == target {
-                    out.push(expr.id);
-                }
+        CollectIdentNodeIds { target, out }.visit_expr(expr);
+    }
+
+    struct CollectIdentifiers<'a>(&'a mut Vec<String>);
+
+    impl<'a> Visitor for CollectIdentifiers<'a> {
+        fn visit_expr(&mut self, expr: &Expr) {
+            if let ExprKind::Ident(name) = &expr.kind {
+                self.0.push(name.clone());
             }
-            ExprKind::Number(_)
-            | ExprKind::StringLit(_)
-            | ExprKind::Bool(_)
-            | ExprKind::Self_
-            | ExprKind::Base => {}
-            ExprKind::BinOp { left, right, .. } => {
-                collect_ident_node_ids(left, target, out);
-                collect_ident_node_ids(right, target, out);
+            walk_expr(self, expr);
+        }
+
+        fn visit_assign_target(&mut self, target: &AssignTarget) {
+            if let AssignTarget::Ident(name) = target {
+                self.0.push(name.clone());
             }
-            ExprKind::UnaryOp { expr, .. } => collect_ident_node_ids(expr, target, out),
-            ExprKind::Call { callee, args } => {
-                collect_ident_node_ids(callee, target, out);
-                for arg in args {
-                    collect_ident_node_ids(arg, target, out);
-                }
-            }
-            ExprKind::MethodCall { receiver, args, .. } => {
-                collect_ident_node_ids(receiver, target, out);
-                for arg in args {
-                    collect_ident_node_ids(arg, target, out);
-                }
-            }
-            ExprKind::FieldAccess { receiver, .. } => collect_ident_node_ids(receiver, target, out),
-            ExprKind::Index { target: t, index } => {
-                collect_ident_node_ids(t, target, out);
-                collect_ident_node_ids(index, target, out);
-            }
-            ExprKind::Block(exprs) | ExprKind::VecLiteral(exprs) => {
-                for item in exprs {
-                    collect_ident_node_ids(item, target, out);
-                }
-            }
-            ExprKind::VecGenerator {
-                element, iterable, ..
-            } => {
-                collect_ident_node_ids(element, target, out);
-                collect_ident_node_ids(iterable, target, out);
-            }
-            ExprKind::Let { bindings, body } => {
-                for binding in bindings {
-                    collect_ident_node_ids(binding, target, out);
-                }
-                collect_ident_node_ids(body, target, out);
-            }
-            ExprKind::Assign { target: t, value } => {
-                collect_ident_node_ids(t, target, out);
-                collect_ident_node_ids(value, target, out);
-            }
-            ExprKind::AssignTarget(_) => {}
-            ExprKind::LetBinding(binding) => collect_ident_node_ids(&binding.value, target, out),
-            ExprKind::If {
-                condition,
-                then_branch,
-                elif_branches,
-                else_branch,
-            } => {
-                collect_ident_node_ids(condition, target, out);
-                collect_ident_node_ids(then_branch, target, out);
-                for (elif_cond, elif_body) in elif_branches {
-                    collect_ident_node_ids(elif_cond, target, out);
-                    collect_ident_node_ids(elif_body, target, out);
-                }
-                if let Some(else_expr) = else_branch {
-                    collect_ident_node_ids(else_expr, target, out);
-                }
-            }
-            ExprKind::While { condition, body } => {
-                collect_ident_node_ids(condition, target, out);
-                collect_ident_node_ids(body, target, out);
-            }
-            ExprKind::For { iterable, body, .. } => {
-                collect_ident_node_ids(iterable, target, out);
-                collect_ident_node_ids(body, target, out);
-            }
-            ExprKind::New { args, .. } => {
-                for arg in args {
-                    collect_ident_node_ids(arg, target, out);
-                }
-            }
-            ExprKind::Is { expr, .. } | ExprKind::As { expr, .. } => {
-                collect_ident_node_ids(expr, target, out);
-            }
-            ExprKind::Lambda { body, .. } => collect_ident_node_ids(body, target, out),
+            walk_assign_target(self, target);
         }
     }
 
     fn collect_identifiers(expr: &Expr, out: &mut Vec<String>) {
-        match &expr.kind {
-            ExprKind::Ident(name) => out.push(name.clone()),
-            ExprKind::Number(_)
-            | ExprKind::StringLit(_)
-            | ExprKind::Bool(_)
-            | ExprKind::Self_
-            | ExprKind::Base => {}
-            ExprKind::BinOp { left, right, .. } => {
-                collect_identifiers(left, out);
-                collect_identifiers(right, out);
-            }
-            ExprKind::UnaryOp { expr, .. } => collect_identifiers(expr, out),
-            ExprKind::Call { callee, args } => {
-                collect_identifiers(callee, out);
-                for arg in args {
-                    collect_identifiers(arg, out);
-                }
-            }
-            ExprKind::MethodCall { receiver, args, .. } => {
-                collect_identifiers(receiver, out);
-                for arg in args {
-                    collect_identifiers(arg, out);
-                }
-            }
-            ExprKind::FieldAccess { receiver, .. } => collect_identifiers(receiver, out),
-            ExprKind::Index { target, index } => {
-                collect_identifiers(target, out);
-                collect_identifiers(index, out);
-            }
-            ExprKind::Block(exprs) | ExprKind::VecLiteral(exprs) => {
-                for item in exprs {
-                    collect_identifiers(item, out);
-                }
-            }
-            ExprKind::VecGenerator {
-                element, iterable, ..
-            } => {
-                collect_identifiers(element, out);
-                collect_identifiers(iterable, out);
-            }
-            ExprKind::Let { bindings, body } => {
-                for binding in bindings {
-                    collect_identifiers(binding, out);
-                }
-                collect_identifiers(body, out);
-            }
-            ExprKind::Assign { target, value } => {
-                collect_identifiers(target, out);
-                collect_identifiers(value, out);
-            }
-            ExprKind::AssignTarget(target) => match target {
-                AssignTarget::Ident(name) => out.push(name.clone()),
-                AssignTarget::Field { receiver, .. } => collect_identifiers(receiver, out),
-                AssignTarget::Index { target, index } => {
-                    collect_identifiers(target, out);
-                    collect_identifiers(index, out);
-                }
-            },
-            ExprKind::LetBinding(binding) => collect_identifiers(&binding.value, out),
-            ExprKind::If {
-                condition,
-                then_branch,
-                elif_branches,
-                else_branch,
-            } => {
-                collect_identifiers(condition, out);
-                collect_identifiers(then_branch, out);
-                for (elif_cond, elif_body) in elif_branches {
-                    collect_identifiers(elif_cond, out);
-                    collect_identifiers(elif_body, out);
-                }
-                if let Some(else_expr) = else_branch {
-                    collect_identifiers(else_expr, out);
-                }
-            }
-            ExprKind::While { condition, body } => {
-                collect_identifiers(condition, out);
-                collect_identifiers(body, out);
-            }
-            ExprKind::For { iterable, body, .. } => {
-                collect_identifiers(iterable, out);
-                collect_identifiers(body, out);
-            }
-            ExprKind::New { args, .. } => {
-                for arg in args {
-                    collect_identifiers(arg, out);
-                }
-            }
-            ExprKind::Is { expr, .. } | ExprKind::As { expr, .. } => {
-                collect_identifiers(expr, out);
-            }
-            ExprKind::Lambda { body, .. } => collect_identifiers(body, out),
-        }
+        CollectIdentifiers(out).visit_expr(expr);
     }
 
     #[test]
