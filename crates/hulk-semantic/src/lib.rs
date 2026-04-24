@@ -493,6 +493,14 @@ impl Resolver {
         }
     }
 
+    // Not migrated to hulk_ast::Visitor: resolve_expr threads an active
+    // scope stack (push_scope/define/pop_scope around Block, VecGenerator,
+    // For, Lambda) and dispatches custom per-variant logic (resolve_ident,
+    // resolve_self, resolve_base, resolve_call, validate_method_call, type
+    // annotation resolution). The Visitor's default walk does not know
+    // about HULK's scoping semantics, so a migration would leave the
+    // majority of the match in place while only saving ~15 lines on the
+    // trivial variants. Staying hand-written keeps control flow clear.
     fn resolve_expr(&mut self, expr: &Expr) {
         match &expr.kind {
             ExprKind::Number(_) | ExprKind::StringLit(_) | ExprKind::Bool(_) => {}
