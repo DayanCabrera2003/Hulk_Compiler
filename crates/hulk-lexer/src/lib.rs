@@ -17,6 +17,11 @@ pub fn lex(source: &SourceFile, diagnostics: &mut DiagnosticBag) -> Vec<SpannedT
     lexer.tokens
 }
 
+// `pub(crate)` es la visibilidad mínima posible aquí: `Lexer` vive en la raíz
+// del crate, por lo que `pub(super)` no es aplicable (no hay un módulo padre
+// por encima del crate root). Los submódulos `tokens::{numbers, strings,
+// idents, operators}` están dos niveles por debajo y necesitan alcanzar estos
+// campos; restringir más rompería la compilación.
 pub(crate) struct Lexer<'a> {
     pub(crate) file: Arc<SourceFile>,
     pub(crate) source: &'a str,

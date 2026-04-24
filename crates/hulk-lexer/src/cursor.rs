@@ -1,7 +1,7 @@
 use hulk_diagnostics::Diagnostic;
 use hulk_tokens::{Span, SpannedToken, Token};
 
-use super::Lexer;
+use crate::Lexer;
 
 impl<'a> Lexer<'a> {
     pub(super) fn peek_char(&self) -> Option<char> {
