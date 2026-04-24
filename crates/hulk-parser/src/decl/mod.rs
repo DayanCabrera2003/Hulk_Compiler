@@ -4,7 +4,7 @@
 //! Each submodule adds methods to `impl Parser` via its own `impl` block.
 
 use hulk_ast::{ExprKind, Program};
-use hulk_tokens::{Span, Token};
+use hulk_tokens::Token;
 
 use crate::Parser;
 
@@ -67,10 +67,4 @@ impl Parser {
             Token::Function | Token::Type | Token::Protocol | Token::Def
         )
     }
-}
-
-/// Helper unused externally but retained for future extensions.
-#[allow(dead_code)]
-fn _span_from_tokens(first: &Span, last: &Span) -> Span {
-    first.clone().merge(last.clone())
 }
