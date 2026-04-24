@@ -1,7 +1,8 @@
 use hulk_diagnostics::DiagnosticBag;
+use hulk_hir::visitor::walk_expr;
 use hulk_hir::{
     BinOpKind, Expr, ExprKind, FunctionDecl, Hir, Member, MemberKind, NodeId, NodeIdGen, Param,
-    Program, Resolver, Span, SymbolKind, TypeAnn, TypeEnv, TypeId, TypeKind, TypeDecl,
+    Program, Resolver, Span, SymbolKind, TypeAnn, TypeEnv, TypeId, TypeKind, TypeDecl, Visitor,
 };
 use std::collections::HashMap;
 
@@ -671,95 +672,21 @@ fn max_node_id_in_program(program: &Program) -> u32 {
     max_id
 }
 
-fn visit_max_node_id(expr: &Expr, max_id: &mut u32) {
-    *max_id = (*max_id).max(expr.id.0);
+struct MaxNodeId {
+    max: u32,
+}
 
-    match &expr.kind {
-        ExprKind::Number(_) | ExprKind::StringLit(_) | ExprKind::Bool(_) | ExprKind::Ident(_) | ExprKind::Self_ | ExprKind::Base => {}
-        ExprKind::BinOp { left, right, .. } => {
-            visit_max_node_id(left, max_id);
-            visit_max_node_id(right, max_id);
-        }
-        ExprKind::UnaryOp { expr, .. } => visit_max_node_id(expr, max_id),
-        ExprKind::Call { callee, args } => {
-            visit_max_node_id(callee, max_id);
-            for arg in args {
-                visit_max_node_id(arg, max_id);
-            }
-        }
-        ExprKind::MethodCall { receiver, args, .. } => {
-            visit_max_node_id(receiver, max_id);
-            for arg in args {
-                visit_max_node_id(arg, max_id);
-            }
-        }
-        ExprKind::FieldAccess { receiver, .. } => visit_max_node_id(receiver, max_id),
-        ExprKind::Index { target, index } => {
-            visit_max_node_id(target, max_id);
-            visit_max_node_id(index, max_id);
-        }
-        ExprKind::Block(exprs) | ExprKind::VecLiteral(exprs) => {
-            for inner in exprs {
-                visit_max_node_id(inner, max_id);
-            }
-        }
-        ExprKind::VecGenerator {
-            element, iterable, ..
-        } => {
-            visit_max_node_id(element, max_id);
-            visit_max_node_id(iterable, max_id);
-        }
-        ExprKind::Let { bindings, body } => {
-            for binding in bindings {
-                visit_max_node_id(binding, max_id);
-            }
-            visit_max_node_id(body, max_id);
-        }
-        ExprKind::Assign { target, value } => {
-            visit_max_node_id(target, max_id);
-            visit_max_node_id(value, max_id);
-        }
-        ExprKind::AssignTarget(target) => match target {
-            hulk_hir::AssignTarget::Ident(_) => {}
-            hulk_hir::AssignTarget::Field { receiver, .. } => visit_max_node_id(receiver, max_id),
-            hulk_hir::AssignTarget::Index { target, index } => {
-                visit_max_node_id(target, max_id);
-                visit_max_node_id(index, max_id);
-            }
-        },
-        ExprKind::LetBinding(binding) => visit_max_node_id(&binding.value, max_id),
-        ExprKind::If {
-            condition,
-            then_branch,
-            elif_branches,
-            else_branch,
-        } => {
-            visit_max_node_id(condition, max_id);
-            visit_max_node_id(then_branch, max_id);
-            for (elif_cond, elif_branch) in elif_branches {
-                visit_max_node_id(elif_cond, max_id);
-                visit_max_node_id(elif_branch, max_id);
-            }
-            if let Some(else_expr) = else_branch {
-                visit_max_node_id(else_expr, max_id);
-            }
-        }
-        ExprKind::While { condition, body } => {
-            visit_max_node_id(condition, max_id);
-            visit_max_node_id(body, max_id);
-        }
-        ExprKind::For { iterable, body, .. } => {
-            visit_max_node_id(iterable, max_id);
-            visit_max_node_id(body, max_id);
-        }
-        ExprKind::New { args, .. } => {
-            for arg in args {
-                visit_max_node_id(arg, max_id);
-            }
-        }
-        ExprKind::Is { expr, .. } | ExprKind::As { expr, .. } => visit_max_node_id(expr, max_id),
-        ExprKind::Lambda { body, .. } => visit_max_node_id(body, max_id),
+impl Visitor for MaxNodeId {
+    fn visit_expr(&mut self, expr: &Expr) {
+        self.max = self.max.max(expr.id.0);
+        walk_expr(self, expr);
     }
+}
+
+fn visit_max_node_id(expr: &Expr, max_id: &mut u32) {
+    let mut v = MaxNodeId { max: *max_id };
+    v.visit_expr(expr);
+    *max_id = v.max;
 }
 
 #[cfg(test)]
