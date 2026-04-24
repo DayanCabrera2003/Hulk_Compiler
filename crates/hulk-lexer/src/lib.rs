@@ -1,7 +1,10 @@
 use std::sync::Arc;
 
-use hulk_diagnostics::{Diagnostic, DiagnosticBag};
-use hulk_tokens::{keyword_token, SourceFile, Span, SpannedToken, Token};
+use hulk_diagnostics::DiagnosticBag;
+use hulk_tokens::{SourceFile, SpannedToken, Token};
+
+mod cursor;
+mod tokens;
 
 /// Lexes a HULK source file into a token sequence.
 ///
@@ -14,13 +17,13 @@ pub fn lex(source: &SourceFile, diagnostics: &mut DiagnosticBag) -> Vec<SpannedT
     lexer.tokens
 }
 
-struct Lexer<'a> {
-    file: Arc<SourceFile>,
-    source: &'a str,
-    bytes: &'a [u8],
-    cursor: usize,
-    diagnostics: &'a mut DiagnosticBag,
-    tokens: Vec<SpannedToken>,
+pub(crate) struct Lexer<'a> {
+    pub(crate) file: Arc<SourceFile>,
+    pub(crate) source: &'a str,
+    pub(crate) bytes: &'a [u8],
+    pub(crate) cursor: usize,
+    pub(crate) diagnostics: &'a mut DiagnosticBag,
+    pub(crate) tokens: Vec<SpannedToken>,
 }
 
 impl<'a> Lexer<'a> {
@@ -110,205 +113,6 @@ impl<'a> Lexer<'a> {
 
         let end = self.bytes.len();
         self.push_token(Token::Eof, end, end);
-    }
-
-    fn single_char(&mut self, token: Token) {
-        // Hoy todos los call sites disparan con caracteres ASCII (ver el
-        // match de lex_all). Usamos advance_char para blindar futuras
-        // extensiones multibyte sin repetir el bug de cursor += 1.
-        let start = self.cursor;
-        self.advance_char();
-        self.push_token(token, start, self.cursor);
-    }
-
-    fn double_or_single(&mut self, expected: char, double: Token, single: Token) {
-        let start = self.cursor;
-        if self.peek_next_char() == Some(expected) {
-            self.cursor += 2;
-            self.push_token(double, start, self.cursor);
-        } else {
-            self.cursor += 1;
-            self.push_token(single, start, self.cursor);
-        }
-    }
-
-    fn lex_number(&mut self) {
-        let start = self.cursor;
-
-        while self.peek_char().is_some_and(|ch| ch.is_ascii_digit()) {
-            self.cursor += 1;
-        }
-
-        if self.peek_char() == Some('.')
-            && self.peek_next_char().is_some_and(|ch| ch.is_ascii_digit())
-        {
-            self.cursor += 1;
-            while self.peek_char().is_some_and(|ch| ch.is_ascii_digit()) {
-                self.cursor += 1;
-            }
-        }
-
-        let lexeme = &self.source[start..self.cursor];
-        match lexeme.parse::<f64>() {
-            Ok(value) => self.push_token(Token::Number(value), start, self.cursor),
-            Err(_) => self.report_error(start, self.cursor, "literal numerico invalido"),
-        }
-    }
-
-    fn lex_identifier(&mut self) {
-        let start = self.cursor;
-        self.cursor += 1;
-
-        while self
-            .peek_char()
-            .is_some_and(|ch| ch.is_ascii_alphanumeric() || ch == '_')
-        {
-            self.cursor += 1;
-        }
-
-        let ident = &self.source[start..self.cursor];
-        let token = keyword_token(ident).unwrap_or_else(|| Token::Ident(ident.to_owned()));
-        self.push_token(token, start, self.cursor);
-    }
-
-    fn lex_invalid_leading_underscore_identifier(&mut self) {
-        let start = self.cursor;
-        self.cursor += 1;
-
-        while self
-            .peek_char()
-            .is_some_and(|ch| ch.is_ascii_alphanumeric() || ch == '_')
-        {
-            self.cursor += 1;
-        }
-
-        self.report_error(
-            start,
-            self.cursor,
-            "identificadores en HULK no pueden empezar con '_'",
-        );
-    }
-
-    fn lex_string(&mut self) {
-        let start = self.cursor;
-        self.cursor += 1;
-
-        let mut value = String::new();
-        let mut terminated = false;
-
-        while let Some(ch) = self.peek_char() {
-            if ch == '"' {
-                self.cursor += 1;
-                terminated = true;
-                break;
-            }
-
-            if ch == '\\' {
-                self.cursor += 1; // consume '\'
-                match self.peek_char() {
-                    Some('"') => {
-                        value.push('"');
-                        self.cursor += 1;
-                    }
-                    Some('n') => {
-                        value.push('\n');
-                        self.cursor += 1;
-                    }
-                    Some('t') => {
-                        value.push('\t');
-                        self.cursor += 1;
-                    }
-                    Some('\\') => {
-                        value.push('\\');
-                        self.cursor += 1;
-                    }
-                    Some(other) => {
-                        let escape_start = self.cursor.saturating_sub(1);
-                        self.cursor += other.len_utf8();
-                        self.report_error(
-                            escape_start,
-                            self.cursor,
-                            format!("secuencia de escape invalida: \\{other}"),
-                        );
-                        value.push(other);
-                    }
-                    None => break,
-                }
-                continue;
-            }
-
-            if ch == '\n' {
-                break;
-            }
-
-            value.push(ch);
-            self.advance_char(); // correcto para cualquier codepoint UTF-8
-        }
-
-        if terminated {
-            self.push_token(Token::StringLit(value), start, self.cursor);
-        } else {
-            self.report_error(
-                start,
-                self.cursor.min(self.bytes.len()),
-                "string sin cerrar",
-            );
-        }
-    }
-
-    fn consume_comment(&mut self) {
-        // Avanzar por codepoint completo: un comentario puede contener
-        // cualquier UTF-8 (ej: `—`, `á`) y sumar 1 byte dejaría el cursor
-        // a mitad de un codepoint, provocando panic en el próximo peek.
-        while self.peek_char().is_some_and(|ch| ch != '\n') {
-            self.advance_char();
-        }
-    }
-
-    fn skip_whitespace(&mut self) {
-        while self
-            .peek_char()
-            .is_some_and(|ch| matches!(ch, ' ' | '\t' | '\r' | '\n'))
-        {
-            self.cursor += 1;
-        }
-    }
-
-    fn push_token(&mut self, token: Token, start: usize, end: usize) {
-        let span = Span::new(self.file.clone(), start, end);
-        self.tokens.push(SpannedToken::new(token, span));
-    }
-
-    fn report_error(&mut self, start: usize, end: usize, message: impl Into<String>) {
-        let span = Span::new(self.file.clone(), start, end);
-        self.diagnostics.push(
-            Diagnostic::error(message)
-                .with_label(span, "ocurrio durante el analisis lexico")
-                .with_note("el lexer intenta recuperarse y continuar"),
-        );
-    }
-
-    fn peek_char(&self) -> Option<char> {
-        self.source[self.cursor..].chars().next()
-    }
-
-    /// Returns the character after the current one, skipping over the correct
-    /// number of UTF-8 bytes for the current character.
-    fn peek_next_char(&self) -> Option<char> {
-        let mut chars = self.source[self.cursor..].chars();
-        let first = chars.next()?;
-        // Only valid for ASCII lookahead (operators are always ASCII).
-        // For the general case we skip by the byte length of the first char.
-        let _ = first;
-        chars.next()
-    }
-
-    /// Advances the cursor past the current character, returning its byte length.
-    fn advance_char(&mut self) -> usize {
-        let ch = self.peek_char().unwrap_or('\0');
-        let len = ch.len_utf8();
-        self.cursor += len;
-        len
     }
 }
 
