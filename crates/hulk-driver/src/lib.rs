@@ -1,6 +1,8 @@
+use hulk_desugar::desugar;
 use hulk_diagnostics::DiagnosticBag;
 use hulk_hir::{Hir, MemberKind, Program, Resolver, SourceFile, TypeEnv, TypedAst};
 use hulk_lexer::lex;
+use hulk_macros::expand_macros;
 use hulk_parser::parse;
 use hulk_types::TypeInferer;
 
@@ -34,6 +36,18 @@ pub fn build_hir(source: SourceFile, bag: &mut DiagnosticBag) -> Option<Hir> {
             types,
         }))
     }
+}
+
+/// Runs the complete implemented pipeline: lex → parse → resolve → infer →
+/// expand_macros → desugar. Returns a fully-lowered HIR with no sugar nodes.
+#[must_use]
+pub fn build_pipeline(source: SourceFile, bag: &mut DiagnosticBag) -> Option<Hir> {
+    let hir = build_hir(source, bag)?;
+    let hir = expand_macros(hir, bag);
+    if bag.has_errors() {
+        return None;
+    }
+    Some(desugar(hir, bag))
 }
 
 pub fn hulk_driver() -> &'static str {
