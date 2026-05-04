@@ -89,6 +89,69 @@ se transforma a:
 (a @ " ") @ b
 ```
 
+## Extension 11.3 - Vector generators
+
+### Que se implemento
+
+- Archivo nuevo: crates/hulk-desugar/src/transforms/vec_generator.rs
+  - Metodo `desugar_vec_generator` en `Desugarer`.
+  - Transforma `[element | binding in iterable]` en:
+    ```
+    let __vec_N = __vec_new() in {
+        for (binding in iterable) __vec_push(__vec_N, element);
+        __vec_N
+    }
+    ```
+  - El `for` interno se delega a `desugar_for`, de modo que el HIR resultante no contiene ningun nodo `For`.
+  - Los nombres `__vec_new` y `__vec_push` se tratan como builtins del runtime (se implementan en sesion 14).
+
+- Actualizaciones en crates/hulk-desugar/src/lib.rs:
+  - Arm `VecGenerator` en `desugar_expr` reemplazado: desugar interno de `element` e `iterable`, luego llamada a `desugar_vec_generator`.
+
+- Actualizaciones en crates/hulk-desugar/src/transforms/mod.rs:
+  - Modulo `vec_generator` declarado.
+
+- Tests agregados en crates/hulk-desugar/src/tests/vec_generator.rs:
+  - `desugars_vec_generator_into_let_vec_new_block_shape`: verifica forma exterior `let __vec_N = __vec_new() in { ...; __vec_N }`.
+  - `desugars_vec_generator_push_call_receives_element`: verifica que `__vec_push` recibe el elemento original.
+  - `desugars_vec_generator_for_body_is_already_lowered`: verifica que ningun nodo `For` queda en el HIR resultante.
+  - `desugars_for_loop_containing_vec_generator_in_body`: test combinado — for externo con generador de vector en el body; ambas transformaciones se aplican correctamente.
+
+### Decisiones de diseno
+
+- Se delega el for interno a `desugar_for` en lugar de construir el `let + while` manualmente.
+  - Esto garantiza que la estrategia iterable/enumerable se aplica de igual forma que para los `for` del usuario.
+  - Alternativa descartada: construir el `let + while` directamente — duplicaria logica y podria divergir de la estrategia de `desugar_for`.
+
+- El `id` original del nodo `VecGenerator` se preserva en el nodo `Let` externo, igual que hace `desugar_for` con los nodos `For`.
+
+- Los nombres de builtin `__vec_new` y `__vec_push` siguen el esquema de prefijo `__` del proyecto para distinguir nombres sinteticos.
+
+### Gotchas
+
+- El arm `VecGenerator` en `desugar_expr` anteriormente solo recursaba las sub-expresiones sin transformar el nodo. Esto era un stub incompleto de 11.1 que se corrigio en esta subsesion.
+
+### Ejemplos de uso
+
+Entrada:
+
+```text
+[x * 2 | x in numbers]
+```
+
+Forma desazucarada (con for interno ya lowereado):
+
+```text
+let __vec_0 = __vec_new() in {
+    let __it_0 = numbers in
+        while (__it_0.next())
+            let x = __it_0.current() in __vec_push(__vec_0, x * 2);
+    __vec_0
+}
+```
+
+---
+
 ## Extension 11.2 - Lambdas y functores
 
 ### Que se implemento
