@@ -114,8 +114,15 @@ impl<'a> TypeInferer<'a> {
                 body,
             } => self.infer_lambda(expr, params, return_type, body),
 
-            // These shouldn't appear at top-level in normal expressions
-            ExprKind::AssignTarget(_) | ExprKind::LetBinding(_) => TypeId::OBJECT, // fallback
+            // AssignTarget carries no type itself; leave it as Object.
+            ExprKind::AssignTarget(_) => TypeId::OBJECT,
+
+            // LetBinding must recurse into the value so that the value's NodeId
+            // is registered in the type env. Without this, the lowerer cannot
+            // retrieve the value's type via hir.expr_type(lb.value.id) and
+            // falls back to TypeId::OBJECT, incorrectly treating numeric
+            // bindings as reference types and emitting spurious ShadowPush.
+            ExprKind::LetBinding(lb) => self.infer_expr(&lb.value),
         };
 
         self.env.register_expr_type(expr.id, ty);
