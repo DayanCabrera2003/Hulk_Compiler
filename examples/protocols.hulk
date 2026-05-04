@@ -1,0 +1,26 @@
+// protocols.hulk — protocol, extends, anotación tipada y conformance implícita.
+// Snippets literales de Hulk.md:882, 892, 938, 1039.
+protocol Hashable {
+    hash(): Number;
+}
+
+protocol Equatable extends Hashable {
+    equals(other: Object): Boolean;
+}
+
+protocol Iterable {
+    next(): Boolean;
+    current(): Object;
+}
+
+protocol Enumerable extends Iterable {
+    iter(): Iterable;
+}
+
+type HashablePerson(id: Number) {
+    id: Number = id;
+    hash(): Number => self.id;
+    equals(other: Object): Boolean => true;
+}
+
+let h: Hashable = new HashablePerson(42) in print(h.hash());

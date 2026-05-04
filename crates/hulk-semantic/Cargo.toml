@@ -1,0 +1,11 @@
+[package]
+name = "hulk-semantic"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+hulk-ast = { path = "../hulk-ast" }
+hulk-diagnostics = { path = "../hulk-diagnostics" }

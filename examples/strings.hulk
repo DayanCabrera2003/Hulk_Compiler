@@ -1,0 +1,10 @@
+// strings.hulk — concatenación `@`, concatenación con espacio `@@`, escapes.
+// Snippets literales de Hulk.md:82, 88, 96.
+{
+    print("Hello World");
+    print("The message is \"Hello World\"");
+    print("Line 1\nLine 2\tTabbed");
+    print("The meaning of life is " @ 42);
+    print("Sir" @@ "Phil Collins");
+    print("a" @ "b" @ "c");
+}

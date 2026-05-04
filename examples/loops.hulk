@@ -1,0 +1,12 @@
+// loops.hulk — `while` con asignación destructiva y `for` sobre iterables.
+// Snippets literales de Hulk.md:416 y Hulk.md:439.
+{
+    let a = 10 in while (a >= 0) {
+        print(a);
+        a := a - 1;
+    };
+
+    for (x in range(0, 10)) print(x);
+
+    for (x in [1, 2, 3]) print(x);
+}

@@ -1,0 +1,3 @@
+// hello.hulk — Hulk.md:82 (programa completo, copiado literal).
+// Feature: builtin `print`, literal de string.
+print("Hello World");

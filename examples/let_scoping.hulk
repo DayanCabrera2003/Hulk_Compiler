@@ -1,0 +1,19 @@
+// let_scoping.hulk — múltiples bindings, anidamiento, redefinición y `:=`.
+// Snippets literales de Hulk.md:211, 237, 284, 311 (agrupados en un bloque).
+{
+    let number = 42, text = "The meaning of life is" in
+        print(text @ number);
+
+    let a = 6, b = a * 7 in print(b);
+
+    let a = 20 in {
+        let a = 42 in print(a);
+        print(a);
+    };
+
+    let a = 0 in {
+        print(a);
+        a := 1;
+        print(a);
+    };
+}
