@@ -5,7 +5,12 @@ use crate::symbols::SymbolKind;
 use crate::Resolver;
 
 impl Resolver {
-    pub(crate) fn resolve_assign_target(&mut self, target: &AssignTarget, span: Span) {
+    pub(crate) fn resolve_assign_target(
+        &mut self,
+        target: &AssignTarget,
+        span: Span,
+        node_id: NodeId,
+    ) {
         match target {
             AssignTarget::Ident(name) => {
                 if name == "self" {
@@ -15,7 +20,9 @@ impl Resolver {
                     );
                     return;
                 }
-                if self.lookup(name).is_none() {
+                if let Some(sym_id) = self.lookup(name) {
+                    self.expr_symbols.insert(node_id, sym_id);
+                } else {
                     self.bag.push(
                         Diagnostic::error(format!("identificador no declarado: {name}"))
                             .with_label(span, "no existe en el scope visible"),
@@ -84,7 +91,8 @@ impl Resolver {
                 self.resolve_expr(target);
                 self.resolve_expr(value);
             }
-            ExprKind::AssignTarget(target) => self.resolve_assign_target(target, expr.span.clone()),
+            ExprKind::AssignTarget(target) =>
+                self.resolve_assign_target(target, expr.span.clone(), expr.id),
             ExprKind::LetBinding(binding) => self.resolve_expr(&binding.value),
             ExprKind::If {
                 condition,
@@ -152,11 +160,12 @@ impl Resolver {
             self.resolve_expr(&binding.value);
             self.validate_expr_against_annotation(&binding.value, binding.type_ann.as_ref());
             self.push_scope();
-            self.define(
+            let sym_id = self.define(
                 binding.name.clone(),
                 SymbolKind::Variable,
                 binding.span.clone(),
             );
+            self.expr_symbols.insert(binding_expr.id, sym_id);
             pushed_scopes += 1;
         }
 
