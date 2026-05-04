@@ -411,15 +411,32 @@ let name = hir.symbols.table().name_of(sym_id).unwrap();
 Value::Temp(param_temps[name])
 ```
 
-**LetBinding SymbolId — extensión requerida del resolver:**
+**Extensiones requeridas del resolver (deben implementarse antes del lowerer):**
 
-`resolver/names/exprs.rs::resolve_let` debe almacenar el `SymbolId` del binding:
+1. **LetBinding** — `resolver/names/exprs.rs::resolve_let`:
 ```rust
 let sym_id = self.define(binding.name.clone(), SymbolKind::Variable, binding.span.clone());
 self.expr_symbols.insert(binding_expr.id, sym_id);  // ← agregar
 ```
 
-Con esta extensión, el lowerer usa `hir.resolved_symbol(binding_expr.id).unwrap()` para LetBinding.
+2. **AssignTarget::Ident** — `resolver/names/exprs.rs::resolve_assign_target`. Actualmente la firma es `resolve_assign_target(&mut self, target: &AssignTarget, span: Span)`. Cambiar para recibir también `node_id: NodeId` y almacenar el SymbolId:
+```rust
+// En resolve_expr, al dispatchar AssignTarget:
+ExprKind::AssignTarget(target) =>
+    self.resolve_assign_target(target, expr.span.clone(), expr.id),
+
+// En resolve_assign_target:
+AssignTarget::Ident(name) => {
+    // ... validaciones existentes ...
+    if let Some(sym_id) = self.lookup(name) {
+        self.expr_symbols.insert(node_id, sym_id);  // ← agregar
+    }
+}
+```
+
+Con estas dos extensiones, el lowerer usa `hir.resolved_symbol(expr.id).unwrap()` tanto para LetBinding como para AssignTarget::Ident.
+
+En §3.4, `AssignTarget::Ident` → `sym_of_name = hir.resolved_symbol(assign_target_expr.id).unwrap()` → `Copy { dst: locals[sym_of_name], src: val }`.
 
 Al terminar cada función/método, restaurar `self_temp = None` y los campos `current_*` a `None`.
 
