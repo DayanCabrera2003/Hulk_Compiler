@@ -3,10 +3,11 @@
 //! Lowers high-level HULK constructs into a smaller core language so later
 //! passes (type check, codegen) only need to deal with the primitive shapes.
 //!
-//! Session 11.1 transforms:
+//! Session 11 transforms:
 //! - `for (x in e) body` into explicit `let` + `while` + iterator protocol calls.
 //! - `a @@ b` into `a @ " " @ b`.
 //! - Lambdas and function-reference arguments into synthetic invocable types.
+//! - `[e | x in it]` into `let __vec = __vec_new() in { for (x in it) __vec_push(__vec, e); __vec }`.
 //!
 //! The dispatcher [`Desugarer::desugar_expr`] walks an [`Expr`] tree, leaving
 //! already-lowered nodes untouched and delegating the interesting cases to
@@ -222,15 +223,11 @@ impl<'a> Desugarer<'a> {
                 element,
                 binding,
                 iterable,
-            } => Expr::new(
-                ExprKind::VecGenerator {
-                    element: Box::new(self.desugar_expr(*element)),
-                    binding,
-                    iterable: Box::new(self.desugar_expr(*iterable)),
-                },
-                span,
-                id,
-            ),
+            } => {
+                let desugared_element = self.desugar_expr(*element);
+                let desugared_iterable = self.desugar_expr(*iterable);
+                self.desugar_vec_generator(desugared_element, binding, desugared_iterable, span, id)
+            }
             ExprKind::Let { bindings, body } => Expr::new(
                 ExprKind::Let {
                     bindings: bindings
