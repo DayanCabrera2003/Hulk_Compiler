@@ -193,7 +193,8 @@ pub struct Lowerer<'h> {
     instrs: Vec<Instr>,
     next_temp: u32,
     next_label: u32,
-    locals: HashMap<SymbolId, TempId>,
+    locals: HashMap<SymbolId, TempId>,    // SymbolKind::Variable let bindings
+    param_temps: HashMap<String, TempId>, // SymbolKind::Parameter: name → TempId
     shadow_count: usize,       // refs pushed in the current Let scope; saved/restored per Let
     self_temp: Option<TempId>, // TempId asignado al param self del método actual
     current_type_name: Option<String>,
@@ -202,7 +203,9 @@ pub struct Lowerer<'h> {
 }
 ```
 
-`shadow_count` se reinicia a 0 al inicio de cada función/método que se lowerea (no es compartido entre funciones). `instrs` también se vacía antes de lowering cada función. `next_temp` y `next_label` pueden ser globales o reiniciarse por función; el único requisito es que sean únicos dentro de cada `BannerFunction`.
+`shadow_count`, `param_temps`, `locals` y `self_temp` se reinician al inicio de cada función/método. `instrs` también se vacía. `next_temp` y `next_label` deben producir valores únicos dentro de cada `BannerFunction` (pueden ser globales o reiniciarse por función).
+
+**Separación `locals` vs `param_temps`:** `hulk_ast::Param` no tiene `node_id`, por lo que `hir.resolved_symbol(param.node_id)` no está disponible para params. Los params se indexan por nombre (único dentro de una función). Los `LetBinding` sí tienen `NodeId` y su `SymbolId` se obtiene vía la extensión del resolver descrita en §3.5.
 
 ### API pública (`lib.rs`)
 
@@ -219,14 +222,14 @@ Mapa `ExprKind` → emisión de instrucciones:
 | `Number(v)` | retorna `ConstNum(v)` directamente |
 | `StringLit(s)` | retorna `ConstStr(s)` directamente |
 | `Bool(b)` | retorna `ConstBool(b)` directamente |
-| `Ident` | `Temp(locals[sym])` si `SymbolKind::{Variable, Parameter}`; `Temp(self_temp.unwrap())` si `SelfValue`; `Global(name)` si `Function`, `BuiltinFunction`, o `Macro`; `ConstNum(val)` si `BuiltinValue` (`PI` → `std::f64::consts::PI`, `E` → `std::f64::consts::E`); `BuiltinType` nunca aparece como expresión de valor |
+| `Ident` | obtener `sym = hir.resolved_symbol(ident.id).unwrap()` y `kind = hir.symbols.table().get(sym).kind`; `Variable` → `Temp(locals[sym])`; `Parameter` → `Temp(param_temps[hir.symbols.table().name_of(sym).unwrap()])`; `SelfValue` → `Temp(self_temp.unwrap())`; `Function`/`BuiltinFunction`/`Macro` → `Global(name)`; `BuiltinValue` → `ConstNum` (`"PI"` → `PI`, `"E"` → `E`, vía `name_of`); `BuiltinType` no aparece como valor |
 | `Self_` | `Temp(self_temp.unwrap())` |
 | `Base` | ver §3.3 — emite `StaticCall` cuando aparece como callee; standalone retorna `Temp(self_temp.unwrap())` |
 | `BinOp` | emite left, right → `Instr::BinOp { dst: fresh() }`; excepción: `BinOpKind::Concat` (`@`) → `Call { callee: Global("__hulk_concat"), args: [left, right] }` (requiere heap) |
 | `UnaryOp` | emite operand → `Instr::UnOp { dst: fresh() }` |
 | `Call` | emite callee + args → `Instr::Call { dst: fresh() }`; si callee es `Base`: ver §3.3 |
 | `MethodCall` | emite receiver + args → `Instr::MethodCall { dst: fresh() }` |
-| `New` | emite args → `Instr::New { dst: fresh() }` |
+| `New { type_ann, args }` | `type_ann` es siempre `TypeAnn::Named(name)` tras el análisis semántico; extrae `name` con `if let TypeAnn::Named(name) = type_ann`; emite args → `New { dst: fresh(), type_name: name, args }` |
 | `Block(es)` | emite cada `e`; retorna valor del último; si `es` está vacío retorna `ConstNull` |
 | `Let { bindings, body }` | emite bindings, body, luego `ShadowPop` × refs |
 | `LetBinding(lb)` | emite value → `fresh_temp`; `ShadowPush` si tipo ref |
@@ -341,21 +344,23 @@ El valor de retorno de la expresión `Assign` es `val` (la asignación retorna e
 
 **`fields` y `pointer_map`** (paralelos, en orden de declaración):
 
-Los campos vienen de `type_decl.body.members` filtrados por `MemberKind::Attribute`:
+Los campos vienen de `type_decl.members` (campo directo, sin `.body`) filtrados por `MemberKind::Attribute`. `TypeEnv` no tiene `field_type`; usar `hir.expr_type(attr_value_expr.id)`:
 ```
-let attrs: Vec<_> = type_decl.body.members
+let attrs: Vec<_> = type_decl.members
     .iter()
     .filter_map(|m| if let MemberKind::Attribute { name, value, .. } = &m.kind {
         Some((name, value))
     } else { None })
     .collect();
 
-for (name, _value) in &attrs {
+for (name, value_expr) in &attrs {
     fields.push(name.to_string())
-    let ty = hir.types.field_type(&type_decl.name, name).unwrap_or(TypeId::OBJECT)
+    let ty = hir.expr_type(value_expr.id).unwrap_or(TypeId::OBJECT)
     pointer_map.push(is_reference(ty))
 }
 ```
+
+Los métodos se obtienen filtrando `MemberKind::Method(FunctionDecl)` de `type_decl.members`.
 
 `TypeId::STRING` es referencia (`is_reference` retorna `true`) — las strings HULK son heap-managed.
 
@@ -386,22 +391,35 @@ Antes de lowering, reiniciar el Lowerer igual que para `__init__`, pero con `cur
 
 Params del método = `method.params`. Emitir el body del método → `body_val`; luego `Return(body_val)`.
 
-**SymbolId de params de método/constructor en `locals` — extensión requerida del resolver:**
+**Params en `param_temps` (no requiere extensión del resolver):**
 
-La resolución actual no almacena la relación `param.node_id → SymbolId` en `hir.expr_symbols`. Se requiere la siguiente extensión en `resolver/names/decls.rs::define_params`:
+`hulk_ast::Param` no tiene `node_id`, por lo que no se puede usar `hir.resolved_symbol` para params. En cambio, los params se almacenan en `param_temps: HashMap<String, TempId>` indexados por nombre:
+
 ```rust
-// Por cada param definido, almacenar su SymbolId:
-let sym_id = self.define(param.name.clone(), SymbolKind::Parameter, param.span.clone());
-self.expr_symbols.insert(param.node_id, sym_id);  // ← agregar
+// Al inicio de cada función/método:
+param_temps.clear();
+for param in &function.params {
+    let t = fresh_temp();
+    param_temps.insert(param.name.clone(), t);
+    param_id_list.push(t);  // para BannerFunction::params
+}
 ```
 
-Y en `resolver/names/exprs.rs::resolve_let`:
+Cuando `emit_expr` encuentra `ExprKind::Ident` con `SymbolKind::Parameter`, usa:
+```rust
+let name = hir.symbols.table().name_of(sym_id).unwrap();
+Value::Temp(param_temps[name])
+```
+
+**LetBinding SymbolId — extensión requerida del resolver:**
+
+`resolver/names/exprs.rs::resolve_let` debe almacenar el `SymbolId` del binding:
 ```rust
 let sym_id = self.define(binding.name.clone(), SymbolKind::Variable, binding.span.clone());
 self.expr_symbols.insert(binding_expr.id, sym_id);  // ← agregar
 ```
 
-Con estas extensiones, el lowerer usa `hir.resolved_symbol(param.node_id)` y `hir.resolved_symbol(binding_expr.id)` para obtener el SymbolId al insertar en `locals`.
+Con esta extensión, el lowerer usa `hir.resolved_symbol(binding_expr.id).unwrap()` para LetBinding.
 
 Al terminar cada función/método, restaurar `self_temp = None` y los campos `current_*` a `None`.
 
@@ -427,7 +445,7 @@ Con la extensión del resolver descrita en §3.5, el `SymbolId` del binding se o
 **Al salir de `Let`:**  
 Después de emitir el body, emitir `ShadowPop` tantas veces como el contador local del scope.
 
-El tipo se consulta con `hir.types.expr_type(binding.value.id)`.
+El tipo se consulta con `hir.expr_type(binding.value.id)` (método directo en `Hir`, delega a `TypeEnv::expr_type`).
 
 **`shadow_count` en scopes anidados:**  
 `shadow_count` es local al lowering de cada `Let`. Al entrar en un `Let`, el lowerer guarda el valor actual y lo reinicia a 0. Al salir, emite `ShadowPop` × `shadow_count_local` y restaura el valor guardado. Esto garantiza que scopes anidados (`let x = let y = ... in y in x`) emitan el número correcto de pops para cada nivel independientemente.
