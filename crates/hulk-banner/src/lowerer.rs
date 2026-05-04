@@ -29,6 +29,7 @@ pub(crate) struct Lowerer<'h> {
     // Saved/restored around each `Let` so nested lets pop only their own.
     shadow_count: usize,
     self_temp: Option<TempId>,
+    // Reserved for future passes that need the enclosing type name (e.g., reflection, vtable generation).
     current_type_name: Option<String>,
     current_parent_type_name: Option<String>,
     current_method_name: Option<String>,
@@ -293,7 +294,7 @@ impl<'h> Lowerer<'h> {
         names.append(&mut param_names);
 
         BannerFunction {
-            name: method.name.clone(),
+            name: format!("{type_name}.{}", method.name),
             params,
             param_names: names,
             body: std::mem::take(&mut self.instrs),

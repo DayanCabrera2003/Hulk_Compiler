@@ -32,6 +32,7 @@ pub enum Instr {
     Return     (Value),
     ShadowPush (Value),
     ShadowPop,
+    // Reserved; the lowerer never emits this. Codegen may use it to decompose New into alloc + init.
     Alloc      { dst: TempId, type_name: String },
 }
 
