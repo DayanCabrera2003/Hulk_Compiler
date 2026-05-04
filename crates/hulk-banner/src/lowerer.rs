@@ -1,10 +1,9 @@
 use std::collections::HashMap;
 
 use hulk_hir::{
-    AssignTarget, BinOpKind, Expr, ExprKind, FunctionDecl, Hir, LetBinding, MemberKind, TypeAnn,
-    TypeId, UnaryOpKind,
+    AssignTarget, BinOpKind, Expr, ExprKind, FunctionDecl, Hir, LetBinding, MemberKind, Symbol,
+    SymbolId, SymbolKind, TypeAnn, TypeId, UnaryOpKind,
 };
-use hulk_hir::{Symbol, SymbolId, SymbolKind};
 
 use crate::ir::{BannerFunction, BannerProgram, Instr, TempId, TypeDescriptor, Value};
 
@@ -115,7 +114,7 @@ impl<'h> Lowerer<'h> {
         let mut types = Vec::new();
         for entry in type_entries {
             let init_fn =
-                self.lower_type_init(&entry.name, &entry.parent, &entry.parent_args,
+                self.lower_type_init(&entry.name, entry.parent.as_deref(), &entry.parent_args,
                                      &entry.type_params, &entry.attrs);
 
             let mut methods: Vec<BannerFunction> = vec![init_fn];
@@ -213,7 +212,7 @@ impl<'h> Lowerer<'h> {
     fn lower_type_init(
         &mut self,
         type_name: &str,
-        parent_name: &Option<String>,
+        parent_name: Option<&str>,
         parent_args: &[Expr],
         type_params: &[hulk_hir::Param],
         attrs: &[(String, Expr)],
@@ -223,7 +222,7 @@ impl<'h> Lowerer<'h> {
         let t_self = self.fresh_temp();
         self.self_temp = Some(t_self);
         self.current_type_name = Some(type_name.to_string());
-        self.current_parent_type_name = parent_name.clone();
+        self.current_parent_type_name = parent_name.map(|s| s.to_string());
         self.current_method_name = Some("__init__".to_string());
 
         let (mut user_params, mut param_names) = self.setup_params(type_params);
@@ -238,7 +237,7 @@ impl<'h> Lowerer<'h> {
             let dst = self.fresh_temp();
             self.emit(Instr::StaticCall {
                 dst,
-                type_name: parent.clone(),
+                type_name: parent.to_string(),
                 method: "__init__".to_string(),
                 args,
             });
@@ -334,7 +333,7 @@ impl<'h> Lowerer<'h> {
             ExprKind::Number(v) => Value::ConstNum(*v),
             ExprKind::StringLit(s) => Value::ConstStr(s.clone()),
             ExprKind::Bool(b) => Value::ConstBool(*b),
-            ExprKind::Ident(name) => self.emit_ident(name, expr),
+            ExprKind::Ident(_name) => self.emit_ident(expr),
             ExprKind::Self_ => Value::Temp(
                 self.self_temp
                     .expect("Self_ outside of a method body"),
@@ -416,7 +415,10 @@ impl<'h> Lowerer<'h> {
             ExprKind::Let { bindings, body } => self.emit_let(bindings, body),
             ExprKind::LetBinding(lb) => self.emit_let_binding_expr(lb, expr),
             ExprKind::Assign { target, value } => self.emit_assign(target, value),
-            ExprKind::AssignTarget(_) => Value::ConstNull,
+            ExprKind::AssignTarget(target) => panic!(
+                "bare AssignTarget node reached lowerer — should only appear inside Assign (node {:?})",
+                target
+            ),
             ExprKind::If {
                 condition,
                 then_branch,
@@ -463,7 +465,7 @@ impl<'h> Lowerer<'h> {
         }
     }
 
-    fn emit_ident(&mut self, _name: &str, expr: &Expr) -> Value {
+    fn emit_ident(&mut self, expr: &Expr) -> Value {
         let sym = self
             .hir
             .resolved_symbol(expr.id)
