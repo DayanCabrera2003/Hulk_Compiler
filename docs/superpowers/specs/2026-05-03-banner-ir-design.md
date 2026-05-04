@@ -194,9 +194,15 @@ pub struct Lowerer<'h> {
     next_temp: u32,
     next_label: u32,
     locals: HashMap<SymbolId, TempId>,
-    shadow_count: usize,  // referencias activas empujadas al shadow stack en el scope actual
+    shadow_count: usize,       // refs pushed in the current Let scope; saved/restored per Let
+    self_temp: Option<TempId>, // TempId asignado al param self del método actual
+    current_type_name: Option<String>,
+    current_parent_type_name: Option<String>,
+    current_method_name: Option<String>,
 }
 ```
+
+`shadow_count` se reinicia a 0 al inicio de cada función/método que se lowerea (no es compartido entre funciones). `instrs` también se vacía antes de lowering cada función. `next_temp` y `next_label` pueden ser globales o reiniciarse por función; el único requisito es que sean únicos dentro de cada `BannerFunction`.
 
 ### API pública (`lib.rs`)
 
@@ -213,39 +219,79 @@ Mapa `ExprKind` → emisión de instrucciones:
 | `Number(v)` | retorna `ConstNum(v)` directamente |
 | `StringLit(s)` | retorna `ConstStr(s)` directamente |
 | `Bool(b)` | retorna `ConstBool(b)` directamente |
-| `Ident` | `Temp(locals[sym])` si local/param; `Global(name)` si función global |
-| `Self_` | `Temp(locals[self_sym])` |
-| `BinOp` | emite left, right → `Instr::BinOp { dst: fresh() }` |
+| `Ident` | `Temp(locals[sym])` si `SymbolKind::{Variable, Parameter}`; `Temp(self_temp.unwrap())` si `SelfValue`; `Global(name)` si `Function`, `BuiltinFunction`, o `Macro`; `ConstNum(val)` si `BuiltinValue` (`PI` → `std::f64::consts::PI`, `E` → `std::f64::consts::E`); `BuiltinType` nunca aparece como expresión de valor |
+| `Self_` | `Temp(self_temp.unwrap())` |
+| `Base` | ver §3.3 — emite `StaticCall` cuando aparece como callee; standalone retorna `Temp(self_temp.unwrap())` |
+| `BinOp` | emite left, right → `Instr::BinOp { dst: fresh() }`; excepción: `BinOpKind::Concat` (`@`) → `Call { callee: Global("__hulk_concat"), args: [left, right] }` (requiere heap) |
 | `UnaryOp` | emite operand → `Instr::UnOp { dst: fresh() }` |
-| `Call` | emite callee + args → `Instr::Call { dst: fresh() }` |
+| `Call` | emite callee + args → `Instr::Call { dst: fresh() }`; si callee es `Base`: ver §3.3 |
 | `MethodCall` | emite receiver + args → `Instr::MethodCall { dst: fresh() }` |
 | `New` | emite args → `Instr::New { dst: fresh() }` |
-| `Block(es)` | emite cada `e`; retorna valor del último |
+| `Block(es)` | emite cada `e`; retorna valor del último; si `es` está vacío retorna `ConstNull` |
 | `Let { bindings, body }` | emite bindings, body, luego `ShadowPop` × refs |
 | `LetBinding(lb)` | emite value → `fresh_temp`; `ShadowPush` si tipo ref |
-| `Assign { target, value }` | emite value; emite `SetField` o `Copy` según target |
+| `Assign { target, value }` | emite value; target descompuesto según §3.4: `Copy`, `SetField`, o `SetIndex` |
+| `AssignTarget` | nodo auxiliar; solo aparece envuelto en `Assign`; procesado por §3.4 |
 | `FieldAccess` | `Instr::GetField { dst: fresh() }` |
 | `Index` | `Instr::GetIndex { dst: fresh() }` |
-| `If` | serie de JumpIf + Jump + Labels |
-| `While` | label de loop + JumpIf de salida |
+| `If { condition, then_branch, elif_branches, else_branch }` | ver §3.3: JumpIf + Labels por cada rama elif; sin `else_branch` retorna `ConstNull` |
+| `While` | label de loop + JumpIf de salida; retorna `ConstNull` |
+| `VecLiteral(es)` | `n = es.len() as f64`; `t = call Global("__vec_new")(ConstNum(n))`; por cada elem: `call Global("__vec_push")(t, elem_val)`; retorna `Temp(t)` |
+| `Is { expr, type_ann }` | emite expr → `t`; `dst = call Global("__hulk_is")(t, Global(type_name))`; retorna `Temp(dst)` |
+| `As { expr, type_ann }` | emite expr → `t`; `dst = call Global("__hulk_as")(t, Global(type_name))`; retorna `Temp(dst)` |
 
 ### Control de flujo — `if/elif/else`
 
+El resultado de la expresión `if` se almacena en un `TempId` de resultado común (`t_res`) que se escribe antes de cada `jump end_N`. Si `else_branch` es `None`, la rama de fallthrough asigna `Copy { dst: t_res, src: ConstNull }`.
+
+Cada entrada de `elif_branches` genera su propio par `(t_cXX, then_elif_XX)`. El orden de emisión es: condición principal → condiciones elif en orden → fallthrough (else o ConstNull). Todos saltan a `end_N`.
+
 ```
+    t_res = (fresh TempId para el resultado)
     t_cond = <condición principal>
     jumpif t_cond then_N
-    [elif: t_cXX = <cond>; jumpif t_cXX then_elif_XX; ...]
-    <else branch o ConstNull>
+    t_c0 = <elif_branches[0].cond>
+    jumpif t_c0 then_elif_0
+    [t_c1 = <elif_branches[1].cond>; jumpif t_c1 then_elif_1; ...]
+    <else branch body, o Copy t_res = ConstNull si no hay else>
     jump end_N
-  then_elif_XX:
-    <elif body>
+  then_elif_0:
+    t_res = <elif_branches[0].body>
     jump end_N
+  [then_elif_1: ...]
   then_N:
-    <then branch>
+    t_res = <then_branch body>
   end_N:
+    (t_res tiene el valor del if)
 ```
 
-El resultado de la expresión `if` se escribe en un `TempId` de resultado común antes de cada `jump end_N`.
+Si `elif_branches` está vacío, los pasos intermedios se omiten.
+
+La rama `then_N:` es la última antes de `end_N:`, por lo que cae directamente hacia `end_N:` — no requiere un `jump end_N` explícito. Todas las demás ramas (else y cada `then_elif_K:`) sí necesitan `jump end_N` porque están antes de `then_N:` en la secuencia lineal.
+
+**Ejemplo con N=2 elif branches:**
+```
+    t_res = fresh
+    t_cond = <cond>
+    jumpif t_cond then_0
+    t_c0 = <elif[0].cond>
+    jumpif t_c0 then_elif_0
+    t_c1 = <elif[1].cond>
+    jumpif t_c1 then_elif_1
+    t_res = copy <else body o ConstNull>
+    jump end_0
+  then_elif_0:
+    t_res = <elif[0].body>
+    jump end_0
+  then_elif_1:
+    t_res = <elif[1].body>
+    jump end_0
+  then_0:
+    t_res = <then body>   ← fall-through a end_0, sin jump explícito
+  end_0:
+```
+
+La regla general: los `then_elif_K:` se emiten en orden creciente de K, cada uno terminando con `jump end_N`. `then_N:` siempre va último antes de `end_N:`.
 
 ### Control de flujo — `while`
 
@@ -261,6 +307,104 @@ El resultado de la expresión `if` se escribe en un `TempId` de resultado común
 
 El `while` no produce un valor útil; retorna `ConstNull`.
 
+### §3.3 Lowering de `Base`
+
+`Base` en HULK solo aparece como callee de `Call { callee: Base, args }` (sintaxis `base()`). El lowerer detecta este patrón antes de procesar el `Call` genérico y emite:
+
+```rust
+Instr::StaticCall {
+    dst: fresh_temp(),
+    type_name: current_parent_type_name.clone().unwrap(),
+    method: current_method_name.clone().unwrap(),
+    args: [Value::Temp(self_temp.unwrap())]
+          .into_iter().chain(lowered_args).collect(),
+}
+```
+
+Si `Base` aparece en cualquier otro contexto (standalone, receiver de MethodCall con nombre explícito), el lowerer retorna `Value::Temp(self_temp.unwrap())` como valor conservador.
+
+### §3.4 Descomposición de `AssignTarget`
+
+`Assign { target: Expr, value: Expr }` — el lowerer primero emite `value` para obtener `val: Value`, luego descompone el target:
+
+| AssignTarget variant | Instrucción emitida |
+|---|---|
+| `Ident(name)` | `Copy { dst: locals[sym_of_name], src: val }` |
+| `Field { receiver, field }` | emite receiver → `obj`; `SetField { object: obj, field, value: val }` |
+| `Index { target, index }` | emite target → `t`; emite index → `i`; `SetIndex { target: t, index: i, value: val }` |
+
+El valor de retorno de la expresión `Assign` es `val` (la asignación retorna el valor asignado).
+
+### §3.5 Lowering de `TypeDecl`
+
+`lower_program` itera `hir.program.types` para construir los `TypeDescriptor`.
+
+**`fields` y `pointer_map`** (paralelos, en orden de declaración):
+
+Los campos vienen de `type_decl.body.members` filtrados por `MemberKind::Attribute`:
+```
+let attrs: Vec<_> = type_decl.body.members
+    .iter()
+    .filter_map(|m| if let MemberKind::Attribute { name, value, .. } = &m.kind {
+        Some((name, value))
+    } else { None })
+    .collect();
+
+for (name, _value) in &attrs {
+    fields.push(name.to_string())
+    let ty = hir.types.field_type(&type_decl.name, name).unwrap_or(TypeId::OBJECT)
+    pointer_map.push(is_reference(ty))
+}
+```
+
+`TypeId::STRING` es referencia (`is_reference` retorna `true`) — las strings HULK son heap-managed.
+
+**Constructor `__init__` (`format!("{}.__init__", type_decl.name)`):**
+
+Antes de lowering, reiniciar el Lowerer:
+```rust
+self.instrs.clear();
+self.locals.clear();
+self.shadow_count = 0;
+let t_self = self.fresh_temp();
+self.self_temp = Some(t_self);
+self.current_type_name = Some(type_decl.name.clone());
+self.current_parent_type_name = type_decl.parent.as_ref().map(|p| p.name.clone());
+self.current_method_name = Some("__init__".to_string());
+```
+
+Params del constructor = `type_decl.params` (la lista de `Param` del TypeDecl). Asignar un TempId fresh a cada param e insertar en `locals` (ver "SymbolId de params" abajo).
+
+Body emission:
+1. Si tiene padre: emitir `StaticCall { dst: fresh, type_name: parent_name, method: "__init__", args: [Temp(t_self)] + type_decl.parent.args.iter().map(|e| emit_expr(e)) }`
+2. Por cada `(name, value)` en `attrs` (orden de declaración): emitir `SetField { object: Temp(t_self), field: name, value: emit_expr(value) }`
+3. Emitir `Return(Temp(t_self))`
+
+**Métodos (`format!("{}.{}", type_decl.name, method.name)`):**
+
+Antes de lowering, reiniciar el Lowerer igual que para `__init__`, pero con `current_method_name = Some(method.name.clone())`.
+
+Params del método = `method.params`. Emitir el body del método → `body_val`; luego `Return(body_val)`.
+
+**SymbolId de params de método/constructor en `locals` — extensión requerida del resolver:**
+
+La resolución actual no almacena la relación `param.node_id → SymbolId` en `hir.expr_symbols`. Se requiere la siguiente extensión en `resolver/names/decls.rs::define_params`:
+```rust
+// Por cada param definido, almacenar su SymbolId:
+let sym_id = self.define(param.name.clone(), SymbolKind::Parameter, param.span.clone());
+self.expr_symbols.insert(param.node_id, sym_id);  // ← agregar
+```
+
+Y en `resolver/names/exprs.rs::resolve_let`:
+```rust
+let sym_id = self.define(binding.name.clone(), SymbolKind::Variable, binding.span.clone());
+self.expr_symbols.insert(binding_expr.id, sym_id);  // ← agregar
+```
+
+Con estas extensiones, el lowerer usa `hir.resolved_symbol(param.node_id)` y `hir.resolved_symbol(binding_expr.id)` para obtener el SymbolId al insertar en `locals`.
+
+Al terminar cada función/método, restaurar `self_temp = None` y los campos `current_*` a `None`.
+
 ### Shadow stack
 
 **Regla de referencia:**
@@ -272,12 +416,51 @@ fn is_reference(ty: TypeId) -> bool {
 ```
 
 **En `emit_let_binding`:**  
-Si el tipo inferido del binding es referencia → emitir `ShadowPush(Temp(dst))` inmediatamente después del valor.
+Con la extensión del resolver descrita en §3.5, el `SymbolId` del binding se obtiene de `hir.resolved_symbol(binding_expr.id)`. El lowerer:
+1. `sym_id = hir.resolved_symbol(binding_expr.id).unwrap()`
+2. `dst = fresh_temp()`
+3. `val = emit_expr(binding.value)`
+4. Emite `Copy { dst, src: val }`
+5. `locals.insert(sym_id, dst)`
+6. Si `is_reference(type)`: emite `ShadowPush(Temp(dst))`; incrementa `shadow_count` local
 
 **Al salir de `Let`:**  
-Después de emitir el body, emitir `ShadowPop` tantas veces como `ShadowPush` se emitieron para este scope.
+Después de emitir el body, emitir `ShadowPop` tantas veces como el contador local del scope.
 
 El tipo se consulta con `hir.types.expr_type(binding.value.id)`.
+
+**`shadow_count` en scopes anidados:**  
+`shadow_count` es local al lowering de cada `Let`. Al entrar en un `Let`, el lowerer guarda el valor actual y lo reinicia a 0. Al salir, emite `ShadowPop` × `shadow_count_local` y restaura el valor guardado. Esto garantiza que scopes anidados (`let x = let y = ... in y in x`) emitan el número correcto de pops para cada nivel independientemente.
+
+**Fallback cuando `expr_type` retorna `None`:**  
+Si el tipo inferido no está disponible (resultado `None`), tratar el binding como referencia y emitir `ShadowPush`. Esta política conservadora garantiza corrección de GC a costa de un `ShadowPush` innecesario en casos donde el tipo es realmente primitivo; es preferible a perder una referencia viva.
+
+### Algoritmo de `lower_program`
+
+```
+fn lower_program(hir: &Hir) -> BannerProgram:
+    let types: Vec<TypeDescriptor> = hir.program.types
+        .iter().map(|td| lower_type_decl(td)).collect()
+
+    let functions: Vec<BannerFunction> = hir.program.functions
+        .iter().map(|fd| lower_function_decl(fd)).collect()
+
+    let main: BannerFunction = lower_main_body(&hir.program.body)
+    // main se llama "__main__", sin params, wrapping el body expression del programa
+
+    BannerProgram { types, functions, main }
+```
+
+Para `lower_function_decl(fd)`: similar a los métodos de §3.5 pero sin self. `fd.params` → TempIds (extensión del resolver requerida). Body: `emit_expr(fd.body)` → `body_val`; `Return(body_val)`.
+
+Para `lower_main_body(body_expr)`: sin params; body es `emit_expr(body_expr)` seguido de `Return(body_val)`.
+
+**`Instr::New` vs `__init__`:**  
+`Instr::New { type_name, args }` es una instrucción de alto nivel. El lowerer **no** emite llamadas explícitas a `TypeName.__init__`. Es responsabilidad de codegen (sesión 15) expandir `New` en alocación (`Alloc`) + llamada al método `__init__` generado en §3.5. Esta separación mantiene el lowerer agnóstico a la ABI de objetos.
+
+### Builtins vs funciones globales
+
+Tanto `SymbolKind::Function` como `SymbolKind::BuiltinFunction` se lowerizan a `Global(name)` en `emit_expr(Ident)`. La distinción `Function` vs `BuiltinFunction` no afecta al lowerer: ambos se emiten como `Instr::Call { callee: Global(name), ... }`. La diferencia es visible solo en codegen, que enlaza los builtins con el runtime en C (`__hulk_print`, `__hulk_sqrt`, etc.) y los globales con funciones HULK compiladas.
 
 ---
 
@@ -315,3 +498,8 @@ Los tests **no** comparan el vector completo de instrucciones (frágil ante camb
 | Shadow stack en `Let` scope | Granularidad mínima correcta: cada `let` introduce y cierra su propio scope |
 | Tests por invariantes, no por snapshot | Menos frágil; el conteo de temps cambia con cualquier refactor del lowerer |
 | `param_names` paralelo a `params` en `BannerFunction` | El pretty-printer lo usa; codegen lo ignora |
+| `VecLiteral` → `__vec_new` + `__vec_push` calls | VecGenerator se desugariza, pero VecLiteral sobrevive; se lowerizan a llamadas de runtime para que codegen no necesite conocer la representación interna del vector |
+| `Is`/`As` → `__hulk_is` / `__hulk_as` calls | Delegado al runtime; la tabla de tipos vivos no está disponible en tiempo de compilación BANNER |
+| Fallback `None` de `expr_type` → es referencia | Política conservadora: mejor un ShadowPush innecesario que perder una referencia viva |
+| Builtins y functions globales → ambos `Global(name)` | El lowerer no distingue origen; codegen enlaza builtins al runtime C y funciones al código compilado |
+| `If` sin `else` retorna `ConstNull` | Consistente con la semántica de HULK donde `if` sin `else` produce un valor null |
