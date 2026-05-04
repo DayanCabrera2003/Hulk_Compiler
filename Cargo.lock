@@ -175,6 +175,7 @@ name = "hulk-banner"
 version = "0.0.1"
 dependencies = [
  "hulk-diagnostics",
+ "hulk-driver",
  "hulk-hir",
 ]
 
