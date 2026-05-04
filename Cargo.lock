@@ -199,6 +199,7 @@ version = "0.0.1"
 dependencies = [
  "hulk-diagnostics",
  "hulk-hir",
+ "proptest",
 ]
 
 [[package]]
@@ -254,6 +255,7 @@ version = "0.0.1"
 dependencies = [
  "hulk-diagnostics",
  "hulk-hir",
+ "proptest",
 ]
 
 [[package]]
