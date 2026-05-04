@@ -759,13 +759,22 @@ impl<'h> Lowerer<'h> {
     }
 
     fn emit_vec_literal(&mut self, elems: &[Expr]) -> Value {
-        let elem_vals: Vec<Value> = elems.iter().map(|e| self.emit_expr(e)).collect();
-        let dst = self.fresh_temp();
+        let n = elems.len() as f64;
+        let t = self.fresh_temp();
         self.emit(Instr::Call {
-            dst,
-            callee: Value::Global("__hulk_vec_new".to_string()),
-            args: elem_vals,
+            dst: t,
+            callee: Value::Global("__vec_new".to_string()),
+            args: vec![Value::ConstNum(n)],
         });
-        Value::Temp(dst)
+        for elem in elems {
+            let ev = self.emit_expr(elem);
+            let push_dst = self.fresh_temp();
+            self.emit(Instr::Call {
+                dst: push_dst,
+                callee: Value::Global("__vec_push".to_string()),
+                args: vec![Value::Temp(t), ev],
+            });
+        }
+        Value::Temp(t)
     }
 }
