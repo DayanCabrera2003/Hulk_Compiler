@@ -112,3 +112,17 @@ fn type_decl_generates_init_method() {
         "Foo should have a __init__ method: {:?}", foo_type.methods.iter().map(|m| &m.name).collect::<Vec<_>>()
     );
 }
+
+#[test]
+fn pretty_print_fib_program() {
+    let prog = support::build_banner(
+        "fib_print",
+        "function fib(n: Number): Number => if (n <= 1) n else fib(n-1) + fib(n-2);
+         print(fib(5));",
+    );
+    let s = format!("{prog}");
+    // Verify structure without checking exact temps
+    assert!(s.contains("fn fib("), "should contain fib function");
+    assert!(s.contains("fn __main__()"), "should contain main");
+    assert!(s.contains("call fib"), "fib body should have recursive call");
+}
