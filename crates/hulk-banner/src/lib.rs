@@ -1,12 +1,7 @@
-pub fn hulk_banner() -> &'static str {
-    "hulk-banner"
-}
+mod ir;
+mod print;
+mod lowerer;
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn test_hulk_banner() {
-        assert_eq!(hulk_banner(), "hulk-banner");
-    }
-}
+pub use ir::{
+    BannerFunction, BannerProgram, Instr, TempId, TypeDescriptor, Value,
+};
