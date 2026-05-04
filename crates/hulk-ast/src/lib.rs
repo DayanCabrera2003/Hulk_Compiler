@@ -7,5 +7,5 @@ pub use decl::{
     Param, ParentSpec, Program, ProtocolDecl, TypeAnn, TypeDecl,
 };
 pub use expr::{BinOpKind, Expr, ExprKind, NodeId, NodeIdGen, UnaryOpKind};
-pub use visitor::{Visitor, VisitorMut};
 pub use hulk_span::{SourceFile, Span};
+pub use visitor::{Visitor, VisitorMut};

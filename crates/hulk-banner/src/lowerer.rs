@@ -114,9 +114,13 @@ impl<'h> Lowerer<'h> {
         // function plus one `BannerFunction` per declared method.
         let mut types = Vec::new();
         for entry in type_entries {
-            let init_fn =
-                self.lower_type_init(&entry.name, entry.parent.as_deref(), &entry.parent_args,
-                                     &entry.type_params, &entry.attrs);
+            let init_fn = self.lower_type_init(
+                &entry.name,
+                entry.parent.as_deref(),
+                &entry.parent_args,
+                &entry.type_params,
+                &entry.attrs,
+            );
 
             let mut methods: Vec<BannerFunction> = vec![init_fn];
             for method in &entry.methods {
@@ -336,10 +340,12 @@ impl<'h> Lowerer<'h> {
             ExprKind::Bool(b) => Value::ConstBool(*b),
             ExprKind::Ident(_name) => self.emit_ident(expr),
             ExprKind::Self_ => Value::Temp(
+                // Resolver emits a diagnostic and rejects programs that use `self` outside a method.
                 self.self_temp
                     .expect("Self_ outside of a method body"),
             ),
             ExprKind::Base => Value::Temp(
+                // Resolver emits a diagnostic and rejects programs that use `base` outside a method.
                 self.self_temp
                     .expect("Base outside of a method body"),
             ),
@@ -467,22 +473,24 @@ impl<'h> Lowerer<'h> {
     }
 
     fn emit_ident(&mut self, expr: &Expr) -> Value {
+        // Resolver stores a symbol for every Ident that passes semantic analysis.
         let sym = self
             .hir
             .resolved_symbol(expr.id)
             .expect("Ident has no resolved symbol");
         let table = self.hir.symbols.table();
+        // SymbolIds are only created by the SymbolTable, so they are always valid.
         let symbol: &Symbol = table.get(sym).expect("symbol not in table");
         match &symbol.kind {
             SymbolKind::Variable => {
-                let t = *self
-                    .locals
-                    .get(&sym)
-                    .expect("variable not in locals");
+                // Variables are inserted into `locals` when their LetBinding is processed.
+                let t = *self.locals.get(&sym).expect("variable not in locals");
                 Value::Temp(t)
             }
             SymbolKind::Parameter => {
+                // Parameter names are always present in the symbol table.
                 let name = table.name_of(sym).expect("param has no name");
+                // Params are registered in `param_temps` during function frame setup.
                 let t = *self
                     .param_temps
                     .get(name)
@@ -490,14 +498,17 @@ impl<'h> Lowerer<'h> {
                 Value::Temp(t)
             }
             SymbolKind::SelfValue => Value::Temp(
+                // Resolver rejects SelfValue outside of a method body.
                 self.self_temp
                     .expect("SelfValue ident outside of a method body"),
             ),
             SymbolKind::Function | SymbolKind::BuiltinFunction | SymbolKind::Macro => {
+                // Functions and macros always have names in the symbol table.
                 let n = table.name_of(sym).unwrap().to_string();
                 Value::Global(n)
             }
             SymbolKind::BuiltinValue => {
+                // BuiltinValues are registered with their names by the builtin setup phase.
                 let name = table.name_of(sym).unwrap();
                 match name {
                     "PI" => Value::ConstNum(std::f64::consts::PI),
@@ -543,6 +554,7 @@ impl<'h> Lowerer<'h> {
         // `base(args)` becomes a static dispatch to the parent's
         // implementation of the current method, prepending `self`.
         if let ExprKind::Base = &callee.kind {
+            // Resolver validates that base() only appears inside a method of a type with a parent.
             let parent = self
                 .current_parent_type_name
                 .clone()
@@ -599,6 +611,7 @@ impl<'h> Lowerer<'h> {
     }
 
     fn emit_let_binding_expr(&mut self, lb: &LetBinding, expr: &Expr) -> Value {
+        // The resolver extension stores expr_symbols[binding_expr.id] = sym_id for every LetBinding.
         let sym_id = self
             .hir
             .resolved_symbol(expr.id)
@@ -625,31 +638,41 @@ impl<'h> Lowerer<'h> {
         };
         match target_kind {
             AssignTarget::Ident(_) => {
+                // The resolver extension stores expr_symbols[node_id] = sym_id for AssignTarget::Ident.
                 let sym = self
                     .hir
                     .resolved_symbol(target.id)
                     .expect("AssignTarget::Ident has no resolved symbol");
                 let table = self.hir.symbols.table();
+                // SymbolIds are only created by the SymbolTable, so they are always valid.
                 let symbol = table.get(sym).expect("symbol not in table");
                 match &symbol.kind {
                     SymbolKind::Variable => {
-                        let dst = *self
-                            .locals
-                            .get(&sym)
-                            .expect("variable not in locals");
-                        self.emit(Instr::Copy { dst, src: v.clone() });
+                        // Variables are inserted into `locals` when their LetBinding is processed.
+                        let dst = *self.locals.get(&sym).expect("variable not in locals");
+                        self.emit(Instr::Copy {
+                            dst,
+                            src: v.clone(),
+                        });
                         v
                     }
                     SymbolKind::Parameter => {
+                        // Parameter names are always present in the symbol table.
                         let name = table.name_of(sym).expect("param has no name").to_string();
+                        // Params are registered in `param_temps` during function frame setup.
                         let dst = *self
                             .param_temps
                             .get(&name)
                             .expect("param not in param_temps");
-                        self.emit(Instr::Copy { dst, src: v.clone() });
+                        self.emit(Instr::Copy {
+                            dst,
+                            src: v.clone(),
+                        });
                         v
                     }
-                    other => panic!("AssignTarget::Ident resolved to unexpected SymbolKind: {other:?}"),
+                    other => {
+                        panic!("AssignTarget::Ident resolved to unexpected SymbolKind: {other:?}")
+                    }
                 }
             }
             AssignTarget::Field { receiver, field } => {
@@ -723,7 +746,10 @@ impl<'h> Lowerer<'h> {
         for (i, (_, elif_body)) in elif_branches.iter().enumerate() {
             self.emit(Instr::Label(elif_labels[i].clone()));
             let bv = self.emit_expr(elif_body);
-            self.emit(Instr::Copy { dst: t_res, src: bv });
+            self.emit(Instr::Copy {
+                dst: t_res,
+                src: bv,
+            });
             self.emit(Instr::Jump(end_label.clone()));
         }
 
@@ -731,7 +757,10 @@ impl<'h> Lowerer<'h> {
         // saving one explicit jump.
         self.emit(Instr::Label(then_label));
         let tv = self.emit_expr(then_branch);
-        self.emit(Instr::Copy { dst: t_res, src: tv });
+        self.emit(Instr::Copy {
+            dst: t_res,
+            src: tv,
+        });
 
         self.emit(Instr::Label(end_label));
         Value::Temp(t_res)

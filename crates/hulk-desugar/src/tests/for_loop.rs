@@ -13,7 +13,11 @@ fn desugars_for_with_iterable_to_let_while_shape() {
     let span = Span::new(source, 0, 22);
     let mut ids = NodeIdGen::new();
 
-    let iterable = Expr::new(ExprKind::Ident("xs".to_owned()), span.clone(), ids.next_id());
+    let iterable = Expr::new(
+        ExprKind::Ident("xs".to_owned()),
+        span.clone(),
+        ids.next_id(),
+    );
     let iterable_id = iterable.id;
 
     let body = Expr::new(
@@ -38,7 +42,10 @@ fn desugars_for_with_iterable_to_let_while_shape() {
 
 #[test]
 fn desugars_for_with_enumerable_to_enum_iter_then_while() {
-    let source = Arc::new(SourceFile::new("desugar.hulk", "for (x in values) print(x);"));
+    let source = Arc::new(SourceFile::new(
+        "desugar.hulk",
+        "for (x in values) print(x);",
+    ));
     let span = Span::new(source, 0, 26);
     let mut ids = NodeIdGen::new();
 

@@ -16,9 +16,7 @@
 use std::collections::HashMap;
 
 use hulk_diagnostics::DiagnosticBag;
-use hulk_hir::{
-    BinOpKind, Expr, ExprKind, Hir, NodeIdGen, Resolver, Span, TypeDecl, TypeEnv,
-};
+use hulk_hir::{BinOpKind, Expr, ExprKind, Hir, NodeIdGen, Resolver, Span, TypeDecl, TypeEnv};
 
 use crate::node_ids::max_node_id_in_program;
 use crate::signatures::{collect_function_signatures, FunctionSignature};
@@ -382,13 +380,7 @@ impl<'a> Desugarer<'a> {
     }
 
     /// Builds a complete `let name = value in body` expression.
-    pub(crate) fn let_expr(
-        &mut self,
-        name: String,
-        value: Expr,
-        body: Expr,
-        span: &Span,
-    ) -> Expr {
+    pub(crate) fn let_expr(&mut self, name: String, value: Expr, body: Expr, span: &Span) -> Expr {
         Expr::new(
             ExprKind::Let {
                 bindings: vec![self.let_binding(name, value, span)],

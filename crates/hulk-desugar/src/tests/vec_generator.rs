@@ -27,7 +27,11 @@ fn make_vec_generator(
 }
 
 fn ident(name: &str, span: &Span, ids: &mut NodeIdGen) -> Expr {
-    Expr::new(ExprKind::Ident(name.to_owned()), span.clone(), ids.next_id())
+    Expr::new(
+        ExprKind::Ident(name.to_owned()),
+        span.clone(),
+        ids.next_id(),
+    )
 }
 
 #[test]
@@ -93,7 +97,10 @@ fn desugars_for_loop_containing_vec_generator_in_body() {
     // Combined: for (x in xs) [x | y in ys]
     // The outer for becomes let+while, and the vec generator in the body
     // becomes its own let+block shape.
-    let source = Arc::new(SourceFile::new("desugar.hulk", "for (x in xs) [x | y in ys]"));
+    let source = Arc::new(SourceFile::new(
+        "desugar.hulk",
+        "for (x in xs) [x | y in ys]",
+    ));
     let span = Span::new(source, 0, 27);
     let mut ids = NodeIdGen::new();
 
@@ -173,30 +180,31 @@ fn find_push_call(expr: &Expr) -> &[Expr] {
 
 fn find_vec_push_args(expr: &Expr) -> &[Expr] {
     match &expr.kind {
-        ExprKind::Call {
-            callee,
-            args,
-        } if matches!(callee.kind, ExprKind::Ident(ref n) if n == "__vec_push") => args,
+        ExprKind::Call { callee, args } if matches!(callee.kind, ExprKind::Ident(ref n) if n == "__vec_push") => {
+            args
+        }
         ExprKind::Let { body, .. } => find_vec_push_args(body),
         ExprKind::While { body, .. } => find_vec_push_args(body),
-        ExprKind::Block(stmts) => stmts.iter().find_map(|s| try_find_vec_push_args(s)).unwrap(),
+        ExprKind::Block(stmts) => stmts
+            .iter()
+            .find_map(|s| try_find_vec_push_args(s))
+            .unwrap(),
         _ => panic!("could not find __vec_push call in tree"),
     }
 }
 
 fn try_find_vec_push_args(expr: &Expr) -> Option<&[Expr]> {
     match &expr.kind {
-        ExprKind::Call { callee, args }
-            if matches!(callee.kind, ExprKind::Ident(ref n) if n == "__vec_push") =>
-        {
+        ExprKind::Call { callee, args } if matches!(callee.kind, ExprKind::Ident(ref n) if n == "__vec_push") => {
             Some(args)
         }
         ExprKind::Let { bindings, body } => bindings
             .iter()
             .find_map(|b| try_find_vec_push_args(b))
             .or_else(|| try_find_vec_push_args(body)),
-        ExprKind::While { condition, body } => try_find_vec_push_args(condition)
-            .or_else(|| try_find_vec_push_args(body)),
+        ExprKind::While { condition, body } => {
+            try_find_vec_push_args(condition).or_else(|| try_find_vec_push_args(body))
+        }
         ExprKind::Block(stmts) => stmts.iter().find_map(|s| try_find_vec_push_args(s)),
         ExprKind::LetBinding(lb) => try_find_vec_push_args(&lb.value),
         _ => None,
@@ -213,16 +221,12 @@ fn assert_no_for_nodes(expr: &Expr) {
 fn contains_for(expr: &Expr) -> bool {
     match &expr.kind {
         ExprKind::For { .. } => true,
-        ExprKind::Let { bindings, body } => {
-            bindings.iter().any(contains_for) || contains_for(body)
-        }
+        ExprKind::Let { bindings, body } => bindings.iter().any(contains_for) || contains_for(body),
         ExprKind::While { condition, body } => contains_for(condition) || contains_for(body),
         ExprKind::Block(stmts) => stmts.iter().any(contains_for),
         ExprKind::BinOp { left, right, .. } => contains_for(left) || contains_for(right),
         ExprKind::UnaryOp { expr, .. } => contains_for(expr),
-        ExprKind::Call { callee, args } => {
-            contains_for(callee) || args.iter().any(contains_for)
-        }
+        ExprKind::Call { callee, args } => contains_for(callee) || args.iter().any(contains_for),
         ExprKind::MethodCall { receiver, args, .. } => {
             contains_for(receiver) || args.iter().any(contains_for)
         }
@@ -238,7 +242,7 @@ fn contains_for(expr: &Expr) -> bool {
                 || elif_branches
                     .iter()
                     .any(|(c, b)| contains_for(c) || contains_for(b))
-                || else_branch.as_ref().map_or(false, |b| contains_for(b))
+                || else_branch.as_ref().is_some_and(|b| contains_for(b))
         }
         _ => false,
     }

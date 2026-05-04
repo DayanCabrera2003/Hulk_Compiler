@@ -8,8 +8,8 @@ use hulk_hir::{
 
 use crate::desugar;
 
-use super::common::make_hir_from_program;
 use super::common::make_hir;
+use super::common::make_hir_from_program;
 
 #[test]
 fn lowers_lambda_into_synthetic_type_and_new() {

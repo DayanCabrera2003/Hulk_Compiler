@@ -24,7 +24,10 @@ fn print_return_null() {
 #[test]
 fn print_copy_instr() {
     let prog = simple_main(vec![
-        Instr::Copy { dst: TempId(0), src: Value::ConstNum(1.0) },
+        Instr::Copy {
+            dst: TempId(0),
+            src: Value::ConstNum(1.0),
+        },
         Instr::Return(Value::Temp(TempId(0))),
     ]);
     let s = format!("{prog}");
@@ -46,9 +49,9 @@ fn print_label_indentation() {
 
 #[test]
 fn print_const_str_escaping() {
-    let prog = simple_main(vec![
-        Instr::Return(Value::ConstStr("hello\nworld".to_string())),
-    ]);
+    let prog = simple_main(vec![Instr::Return(Value::ConstStr(
+        "hello\nworld".to_string(),
+    ))]);
     let s = format!("{prog}");
     assert!(s.contains(r#"return "hello\nworld""#));
 }
@@ -74,5 +77,5 @@ fn print_type_descriptor() {
     let s = format!("{prog}");
     assert!(s.contains("type Point {"));
     assert!(s.contains("parent: none"));
-    assert!(s.contains("x (val)"));  // false pointer_map -> "val"
+    assert!(s.contains("x (val)")); // false pointer_map -> "val"
 }

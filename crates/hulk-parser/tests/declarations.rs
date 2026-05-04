@@ -22,36 +22,36 @@ use hulk_tokens::SourceFile;
 
 // Per-feature submodules. Each submodule reaches the helpers below via
 // `use super::*;`. Files live at `tests/declarations/<name>.rs`.
-#[path = "declarations/let_decl.rs"]
-mod let_decl;
-#[path = "declarations/control.rs"]
-mod control;
-#[path = "declarations/assign.rs"]
-mod assign;
 #[path = "declarations/access.rs"]
 mod access;
-#[path = "declarations/ops.rs"]
-mod ops;
-#[path = "declarations/vec_lit.rs"]
-mod vec_lit;
-#[path = "declarations/lambda.rs"]
-mod lambda;
-#[path = "declarations/type_ann.rs"]
-mod type_ann;
+#[path = "declarations/assign.rs"]
+mod assign;
+#[path = "declarations/control.rs"]
+mod control;
 #[path = "declarations/functions.rs"]
 mod functions;
-#[path = "declarations/types.rs"]
-mod types;
-#[path = "declarations/protocols.rs"]
-mod protocols;
-#[path = "declarations/macros.rs"]
-mod macros;
-#[path = "declarations/precedence.rs"]
-mod precedence;
-#[path = "declarations/robust.rs"]
-mod robust;
 #[path = "declarations/hulk_md.rs"]
 mod hulk_md;
+#[path = "declarations/lambda.rs"]
+mod lambda;
+#[path = "declarations/let_decl.rs"]
+mod let_decl;
+#[path = "declarations/macros.rs"]
+mod macros;
+#[path = "declarations/ops.rs"]
+mod ops;
+#[path = "declarations/precedence.rs"]
+mod precedence;
+#[path = "declarations/protocols.rs"]
+mod protocols;
+#[path = "declarations/robust.rs"]
+mod robust;
+#[path = "declarations/type_ann.rs"]
+mod type_ann;
+#[path = "declarations/types.rs"]
+mod types;
+#[path = "declarations/vec_lit.rs"]
+mod vec_lit;
 
 // ---------------------------------------------------------------------------
 // Helpers reachable from every submodule via `use super::*;`.

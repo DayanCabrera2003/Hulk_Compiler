@@ -3,31 +3,32 @@ mod support;
 use hulk_banner::Instr;
 
 fn count_shadow_push(instrs: &[Instr]) -> usize {
-    instrs.iter().filter(|i| matches!(i, Instr::ShadowPush(_))).count()
+    instrs
+        .iter()
+        .filter(|i| matches!(i, Instr::ShadowPush(_)))
+        .count()
 }
 
 fn count_shadow_pop(instrs: &[Instr]) -> usize {
-    instrs.iter().filter(|i| matches!(i, Instr::ShadowPop)).count()
+    instrs
+        .iter()
+        .filter(|i| matches!(i, Instr::ShadowPop))
+        .count()
 }
 
 #[test]
 fn string_let_binding_generates_shadow_push() {
-    let prog = support::build_banner(
-        "shadow_str",
-        r#"let s: String = "hello" in print(s);"#,
-    );
+    let prog = support::build_banner("shadow_str", r#"let s: String = "hello" in print(s);"#);
     assert!(
         count_shadow_push(&prog.main.body) >= 1,
-        "String let binding should generate ShadowPush: {:?}", prog.main.body
+        "String let binding should generate ShadowPush: {:?}",
+        prog.main.body
     );
 }
 
 #[test]
 fn shadow_push_and_pop_are_balanced() {
-    let prog = support::build_banner(
-        "shadow_balanced",
-        r#"let s: String = "hello" in print(s);"#,
-    );
+    let prog = support::build_banner("shadow_balanced", r#"let s: String = "hello" in print(s);"#);
     assert_eq!(
         count_shadow_push(&prog.main.body),
         count_shadow_pop(&prog.main.body),
@@ -37,14 +38,12 @@ fn shadow_push_and_pop_are_balanced() {
 
 #[test]
 fn number_let_binding_does_not_generate_shadow_push() {
-    let prog = support::build_banner(
-        "shadow_num",
-        "let n: Number = 42 in print(n);",
-    );
+    let prog = support::build_banner("shadow_num", "let n: Number = 42 in print(n);");
     assert_eq!(
         count_shadow_push(&prog.main.body),
         0,
-        "Number let binding should NOT generate ShadowPush: {:?}", prog.main.body
+        "Number let binding should NOT generate ShadowPush: {:?}",
+        prog.main.body
     );
 }
 
@@ -57,7 +56,8 @@ fn object_let_binding_generates_shadow_push() {
     );
     assert!(
         count_shadow_push(&prog.main.body) >= 1,
-        "Object let binding should generate ShadowPush: {:?}", prog.main.body
+        "Object let binding should generate ShadowPush: {:?}",
+        prog.main.body
     );
 }
 

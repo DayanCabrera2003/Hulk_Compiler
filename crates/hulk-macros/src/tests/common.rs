@@ -1,7 +1,12 @@
 use hulk_hir::visitor::{walk_assign_target, walk_expr};
 use hulk_hir::{AssignTarget, Expr, ExprKind, NodeIdGen, Span, Visitor};
 
-pub(crate) fn intrinsic_call(name: &str, args: Vec<Expr>, span: &Span, ids: &mut NodeIdGen) -> Expr {
+pub(crate) fn intrinsic_call(
+    name: &str,
+    args: Vec<Expr>,
+    span: &Span,
+    ids: &mut NodeIdGen,
+) -> Expr {
     Expr::new(
         ExprKind::Call {
             callee: Box::new(ident(name, span, ids)),
@@ -13,7 +18,11 @@ pub(crate) fn intrinsic_call(name: &str, args: Vec<Expr>, span: &Span, ids: &mut
 }
 
 pub(crate) fn ident(name: &str, span: &Span, ids: &mut NodeIdGen) -> Expr {
-    Expr::new(ExprKind::Ident(name.to_owned()), span.clone(), ids.next_id())
+    Expr::new(
+        ExprKind::Ident(name.to_owned()),
+        span.clone(),
+        ids.next_id(),
+    )
 }
 
 pub(crate) fn number(value: f64, span: &Span, ids: &mut NodeIdGen) -> Expr {

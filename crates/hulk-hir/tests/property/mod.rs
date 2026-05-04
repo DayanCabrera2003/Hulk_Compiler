@@ -261,7 +261,8 @@ fn syntactically_valid_program_strategy() -> impl Strategy<Value = String> {
                     (
                         prop::sample::select(vec!["x", "y", "z", "value", "data"])
                             .prop_map(str::to_owned),
-                        prop::sample::select(vec!["Number", "String", "Boolean"]).prop_map(str::to_owned),
+                        prop::sample::select(vec!["Number", "String", "Boolean"])
+                            .prop_map(str::to_owned),
                     ),
                     0..=2,
                 ),
@@ -271,8 +272,7 @@ fn syntactically_valid_program_strategy() -> impl Strategy<Value = String> {
         // Let bindings
         prop::collection::vec(
             (
-                prop::sample::select(vec!["a", "b", "c", "x", "y", "z"])
-                    .prop_map(str::to_owned),
+                prop::sample::select(vec!["a", "b", "c", "x", "y", "z"]).prop_map(str::to_owned),
                 expr_strategy(),
             ),
             1..=4,

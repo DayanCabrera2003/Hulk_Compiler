@@ -273,7 +273,11 @@ fn macro_local_sanitization_does_not_capture_outer_total() {
 
     let mut bag = DiagnosticBag::new();
     let expanded = expand_macros(hir, &mut bag);
-    assert!(!bag.has_errors(), "unexpected diagnostics: {:?}", bag.diagnostics());
+    assert!(
+        !bag.has_errors(),
+        "unexpected diagnostics: {:?}",
+        bag.diagnostics()
+    );
 
     let mut idents = Vec::new();
     collect_identifiers(&expanded.program.body, &mut idents);

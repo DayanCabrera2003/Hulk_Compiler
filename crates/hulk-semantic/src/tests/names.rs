@@ -1,6 +1,8 @@
 use std::sync::Arc;
 
-use hulk_ast::{Expr, ExprKind, NodeId, Program, SourceFile, Span, Member, MemberKind, Param, TypeDecl};
+use hulk_ast::{
+    Expr, ExprKind, Member, MemberKind, NodeId, Param, Program, SourceFile, Span, TypeDecl,
+};
 
 use crate::Resolver;
 

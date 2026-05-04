@@ -3,11 +3,11 @@
 use std::sync::Arc;
 
 use hulk_diagnostics::DiagnosticBag;
+use hulk_hir::visitor::{walk_expr, Visitor};
 use hulk_hir::{
     BinOpKind, Expr, ExprKind, Hir, MemberKind, Program, Resolver, SourceFile, Span, TypeEnv,
     TypedAst,
 };
-use hulk_hir::visitor::{walk_expr, Visitor};
 
 pub fn source_span(content: &'static str) -> (Arc<SourceFile>, Span) {
     let src = Arc::new(SourceFile::new("test.hulk", content));

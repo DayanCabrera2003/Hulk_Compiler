@@ -219,7 +219,10 @@ fn let_with_type_annotation() {
 
 #[test]
 fn let_binding_in_block() {
-    ok("let_block", "let a = 10, b = 20 in { print(a + b); a - b; };");
+    ok(
+        "let_block",
+        "let a = 10, b = 20 in { print(a + b); a - b; };",
+    );
 }
 
 // ─── blocks ──────────────────────────────────────────────────────────────────
@@ -253,7 +256,10 @@ fn if_with_else() {
 
 #[test]
 fn if_elif_else() {
-    ok("if_elif", "let x = 5 in if (x < 0) -1 elif (x == 0) 0 else 1;");
+    ok(
+        "if_elif",
+        "let x = 5 in if (x < 0) -1 elif (x == 0) 0 else 1;",
+    );
 }
 
 #[test]
@@ -304,7 +310,10 @@ fn while_basic() {
 
 #[test]
 fn while_empty_body() {
-    ok("while_empty", "let done = false in while (!done) { done := true; };");
+    ok(
+        "while_empty",
+        "let done = false in while (!done) { done := true; };",
+    );
 }
 
 #[test]
@@ -329,7 +338,10 @@ fn for_over_vec_literal() {
 
 #[test]
 fn for_with_block_body() {
-    ok("for_block", "for (i in range(0, 3)) { print(i); print(i * 2); }");
+    ok(
+        "for_block",
+        "for (i in range(0, 3)) { print(i); print(i * 2); }",
+    );
 }
 
 #[test]
@@ -419,7 +431,10 @@ fn builtin_e_constant() {
 
 #[test]
 fn function_arrow_form() {
-    ok("fn_arrow", "function double(x: Number): Number => x * 2; print(double(5));");
+    ok(
+        "fn_arrow",
+        "function double(x: Number): Number => x * 2; print(double(5));",
+    );
 }
 
 #[test]
@@ -434,10 +449,7 @@ fn function_block_form() {
 fn function_no_type_annotations() {
     // The type inferer requires enough context to infer parameter types.
     // Providing a call with a typed argument gives it that context.
-    ok(
-        "fn_untyped",
-        "function id(x: Number): Number => x; id(42);",
-    );
+    ok("fn_untyped", "function id(x: Number): Number => x; id(42);");
 }
 
 #[test]
@@ -468,7 +480,10 @@ fn function_multiple_params() {
 
 #[test]
 fn function_zero_params() {
-    ok("fn_zero", "function pi_approx(): Number => 3; print(pi_approx());");
+    ok(
+        "fn_zero",
+        "function pi_approx(): Number => 3; print(pi_approx());",
+    );
 }
 
 #[test]
@@ -692,17 +707,26 @@ fn vector_for_iteration() {
 
 #[test]
 fn vector_generator() {
-    ok("vec_gen", "let squares = [x ^ 2 | x in range(1, 6)] in print(squares[0]);");
+    ok(
+        "vec_gen",
+        "let squares = [x ^ 2 | x in range(1, 6)] in print(squares[0]);",
+    );
 }
 
 #[test]
 fn vector_generator_with_condition_in_body() {
-    ok("vec_gen2", "let evens = [x * 2 | x in range(0, 5)] in print(evens[3]);");
+    ok(
+        "vec_gen2",
+        "let evens = [x * 2 | x in range(0, 5)] in print(evens[3]);",
+    );
 }
 
 #[test]
 fn vector_nested_literal() {
-    ok("vec_nested", "let matrix = [[1, 2], [3, 4]] in print(matrix[0][1]);");
+    ok(
+        "vec_nested",
+        "let matrix = [[1, 2], [3, 4]] in print(matrix[0][1]);",
+    );
 }
 
 #[test]
@@ -750,7 +774,10 @@ print(run((x: Number): Number => x * x));"#,
 
 #[test]
 fn lambda_captures_no_free_vars() {
-    ok("lambda_closed", "let f = (x: Number): Number => x + 1 in print(f(41));");
+    ok(
+        "lambda_closed",
+        "let f = (x: Number): Number => x + 1 in print(f(41));",
+    );
 }
 
 #[test]
@@ -775,9 +802,7 @@ fn lambda_desugared_no_lambda_node_remains() {
                 ExprKind::Call { callee, args } => {
                     has_lambda(callee) || args.iter().any(has_lambda)
                 }
-                ExprKind::While { condition, body } => {
-                    has_lambda(condition) || has_lambda(body)
-                }
+                ExprKind::While { condition, body } => has_lambda(condition) || has_lambda(body),
                 _ => false,
             }
     }
@@ -785,9 +810,16 @@ fn lambda_desugared_no_lambda_node_remains() {
     let src = r#"function apply(f: (Number) -> Number, x: Number): Number => f(x);
 print(apply((n: Number): Number => n * 2, 5));"#;
     let hir = ok("lambda_desugar_check", src);
-    assert!(!has_lambda(&hir.program.body), "Lambda node survived desugaring");
+    assert!(
+        !has_lambda(&hir.program.body),
+        "Lambda node survived desugaring"
+    );
     for func in &hir.program.functions {
-        assert!(!has_lambda(&func.body), "Lambda in function {} survived", func.name);
+        assert!(
+            !has_lambda(&func.body),
+            "Lambda in function {} survived",
+            func.name
+        );
     }
 }
 
@@ -839,7 +871,10 @@ fn annotation_on_let_binding() {
 
 #[test]
 fn annotation_on_function_param() {
-    ok("ann_param", "function f(x: Number): Number => x; print(f(1));");
+    ok(
+        "ann_param",
+        "function f(x: Number): Number => x; print(f(1));",
+    );
 }
 
 #[test]

@@ -175,7 +175,10 @@ pub(crate) fn match_pattern(
         }
         PatternExpr::Variable { name, ty_name } => {
             if expr_conforms_type_name(subject, ty_name) {
-                Some(HashMap::from([(name.clone(), Substitution::Expr(subject.clone()))]))
+                Some(HashMap::from([(
+                    name.clone(),
+                    Substitution::Expr(subject.clone()),
+                )]))
             } else {
                 None
             }
@@ -275,9 +278,7 @@ impl VisitorMut for Simplify {
                     _ => None,
                 },
                 hulk_hir::BinOpKind::Sub => match &right.kind {
-                    ExprKind::Number(value) if value.abs() < f64::EPSILON => {
-                        Some((**left).clone())
-                    }
+                    ExprKind::Number(value) if value.abs() < f64::EPSILON => Some((**left).clone()),
                     _ => None,
                 },
                 hulk_hir::BinOpKind::Mul => match (&left.kind, &right.kind) {

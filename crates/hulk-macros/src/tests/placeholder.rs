@@ -96,15 +96,25 @@ fn placeholder_params_register_symbol_type_and_substitute_identifier() {
 
     let mut bag = DiagnosticBag::new();
     let expanded = expand_macros(hir, &mut bag);
-    assert!(!bag.has_errors(), "unexpected diagnostics: {:?}", bag.diagnostics());
+    assert!(
+        !bag.has_errors(),
+        "unexpected diagnostics: {:?}",
+        bag.diagnostics()
+    );
 
     let iter_symbol = expanded
         .types
         .symbol_type_symbols()
         .find(|symbol| expanded.symbols.table().name_of(*symbol) == Some("iter"));
 
-    assert!(iter_symbol.is_some(), "expected placeholder symbol for 'iter'");
-    assert_eq!(expanded.symbol_type(iter_symbol.unwrap()), Some(TypeId::NUMBER));
+    assert!(
+        iter_symbol.is_some(),
+        "expected placeholder symbol for 'iter'"
+    );
+    assert_eq!(
+        expanded.symbol_type(iter_symbol.unwrap()),
+        Some(TypeId::NUMBER)
+    );
 
     let mut idents = Vec::new();
     collect_identifiers(&expanded.program.body, &mut idents);
@@ -180,7 +190,11 @@ fn placeholder_idents_resolve_to_allocated_symbol_after_expansion() {
 
     let mut bag = DiagnosticBag::new();
     let expanded = expand_macros(hir, &mut bag);
-    assert!(!bag.has_errors(), "unexpected diagnostics: {:?}", bag.diagnostics());
+    assert!(
+        !bag.has_errors(),
+        "unexpected diagnostics: {:?}",
+        bag.diagnostics()
+    );
 
     let mut iter_ident_ids = Vec::new();
     collect_ident_node_ids(&expanded.program.body, "iter", &mut iter_ident_ids);

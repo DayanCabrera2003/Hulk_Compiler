@@ -59,8 +59,16 @@ fn make_concat_spaced(left_val: f64, right_val: f64) -> Expr {
     Expr::new(
         ExprKind::BinOp {
             op: BinOpKind::ConcatSpaced,
-            left: Box::new(Expr::new(ExprKind::Number(left_val), s.clone(), ids.next_id())),
-            right: Box::new(Expr::new(ExprKind::Number(right_val), s.clone(), ids.next_id())),
+            left: Box::new(Expr::new(
+                ExprKind::Number(left_val),
+                s.clone(),
+                ids.next_id(),
+            )),
+            right: Box::new(Expr::new(
+                ExprKind::Number(right_val),
+                s.clone(),
+                ids.next_id(),
+            )),
         },
         s,
         ids.next_id(),
@@ -73,7 +81,11 @@ fn make_vec_gen(binding: &str, body_val: f64) -> Expr {
     let mut ids = g();
     Expr::new(
         ExprKind::VecGenerator {
-            element: Box::new(Expr::new(ExprKind::Number(body_val), s.clone(), ids.next_id())),
+            element: Box::new(Expr::new(
+                ExprKind::Number(body_val),
+                s.clone(),
+                ids.next_id(),
+            )),
             binding: binding.to_owned(),
             iterable: Box::new(Expr::new(
                 ExprKind::Ident("xs".to_owned()),
@@ -98,7 +110,11 @@ fn make_lambda(param_name: &str, body_val: f64) -> Expr {
                 span: s.clone(),
             }],
             return_type: Some(TypeAnn::Named("Number".to_owned())),
-            body: Box::new(Expr::new(ExprKind::Number(body_val), s.clone(), ids.next_id())),
+            body: Box::new(Expr::new(
+                ExprKind::Number(body_val),
+                s.clone(),
+                ids.next_id(),
+            )),
         },
         s,
         ids.next_id(),
@@ -286,13 +302,24 @@ fn two_lambdas_produce_distinct_synthetic_type_names() {
         s.clone(),
         ids.next_id(),
     );
-    let body = Expr::new(ExprKind::Block(vec![lambda_a, lambda_b]), s.clone(), ids.next_id());
+    let body = Expr::new(
+        ExprKind::Block(vec![lambda_a, lambda_b]),
+        s.clone(),
+        ids.next_id(),
+    );
 
     let hir = make_hir(body);
     let result = run_desugar(hir);
 
-    assert_eq!(result.program.types.len(), 2, "expected two synthetic types");
+    assert_eq!(
+        result.program.types.len(),
+        2,
+        "expected two synthetic types"
+    );
     let name_a = &result.program.types[0].name;
     let name_b = &result.program.types[1].name;
-    assert_ne!(name_a, name_b, "two lambdas must produce distinct type names");
+    assert_ne!(
+        name_a, name_b,
+        "two lambdas must produce distinct type names"
+    );
 }

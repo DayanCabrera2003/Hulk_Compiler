@@ -1,12 +1,12 @@
-use std::fmt;
-use hulk_hir::{BinOpKind, UnaryOpKind};
 use crate::ir::{BannerFunction, BannerProgram, Instr, TempId, TypeDescriptor, Value};
+use hulk_hir::{BinOpKind, UnaryOpKind};
+use std::fmt;
 
 fn escape_str(s: &str) -> String {
     s.replace('\\', "\\\\")
-     .replace('"', "\\\"")
-     .replace('\n', "\\n")
-     .replace('\t', "\\t")
+        .replace('"', "\\\"")
+        .replace('\n', "\\n")
+        .replace('\t', "\\t")
 }
 
 impl fmt::Display for TempId {
@@ -35,7 +35,10 @@ impl fmt::Display for Value {
 }
 
 fn fmt_args(args: &[Value]) -> String {
-    args.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(", ")
+    args.iter()
+        .map(|v| v.to_string())
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 fn binop_sym(op: &BinOpKind) -> &'static str {
@@ -56,9 +59,9 @@ fn binop_sym(op: &BinOpKind) -> &'static str {
         And => "&",
         Or => "|",
         Concat => "@",
-        ConcatSpaced => unreachable!(
-            "ConcatSpaced should have been desugared before BANNER lowering"
-        ),
+        ConcatSpaced => {
+            unreachable!("ConcatSpaced should have been desugared before BANNER lowering")
+        }
     }
 }
 
@@ -73,7 +76,12 @@ fn unop_sym(op: &UnaryOpKind) -> &'static str {
 fn fmt_instr(instr: &Instr) -> String {
     match instr {
         Instr::Copy { dst, src } => format!("    {dst} = copy {src}"),
-        Instr::BinOp { dst, op, left, right } => {
+        Instr::BinOp {
+            dst,
+            op,
+            left,
+            right,
+        } => {
             format!("    {dst} = {left} {} {right}", binop_sym(op))
         }
         Instr::UnOp { dst, op, operand } => {
@@ -82,25 +90,50 @@ fn fmt_instr(instr: &Instr) -> String {
         Instr::Call { dst, callee, args } => {
             format!("    {dst} = call {callee}({})", fmt_args(args))
         }
-        Instr::MethodCall { dst, receiver, method, args } => {
+        Instr::MethodCall {
+            dst,
+            receiver,
+            method,
+            args,
+        } => {
             format!("    {dst} = {receiver}.{method}({})", fmt_args(args))
         }
-        Instr::StaticCall { dst, type_name, method, args } => {
-            format!("    {dst} = static {type_name}.{method}({})", fmt_args(args))
+        Instr::StaticCall {
+            dst,
+            type_name,
+            method,
+            args,
+        } => {
+            format!(
+                "    {dst} = static {type_name}.{method}({})",
+                fmt_args(args)
+            )
         }
-        Instr::New { dst, type_name, args } => {
+        Instr::New {
+            dst,
+            type_name,
+            args,
+        } => {
             format!("    {dst} = new {type_name}({})", fmt_args(args))
         }
         Instr::GetField { dst, object, field } => {
             format!("    {dst} = {object}.{field}")
         }
-        Instr::SetField { object, field, value } => {
+        Instr::SetField {
+            object,
+            field,
+            value,
+        } => {
             format!("    setfield {object}.{field} = {value}")
         }
         Instr::GetIndex { dst, target, index } => {
             format!("    {dst} = {target}[{index}]")
         }
-        Instr::SetIndex { target, index, value } => {
+        Instr::SetIndex {
+            target,
+            index,
+            value,
+        } => {
             format!("    {target}[{index}] = {value}")
         }
         Instr::Label(name) => format!("  {name}:"),
@@ -124,7 +157,12 @@ fn fmt_params(params: &[TempId], names: &[String]) -> String {
 
 impl fmt::Display for BannerFunction {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "fn {}({}) {{", self.name, fmt_params(&self.params, &self.param_names))?;
+        writeln!(
+            f,
+            "fn {}({}) {{",
+            self.name,
+            fmt_params(&self.params, &self.param_names)
+        )?;
         for instr in &self.body {
             writeln!(f, "{}", fmt_instr(instr))?;
         }
@@ -141,9 +179,7 @@ impl fmt::Display for TypeDescriptor {
             .fields
             .iter()
             .zip(self.pointer_map.iter())
-            .map(|(name, is_ptr)| {
-                format!("{name} ({})", if *is_ptr { "ptr" } else { "val" })
-            })
+            .map(|(name, is_ptr)| format!("{name} ({})", if *is_ptr { "ptr" } else { "val" }))
             .collect();
         writeln!(f, "  fields: [{}]", fields_str.join(", "))?;
         for method in &self.methods {

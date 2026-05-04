@@ -142,16 +142,17 @@ fn error_calling_variable_as_function() {
     // Variables are callable as functors in HULK, so no semantic error.
     // Protocol/type identifiers are NOT callable — those produce "no es una funcion".
     let bag = run("var_as_fn", "let x = 5 in x(3);");
-    assert!(!bag.has_errors(), "variable call is valid in HULK: {:?}", bag.diagnostics());
+    assert!(
+        !bag.has_errors(),
+        "variable call is valid in HULK: {:?}",
+        bag.diagnostics()
+    );
 }
 
 #[test]
 fn error_calling_protocol_as_function() {
     // Protocol names are types, not functions; calling one is rejected.
-    let bag = run(
-        "proto_as_fn",
-        "protocol Foo { bar(): Number; } Foo(1);",
-    );
+    let bag = run("proto_as_fn", "protocol Foo { bar(): Number; } Foo(1);");
     assert_error_contains(&bag, "no es una funcion");
 }
 
@@ -166,7 +167,11 @@ fn error_using_function_as_variable() {
     let bag = run("fn_as_var", "function f(): Number => 1; let x = f in x;");
     // Function references are allowed as values in HULK (functors), so no error here.
     // The test documents that this is VALID.
-    assert!(!bag.has_errors(), "function reference should be valid: {:?}", bag.diagnostics());
+    assert!(
+        !bag.has_errors(),
+        "function reference should be valid: {:?}",
+        bag.diagnostics()
+    );
 }
 
 // ─── inheritance errors ───────────────────────────────────────────────────────
@@ -213,10 +218,7 @@ fn error_inherit_from_undefined_type() {
 fn error_type_annotation_mismatch_on_function() {
     // The annotation checker catches literal-type mismatches: function body is
     // a string literal but the return annotation says Number.
-    let bag = run(
-        "ann_mismatch",
-        r#"function f(): Number => "hello"; f();"#,
-    );
+    let bag = run("ann_mismatch", r#"function f(): Number => "hello"; f();"#);
     assert_error_contains(&bag, "incompatible");
 }
 
@@ -257,10 +259,7 @@ render(new Invisible());"#,
 
 #[test]
 fn error_non_inferrable_function_param() {
-    let bag = run(
-        "no_infer",
-        "function id(x) => x; id(42);",
-    );
+    let bag = run("no_infer", "function id(x) => x; id(42);");
     assert_error_contains(&bag, "no inferible");
 }
 
@@ -269,7 +268,11 @@ fn error_non_inferrable_function_param() {
 #[test]
 fn no_error_simple_let() {
     let bag = run("ok_let", "let x = 42 in print(x);");
-    assert!(!bag.has_errors(), "unexpected errors: {:?}", bag.diagnostics());
+    assert!(
+        !bag.has_errors(),
+        "unexpected errors: {:?}",
+        bag.diagnostics()
+    );
 }
 
 #[test]
@@ -278,7 +281,11 @@ fn no_error_recursive_function() {
         "ok_rec",
         "function fib(n: Number): Number => if (n <= 1) n else fib(n-1)+fib(n-2); print(fib(6));",
     );
-    assert!(!bag.has_errors(), "unexpected errors: {:?}", bag.diagnostics());
+    assert!(
+        !bag.has_errors(),
+        "unexpected errors: {:?}",
+        bag.diagnostics()
+    );
 }
 
 #[test]
@@ -288,14 +295,19 @@ fn no_error_class_with_self() {
         "type Point(x: Number) { x: Number = x; get(): Number => self.x; }
          let p = new Point(5) in print(p.get());",
     );
-    assert!(!bag.has_errors(), "unexpected errors: {:?}", bag.diagnostics());
+    assert!(
+        !bag.has_errors(),
+        "unexpected errors: {:?}",
+        bag.diagnostics()
+    );
 }
 
 #[test]
 fn no_error_macro_call() {
-    let bag = run(
-        "ok_macro",
-        "def wrap(x: Object): Object => x; wrap(1);",
+    let bag = run("ok_macro", "def wrap(x: Object): Object => x; wrap(1);");
+    assert!(
+        !bag.has_errors(),
+        "macro call should not produce errors: {:?}",
+        bag.diagnostics()
     );
-    assert!(!bag.has_errors(), "macro call should not produce errors: {:?}", bag.diagnostics());
 }

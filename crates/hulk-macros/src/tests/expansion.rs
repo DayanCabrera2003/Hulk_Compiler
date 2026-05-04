@@ -200,7 +200,10 @@ fn body_param_requires_block_expression() {
     let mut bag = DiagnosticBag::new();
     let _expanded = expand_macros(hir, &mut bag);
 
-    assert!(bag.has_errors(), "expected diagnostic for non-block body argument");
+    assert!(
+        bag.has_errors(),
+        "expected diagnostic for non-block body argument"
+    );
     assert!(bag.diagnostics().iter().any(|diag| diag
         .message
         .contains("el parametro de cuerpo 'expr' requiere un bloque")));

@@ -28,7 +28,9 @@ fn build_source(name: &str, source: &str) -> (Option<Hir>, DiagnosticBag) {
 
 fn assert_contains_message(bag: &DiagnosticBag, expected: &str) {
     assert!(
-        bag.diagnostics().iter().any(|diagnostic| diagnostic.message == expected),
+        bag.diagnostics()
+            .iter()
+            .any(|diagnostic| diagnostic.message == expected),
         "expected diagnostic `{expected}`, got: {:?}",
         bag.diagnostics()
     );
@@ -58,7 +60,11 @@ fn builds_hir_for_all_example_programs() {
         let (name, source) = load_example(example);
         let (hir, bag) = build_source(&name, &source);
 
-        assert!(bag.is_empty(), "unexpected diagnostics for {name}: {:?}", bag.diagnostics());
+        assert!(
+            bag.is_empty(),
+            "unexpected diagnostics for {name}: {:?}",
+            bag.diagnostics()
+        );
         assert!(hir.is_some(), "expected {name} to produce a HIR");
     }
 }
@@ -68,7 +74,11 @@ fn hello_hulk_exposes_resolution_and_types() {
     let (name, source) = load_example("hello.hulk");
     let (hir, bag) = build_source(&name, &source);
 
-    assert!(bag.is_empty(), "unexpected diagnostics: {:?}", bag.diagnostics());
+    assert!(
+        bag.is_empty(),
+        "unexpected diagnostics: {:?}",
+        bag.diagnostics()
+    );
     let hir = hir.expect("hello.hulk should build a HIR");
 
     let ExprKind::Call { callee, .. } = &hir.program.body.kind else {

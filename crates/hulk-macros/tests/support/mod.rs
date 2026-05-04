@@ -75,7 +75,12 @@ fn collect_idents_rec(expr: &Expr, out: &mut Vec<String>) {
             collect_idents_rec(iterable, out);
             collect_idents_rec(body, out);
         }
-        ExprKind::If { condition, then_branch, elif_branches, else_branch } => {
+        ExprKind::If {
+            condition,
+            then_branch,
+            elif_branches,
+            else_branch,
+        } => {
             collect_idents_rec(condition, out);
             collect_idents_rec(then_branch, out);
             for (c, b) in elif_branches {
@@ -97,7 +102,9 @@ fn collect_idents_rec(expr: &Expr, out: &mut Vec<String>) {
             collect_idents_rec(value, out);
         }
         ExprKind::Lambda { body, .. } => collect_idents_rec(body, out),
-        ExprKind::VecGenerator { element, iterable, .. } => {
+        ExprKind::VecGenerator {
+            element, iterable, ..
+        } => {
             collect_idents_rec(element, out);
             collect_idents_rec(iterable, out);
         }

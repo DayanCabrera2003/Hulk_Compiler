@@ -20,8 +20,7 @@ fn examples_dir() -> PathBuf {
 
 fn load_example(name: &str) -> String {
     let path = examples_dir().join(name);
-    fs::read_to_string(&path)
-        .unwrap_or_else(|e| panic!("failed to read {}: {e}", path.display()))
+    fs::read_to_string(&path).unwrap_or_else(|e| panic!("failed to read {}: {e}", path.display()))
 }
 
 fn run_pipeline(name: &str, source: &str) -> (Option<Hir>, DiagnosticBag) {
@@ -36,28 +35,29 @@ fn has_sugar(expr: &Expr) -> bool {
     match &expr.kind {
         ExprKind::For { .. } | ExprKind::Lambda { .. } | ExprKind::VecGenerator { .. } => true,
         ExprKind::BinOp { op, left, right } => {
-            matches!(op, hulk_hir::BinOpKind::ConcatSpaced)
-                || has_sugar(left)
-                || has_sugar(right)
+            matches!(op, hulk_hir::BinOpKind::ConcatSpaced) || has_sugar(left) || has_sugar(right)
         }
         ExprKind::UnaryOp { expr, .. } => has_sugar(expr),
-        ExprKind::Call { callee, args } => {
-            has_sugar(callee) || args.iter().any(has_sugar)
-        }
+        ExprKind::Call { callee, args } => has_sugar(callee) || args.iter().any(has_sugar),
         ExprKind::MethodCall { receiver, args, .. } => {
             has_sugar(receiver) || args.iter().any(has_sugar)
         }
         ExprKind::Block(exprs) | ExprKind::VecLiteral(exprs) => exprs.iter().any(has_sugar),
-        ExprKind::Let { bindings, body } => {
-            bindings.iter().any(has_sugar) || has_sugar(body)
-        }
+        ExprKind::Let { bindings, body } => bindings.iter().any(has_sugar) || has_sugar(body),
         ExprKind::LetBinding(lb) => has_sugar(&lb.value),
         ExprKind::While { condition, body } => has_sugar(condition) || has_sugar(body),
-        ExprKind::If { condition, then_branch, elif_branches, else_branch } => {
+        ExprKind::If {
+            condition,
+            then_branch,
+            elif_branches,
+            else_branch,
+        } => {
             has_sugar(condition)
                 || has_sugar(then_branch)
-                || elif_branches.iter().any(|(c, b)| has_sugar(c) || has_sugar(b))
-                || else_branch.as_deref().map_or(false, has_sugar)
+                || elif_branches
+                    .iter()
+                    .any(|(c, b)| has_sugar(c) || has_sugar(b))
+                || else_branch.as_deref().is_some_and(has_sugar)
         }
         ExprKind::New { args, .. } => args.iter().any(has_sugar),
         ExprKind::Is { expr, .. } | ExprKind::As { expr, .. } => has_sugar(expr),

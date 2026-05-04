@@ -22,23 +22,45 @@ fn shape_eq(a: &Expr, b: &Expr) -> bool {
         (ExprKind::Ident(va), ExprKind::Ident(vb)) => va == vb,
         (ExprKind::Self_, ExprKind::Self_) | (ExprKind::Base, ExprKind::Base) => true,
         (
-            ExprKind::BinOp { op: oa, left: la, right: ra },
-            ExprKind::BinOp { op: ob, left: lb, right: rb },
+            ExprKind::BinOp {
+                op: oa,
+                left: la,
+                right: ra,
+            },
+            ExprKind::BinOp {
+                op: ob,
+                left: lb,
+                right: rb,
+            },
         ) => oa == ob && shape_eq(la, lb) && shape_eq(ra, rb),
         (ExprKind::UnaryOp { op: oa, expr: ea }, ExprKind::UnaryOp { op: ob, expr: eb }) => {
             oa == ob && shape_eq(ea, eb)
         }
         (
-            ExprKind::Call { callee: ca, args: aa },
-            ExprKind::Call { callee: cb, args: ab },
+            ExprKind::Call {
+                callee: ca,
+                args: aa,
+            },
+            ExprKind::Call {
+                callee: cb,
+                args: ab,
+            },
         ) => {
             shape_eq(ca, cb)
                 && aa.len() == ab.len()
                 && aa.iter().zip(ab).all(|(x, y)| shape_eq(x, y))
         }
         (
-            ExprKind::MethodCall { receiver: ra, method: ma, args: aa },
-            ExprKind::MethodCall { receiver: rb, method: mb, args: ab },
+            ExprKind::MethodCall {
+                receiver: ra,
+                method: ma,
+                args: aa,
+            },
+            ExprKind::MethodCall {
+                receiver: rb,
+                method: mb,
+                args: ab,
+            },
         ) => {
             ma == mb
                 && shape_eq(ra, rb)
@@ -50,8 +72,14 @@ fn shape_eq(a: &Expr, b: &Expr) -> bool {
             ea.len() == eb.len() && ea.iter().zip(eb).all(|(x, y)| shape_eq(x, y))
         }
         (
-            ExprKind::Let { bindings: ba, body: bda },
-            ExprKind::Let { bindings: bb, body: bdb },
+            ExprKind::Let {
+                bindings: ba,
+                body: bda,
+            },
+            ExprKind::Let {
+                bindings: bb,
+                body: bdb,
+            },
         ) => {
             ba.len() == bb.len()
                 && ba.iter().zip(bb).all(|(x, y)| shape_eq(x, y))
@@ -62,17 +90,34 @@ fn shape_eq(a: &Expr, b: &Expr) -> bool {
             la.name == lb.name && shape_eq(&la.value, &lb.value)
         }
         (
-            ExprKind::While { condition: ca, body: ba },
-            ExprKind::While { condition: cb, body: bb },
+            ExprKind::While {
+                condition: ca,
+                body: ba,
+            },
+            ExprKind::While {
+                condition: cb,
+                body: bb,
+            },
         ) => shape_eq(ca, cb) && shape_eq(ba, bb),
         (
-            ExprKind::If { condition: ca, then_branch: ta, elif_branches: ea, else_branch: oa },
-            ExprKind::If { condition: cb, then_branch: tb, elif_branches: eb, else_branch: ob },
+            ExprKind::If {
+                condition: ca,
+                then_branch: ta,
+                elif_branches: ea,
+                else_branch: oa,
+            },
+            ExprKind::If {
+                condition: cb,
+                then_branch: tb,
+                elif_branches: eb,
+                else_branch: ob,
+            },
         ) => {
             shape_eq(ca, cb)
                 && shape_eq(ta, tb)
                 && ea.len() == eb.len()
-                && ea.iter()
+                && ea
+                    .iter()
                     .zip(eb)
                     .all(|((c1, b1), (c2, b2))| shape_eq(c1, c2) && shape_eq(b1, b2))
                 && match (oa, ob) {
@@ -81,13 +126,36 @@ fn shape_eq(a: &Expr, b: &Expr) -> bool {
                     _ => false,
                 }
         }
-        (ExprKind::New { type_ann: ta, args: aa }, ExprKind::New { type_ann: tb, args: ab }) => {
-            ta == tb && aa.len() == ab.len() && aa.iter().zip(ab).all(|(x, y)| shape_eq(x, y))
-        }
-        (ExprKind::Is { expr: ea, type_ann: ta }, ExprKind::Is { expr: eb, type_ann: tb })
-        | (ExprKind::As { expr: ea, type_ann: ta }, ExprKind::As { expr: eb, type_ann: tb }) => {
-            ta == tb && shape_eq(ea, eb)
-        }
+        (
+            ExprKind::New {
+                type_ann: ta,
+                args: aa,
+            },
+            ExprKind::New {
+                type_ann: tb,
+                args: ab,
+            },
+        ) => ta == tb && aa.len() == ab.len() && aa.iter().zip(ab).all(|(x, y)| shape_eq(x, y)),
+        (
+            ExprKind::Is {
+                expr: ea,
+                type_ann: ta,
+            },
+            ExprKind::Is {
+                expr: eb,
+                type_ann: tb,
+            },
+        )
+        | (
+            ExprKind::As {
+                expr: ea,
+                type_ann: ta,
+            },
+            ExprKind::As {
+                expr: eb,
+                type_ann: tb,
+            },
+        ) => ta == tb && shape_eq(ea, eb),
         _ => false,
     }
 }
@@ -110,7 +178,11 @@ fn ident(name: &str, span: &Span, g: &mut NodeIdGen) -> Expr {
 }
 
 fn string_lit(value: &str, span: &Span, g: &mut NodeIdGen) -> Expr {
-    Expr::new(ExprKind::StringLit(value.to_owned()), span.clone(), g.next_id())
+    Expr::new(
+        ExprKind::StringLit(value.to_owned()),
+        span.clone(),
+        g.next_id(),
+    )
 }
 
 fn binop(op: BinOpKind, left: Expr, right: Expr, span: &Span, g: &mut NodeIdGen) -> Expr {
@@ -196,8 +268,15 @@ fn for_loop_desugar_produces_correct_let_while_skeleton() {
     let body = &result.program.body;
 
     // Outer shape: let __it_N = xs in while ...
-    let ExprKind::Let { bindings, body: while_expr } = &body.kind else {
-        panic!("expected outer let, got {:?}", std::mem::discriminant(&body.kind));
+    let ExprKind::Let {
+        bindings,
+        body: while_expr,
+    } = &body.kind
+    else {
+        panic!(
+            "expected outer let, got {:?}",
+            std::mem::discriminant(&body.kind)
+        );
     };
     assert_eq!(bindings.len(), 1);
     assert!(
@@ -213,20 +292,31 @@ fn for_loop_desugar_produces_correct_let_while_skeleton() {
     );
 
     // Inner: while __it_N.next() { let x = __it_N.current() in body }
-    let ExprKind::While { condition, body: while_body } = &while_expr.kind else {
+    let ExprKind::While {
+        condition,
+        body: while_body,
+    } = &while_expr.kind
+    else {
         panic!("expected while expression");
     };
     assert!(
         matches!(&condition.kind, ExprKind::MethodCall { method, .. } if method == "next"),
         "while condition must call .next()"
     );
-    let ExprKind::Let { bindings: inner_bindings, .. } = &while_body.kind else {
+    let ExprKind::Let {
+        bindings: inner_bindings,
+        ..
+    } = &while_body.kind
+    else {
         panic!("expected inner let for binding");
     };
     let ExprKind::LetBinding(loop_var) = &inner_bindings[0].kind else {
         panic!("expected LetBinding for loop variable");
     };
-    assert_eq!(loop_var.name, "x", "loop variable must preserve original binding name");
+    assert_eq!(
+        loop_var.name, "x",
+        "loop variable must preserve original binding name"
+    );
     assert!(
         matches!(&loop_var.value.kind, ExprKind::MethodCall { method, .. } if method == "current"),
         "loop variable init must call .current()"
@@ -258,7 +348,11 @@ fn vec_generator_desugar_produces_correct_let_new_block_shape() {
     let body = &result.program.body;
 
     // Outer: let __vec_N = __vec_new() in block
-    let ExprKind::Let { bindings, body: block_expr } = &body.kind else {
+    let ExprKind::Let {
+        bindings,
+        body: block_expr,
+    } = &body.kind
+    else {
         panic!("expected outer let for vec temp");
     };
     assert_eq!(bindings.len(), 1);

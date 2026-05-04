@@ -152,7 +152,11 @@ fn simplify_macro_pattern_matching_reduces_expression() {
     let mut bag = DiagnosticBag::new();
     let expanded = expand_macros(hir, &mut bag);
 
-    assert!(!bag.has_errors(), "unexpected diagnostics: {:?}", bag.diagnostics());
+    assert!(
+        !bag.has_errors(),
+        "unexpected diagnostics: {:?}",
+        bag.diagnostics()
+    );
     match expanded.program.body.kind {
         ExprKind::Number(value) => {
             assert!((value - 42.0).abs() < f64::EPSILON);

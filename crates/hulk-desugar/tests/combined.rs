@@ -46,7 +46,12 @@ fn for_inside_lambda_body_both_lowered() {
     let mut g = ids();
 
     let xs = ident("xs", &span, &mut g);
-    let print_y = call(ident("print", &span, &mut g), vec![ident("y", &span, &mut g)], &span, &mut g);
+    let print_y = call(
+        ident("print", &span, &mut g),
+        vec![ident("y", &span, &mut g)],
+        &span,
+        &mut g,
+    );
 
     let for_expr = Expr::new(
         ExprKind::For {
@@ -88,7 +93,11 @@ fn for_inside_lambda_body_both_lowered() {
     );
 
     // Exactly one synthetic type was generated for the lambda.
-    assert_eq!(result.program.types.len(), 1, "expected one generated type for the lambda");
+    assert_eq!(
+        result.program.types.len(),
+        1,
+        "expected one generated type for the lambda"
+    );
 
     // The generated invoke method body contains no For nodes — it was desugared.
     let invoke = result.program.types[0]
@@ -96,7 +105,11 @@ fn for_inside_lambda_body_both_lowered() {
         .iter()
         .find_map(|m| {
             if let MemberKind::Method(method) = &m.kind {
-                if method.name == "invoke" { Some(method) } else { None }
+                if method.name == "invoke" {
+                    Some(method)
+                } else {
+                    None
+                }
             } else {
                 None
             }
@@ -139,7 +152,10 @@ fn concat_spaced_inside_for_body_both_lowered() {
     let hir = make_hir(for_expr);
     let result = run_desugar(hir);
 
-    assert!(!contains_any_sugar(&result.program.body), "sugar nodes remain after for+@@ desugar");
+    assert!(
+        !contains_any_sugar(&result.program.body),
+        "sugar nodes remain after for+@@ desugar"
+    );
 
     // Top-level result is a let (from for desugar), not a for.
     assert!(
@@ -285,7 +301,11 @@ fn synthetic_node_ids_are_unique_after_desugaring() {
         span.clone(),
         g.next_id(),
     );
-    let body = Expr::new(ExprKind::Block(vec![for_a, for_b]), span.clone(), g.next_id());
+    let body = Expr::new(
+        ExprKind::Block(vec![for_a, for_b]),
+        span.clone(),
+        g.next_id(),
+    );
 
     let hir = make_hir(body);
     let result = run_desugar(hir);
@@ -341,7 +361,12 @@ fn collect_node_ids(expr: &Expr, out: &mut std::collections::HashSet<hulk_hir::N
             collect_node_ids(condition, out);
             collect_node_ids(body, out);
         }
-        ExprKind::If { condition, then_branch, elif_branches, else_branch } => {
+        ExprKind::If {
+            condition,
+            then_branch,
+            elif_branches,
+            else_branch,
+        } => {
             collect_node_ids(condition, out);
             collect_node_ids(then_branch, out);
             for (c, b) in elif_branches {
@@ -385,7 +410,12 @@ fn count_nodes(expr: &Expr) -> usize {
         ExprKind::While { condition, body } => {
             count += count_nodes(condition) + count_nodes(body);
         }
-        ExprKind::If { condition, then_branch, elif_branches, else_branch } => {
+        ExprKind::If {
+            condition,
+            then_branch,
+            elif_branches,
+            else_branch,
+        } => {
             count += count_nodes(condition) + count_nodes(then_branch);
             for (c, b) in elif_branches {
                 count += count_nodes(c) + count_nodes(b);

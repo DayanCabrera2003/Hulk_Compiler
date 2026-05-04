@@ -91,7 +91,11 @@ fn regular_param_substitution_with_lambda_argument() {
     let hir = make_hir_from_program(program);
     let (result, bag) = run_expand(hir);
 
-    assert!(!bag.has_errors(), "expansion produced errors: {:?}", bag.diagnostics());
+    assert!(
+        !bag.has_errors(),
+        "expansion produced errors: {:?}",
+        bag.diagnostics()
+    );
 
     // The expanded body must be a Lambda (the macro body was just `f`, so the
     // argument is substituted directly).
@@ -184,7 +188,11 @@ fn two_macros_with_same_local_names_produce_distinct_sanitized_idents() {
     let hir = make_hir_from_program(program);
     let (result, bag) = run_expand(hir);
 
-    assert!(!bag.has_errors(), "expansion produced errors: {:?}", bag.diagnostics());
+    assert!(
+        !bag.has_errors(),
+        "expansion produced errors: {:?}",
+        bag.diagnostics()
+    );
 
     // Neither expansion must use the bare `count` name — all locals must be sanitized.
     let idents = support::collect_all_idents(&result.program.body);
@@ -245,7 +253,11 @@ fn body_param_with_multi_statement_block_preserves_all_statements() {
     let hir = make_hir_from_program(program);
     let (result, bag) = run_expand(hir);
 
-    assert!(!bag.has_errors(), "expansion produced errors: {:?}", bag.diagnostics());
+    assert!(
+        !bag.has_errors(),
+        "expansion produced errors: {:?}",
+        bag.diagnostics()
+    );
 
     // The expansion of `run_body { ... }` substitutes `expr` with the block.
     // The result body must be the block with all three print calls.
@@ -255,7 +267,11 @@ fn body_param_with_multi_statement_block_preserves_all_statements() {
             std::mem::discriminant(&result.program.body.kind)
         );
     };
-    assert_eq!(stmts.len(), 3, "all three block statements must be preserved");
+    assert_eq!(
+        stmts.len(),
+        3,
+        "all three block statements must be preserved"
+    );
     for stmt in stmts {
         assert!(
             matches!(&stmt.kind, ExprKind::Call { callee, .. }

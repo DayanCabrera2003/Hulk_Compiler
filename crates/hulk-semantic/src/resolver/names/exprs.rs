@@ -91,8 +91,9 @@ impl Resolver {
                 self.resolve_expr(target);
                 self.resolve_expr(value);
             }
-            ExprKind::AssignTarget(target) =>
-                self.resolve_assign_target(target, expr.span.clone(), expr.id),
+            ExprKind::AssignTarget(target) => {
+                self.resolve_assign_target(target, expr.span.clone(), expr.id)
+            }
             ExprKind::LetBinding(binding) => self.resolve_expr(&binding.value),
             ExprKind::If {
                 condition,

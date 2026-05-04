@@ -19,14 +19,16 @@ fn find_assign_target_ident(expr: &Expr) -> Option<hulk_hir::NodeId> {
         ExprKind::AssignTarget(AssignTarget::Ident(_)) => Some(expr.id),
         ExprKind::Let { bindings, body } => bindings
             .iter()
-            .find_map(|b| find_assign_target_ident(b))
+            .find_map(find_assign_target_ident)
             .or_else(|| find_assign_target_ident(body)),
-        ExprKind::Assign { target, value } => find_assign_target_ident(target)
-            .or_else(|| find_assign_target_ident(value)),
+        ExprKind::Assign { target, value } => {
+            find_assign_target_ident(target).or_else(|| find_assign_target_ident(value))
+        }
         ExprKind::LetBinding(lb) => find_assign_target_ident(&lb.value),
         ExprKind::Block(exprs) => exprs.iter().find_map(find_assign_target_ident),
-        ExprKind::BinOp { left, right, .. } => find_assign_target_ident(left)
-            .or_else(|| find_assign_target_ident(right)),
+        ExprKind::BinOp { left, right, .. } => {
+            find_assign_target_ident(left).or_else(|| find_assign_target_ident(right))
+        }
         ExprKind::If {
             condition,
             then_branch,
@@ -35,15 +37,11 @@ fn find_assign_target_ident(expr: &Expr) -> Option<hulk_hir::NodeId> {
         } => find_assign_target_ident(condition)
             .or_else(|| find_assign_target_ident(then_branch))
             .or_else(|| {
-                elif_branches
-                    .iter()
-                    .find_map(|(c, b)| find_assign_target_ident(c).or_else(|| find_assign_target_ident(b)))
+                elif_branches.iter().find_map(|(c, b)| {
+                    find_assign_target_ident(c).or_else(|| find_assign_target_ident(b))
+                })
             })
-            .or_else(|| {
-                else_branch
-                    .as_deref()
-                    .and_then(find_assign_target_ident)
-            }),
+            .or_else(|| else_branch.as_deref().and_then(find_assign_target_ident)),
         _ => None,
     }
 }
@@ -63,9 +61,8 @@ fn assign_target_ident_has_resolved_symbol() {
     );
     let hir = hir.expect("should produce a HIR for a valid assignment expression");
 
-    let node_id = find_assign_target_ident(&hir.program.body).expect(
-        "the program body should contain an AssignTarget::Ident node for `x`",
-    );
+    let node_id = find_assign_target_ident(&hir.program.body)
+        .expect("the program body should contain an AssignTarget::Ident node for `x`");
 
     assert!(
         hir.resolved_symbol(node_id).is_some(),

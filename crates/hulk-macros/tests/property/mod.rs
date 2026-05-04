@@ -75,9 +75,16 @@ fn make_let_macro(macro_name: &str, param_name: &str, local: &str) -> MacroDecl 
 fn make_call(macro_name: &str, arg_value: f64) -> Expr {
     let s = test_span();
     let mut ids = g();
-    let callee = Expr::new(ExprKind::Ident(macro_name.to_owned()), s.clone(), ids.next_id());
+    let callee = Expr::new(
+        ExprKind::Ident(macro_name.to_owned()),
+        s.clone(),
+        ids.next_id(),
+    );
     Expr::new(
-        ExprKind::Call { callee: Box::new(callee), args: vec![number_expr(arg_value)] },
+        ExprKind::Call {
+            callee: Box::new(callee),
+            args: vec![number_expr(arg_value)],
+        },
         s.clone(),
         ids.next_id(),
     )
@@ -287,9 +294,16 @@ fn macro_with_no_locals_introduces_no_sanitized_idents() {
         span: s.clone(),
     };
 
-    let callee = Expr::new(ExprKind::Ident("identity".to_owned()), s.clone(), ids.next_id());
+    let callee = Expr::new(
+        ExprKind::Ident("identity".to_owned()),
+        s.clone(),
+        ids.next_id(),
+    );
     let body = Expr::new(
-        ExprKind::Call { callee: Box::new(callee), args: vec![number_expr(42.0)] },
+        ExprKind::Call {
+            callee: Box::new(callee),
+            args: vec![number_expr(42.0)],
+        },
         s.clone(),
         ids.next_id(),
     );
@@ -323,9 +337,7 @@ fn repeated_expansion_produces_distinct_idents_per_call() {
 
     let decl = make_let_macro("rep", "n", "tmp");
 
-    let calls: Vec<Expr> = (0..10)
-        .map(|i| make_call("rep", i as f64))
-        .collect();
+    let calls: Vec<Expr> = (0..10).map(|i| make_call("rep", i as f64)).collect();
 
     let body = Expr::new(ExprKind::Block(calls), s.clone(), ids.next_id());
 
@@ -349,8 +361,14 @@ fn repeated_expansion_produces_distinct_idents_per_call() {
 
     let unique: std::collections::HashSet<_> = idents.iter().collect();
     assert_eq!(
-        unique.len(), idents.len(),
+        unique.len(),
+        idents.len(),
         "repeated expansion produced duplicate sanitized idents: {idents:?}"
     );
-    assert_eq!(unique.len(), 10, "expected 10 distinct sanitized idents, got {}", unique.len());
+    assert_eq!(
+        unique.len(),
+        10,
+        "expected 10 distinct sanitized idents, got {}",
+        unique.len()
+    );
 }
