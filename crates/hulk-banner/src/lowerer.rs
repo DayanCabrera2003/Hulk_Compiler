@@ -262,7 +262,7 @@ impl<'h> Lowerer<'h> {
         names.append(&mut param_names);
 
         BannerFunction {
-            name: "__init__".to_string(),
+            name: format!("{type_name}.__init__"),
             params,
             param_names: names,
             body: std::mem::take(&mut self.instrs),
