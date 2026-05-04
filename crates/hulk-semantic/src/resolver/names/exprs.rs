@@ -268,6 +268,7 @@ impl Resolver {
                                 | SymbolKind::Parameter
                                 | SymbolKind::Variable
                                 | SymbolKind::SelfValue
+                                | SymbolKind::Macro
                         )
                     );
 
