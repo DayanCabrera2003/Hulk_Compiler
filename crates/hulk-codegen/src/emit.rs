@@ -67,6 +67,7 @@ impl<'ctx> Codegen<'ctx> {
 
     /// Emit the `__main__` BANNER function as a C-compatible `main() -> i32`.
     fn emit_main(&mut self, banner_fn: &BannerFunction) -> CodegenResult<()> {
+        self.reset_frame();
         let main_fv = *self.functions.get("main").ok_or_else(|| {
             CodegenError::Llvm("main function not pre-declared".to_string())
         })?;
@@ -74,7 +75,12 @@ impl<'ctx> Codegen<'ctx> {
         let entry = self.ctx.append_basic_block(main_fv, "entry");
         self.builder.position_at_end(entry);
 
-        let kinds = infer_temp_kinds(&banner_fn.body);
+        let kinds = infer_temp_kinds(
+            &banner_fn.body,
+            &self.fn_return_kinds.clone(),
+            &self.field_kind_map.clone(),
+            &HashMap::new(),
+        );
         self.temp_kinds.clone_from(&kinds);
         self.create_temp_allocas(&banner_fn.body, main_fv)?;
         self.pre_create_label_blocks(&banner_fn.body, main_fv);
@@ -96,9 +102,10 @@ impl<'ctx> Codegen<'ctx> {
         &mut self,
         fn_name: &str,
         banner_fn: &BannerFunction,
-        _type_name: &str,
+        type_name: &str,
         _is_init: bool,
     ) -> CodegenResult<()> {
+        self.reset_frame();
         let fv = *self.functions.get(fn_name).ok_or_else(|| {
             CodegenError::Llvm(format!("function '{fn_name}' not pre-declared"))
         })?;
@@ -106,11 +113,28 @@ impl<'ctx> Codegen<'ctx> {
         let entry = self.ctx.append_basic_block(fv, "entry");
         self.builder.position_at_end(entry);
 
-        let kinds = infer_temp_kinds(&banner_fn.body);
+        // For methods, the first param is `self`; tell the inference which type it is
+        // so GetField results on self can be typed via field_kind_map.
+        let object_type_hints: HashMap<TempId, String> = if !type_name.is_empty() && !banner_fn.params.is_empty() {
+            [(banner_fn.params[0], type_name.to_string())].into_iter().collect()
+        } else {
+            HashMap::new()
+        };
+
+        let kinds = infer_temp_kinds(
+            &banner_fn.body,
+            &self.fn_return_kinds.clone(),
+            &self.field_kind_map.clone(),
+            &object_type_hints,
+        );
         self.temp_kinds.clone_from(&kinds);
 
-        // Store each function parameter into its own alloca so it can be
-        // addressed like a local variable (enables Copy-based reassignment).
+        // For methods: track self param in temp_type_names so field accesses resolve.
+        if !type_name.is_empty() && !banner_fn.params.is_empty() {
+            self.temp_type_names.insert(banner_fn.params[0], type_name.to_string());
+        }
+
+        // Store each function parameter into its own alloca.
         let params_raw: Vec<_> = fv.get_params();
         for (i, &tid) in banner_fn.params.iter().enumerate() {
             let kind = kinds.get(&tid).copied().unwrap_or(TempKind::Ptr);
@@ -236,6 +260,12 @@ impl<'ctx> Codegen<'ctx> {
 impl<'ctx> Codegen<'ctx> {
     fn emit_copy(&mut self, dst: TempId, src: &Value) -> CodegenResult<()> {
         let val = self.load_val(src)?;
+        // Propagate type name (Range/Vector) from src temp to dst temp.
+        if let Value::Temp(src_tid) = src {
+            if let Some(tname) = self.temp_type_names.get(src_tid).cloned() {
+                self.temp_type_names.insert(dst, tname);
+            }
+        }
         self.store_temp(dst, val)
     }
 
@@ -491,52 +521,161 @@ fn instr_dst(instr: &Instr) -> Option<TempId> {
     }
 }
 
-/// Infer the LLVM type kind for every temporary written in `instrs`.
-pub(crate) fn infer_temp_kinds(instrs: &[Instr]) -> HashMap<TempId, TempKind> {
+/// Infer the LLVM type kind for every temporary in `instrs`.
+///
+/// Parameters:
+/// - `fn_return_kinds`: map from function/method name → return TempKind, used to
+///   classify the destinations of Call/MethodCall/StaticCall instructions.
+/// - `field_kind`: map from (type_name, field_name) → TempKind derived from the
+///   `pointer_map`; false in pointer_map → F64, true → Ptr.
+/// - `object_type_hints`: for method bodies, maps the self TempId → type name so
+///   GetField results can be typed using field_kind.
+///
+/// The algorithm runs forward + copy-propagation + backward passes until stable.
+pub(crate) fn infer_temp_kinds(
+    instrs: &[Instr],
+    fn_return_kinds: &HashMap<String, TempKind>,
+    field_kind: &HashMap<(String, String), TempKind>,
+    object_type_hints: &HashMap<TempId, String>,
+) -> HashMap<TempId, TempKind> {
     let mut kinds: HashMap<TempId, TempKind> = HashMap::new();
 
-    for instr in instrs {
-        match instr {
-            Instr::BinOp { dst, op, .. } => {
-                let k = if op.is_arithmetic() { TempKind::F64 } else { TempKind::I1 };
-                kinds.insert(*dst, k);
-            }
-            Instr::UnOp { dst, op, .. } => {
-                let k = if *op == hulk_hir::UnaryOpKind::Neg { TempKind::F64 } else { TempKind::I1 };
-                kinds.insert(*dst, k);
-            }
-            Instr::Copy { dst, src } => match src {
-                Value::ConstNum(_) => { kinds.entry(*dst).or_insert(TempKind::F64); }
-                Value::ConstBool(_) => { kinds.entry(*dst).or_insert(TempKind::I1); }
-                _ => { kinds.entry(*dst).or_insert(TempKind::Ptr); }
-            },
-            Instr::Call { dst, callee, .. } => {
-                let k = match callee {
-                    Value::Global(name) if is_math_builtin(name) => TempKind::F64,
-                    _ => TempKind::Ptr,
-                };
-                kinds.entry(*dst).or_insert(k);
-            }
-            instr => {
-                if let Some(dst) = instr_dst(instr) {
-                    kinds.entry(dst).or_insert(TempKind::Ptr);
+    let mut changed = true;
+    while changed {
+        changed = false;
+
+        // Forward pass: classify dsts from producer instructions.
+        for instr in instrs {
+            let prev = kinds.clone();
+            match instr {
+                Instr::BinOp { dst, op, .. } => {
+                    let k = if op.is_arithmetic() { TempKind::F64 } else { TempKind::I1 };
+                    kinds.insert(*dst, k);
+                }
+                Instr::UnOp { dst, op, .. } => {
+                    let k = if *op == hulk_hir::UnaryOpKind::Neg {
+                        TempKind::F64
+                    } else {
+                        TempKind::I1
+                    };
+                    kinds.insert(*dst, k);
+                }
+                Instr::Copy { dst, src } => match src {
+                    Value::ConstNum(_) => { kinds.insert(*dst, TempKind::F64); }
+                    Value::ConstBool(_) => { kinds.insert(*dst, TempKind::I1); }
+                    Value::Temp(_) => {} // handled by copy propagation below
+                    _ => { kinds.entry(*dst).or_insert(TempKind::Ptr); }
+                },
+                Instr::Call { dst, callee, .. } => {
+                    let k = match callee {
+                        Value::Global(name) if is_math_builtin(name) => TempKind::F64,
+                        Value::Global(name) => {
+                            fn_return_kinds.get(name.as_str()).copied().unwrap_or(TempKind::Ptr)
+                        }
+                        _ => TempKind::Ptr,
+                    };
+                    kinds.entry(*dst).or_insert(k);
+                }
+                Instr::MethodCall { dst, method, .. } => {
+                    let k = fn_return_kinds.get(method.as_str()).copied().unwrap_or(TempKind::Ptr);
+                    kinds.entry(*dst).or_insert(k);
+                }
+                Instr::StaticCall { dst, type_name, method, .. } => {
+                    let full = format!("{type_name}.{method}");
+                    let k = fn_return_kinds.get(full.as_str())
+                        .or_else(|| fn_return_kinds.get(method.as_str()))
+                        .copied()
+                        .unwrap_or(TempKind::Ptr);
+                    kinds.entry(*dst).or_insert(k);
+                }
+                Instr::GetField { dst, object, field } => {
+                    let type_name = match object {
+                        Value::Temp(tid) => object_type_hints.get(tid).map(String::as_str),
+                        _ => None,
+                    };
+                    let k = type_name
+                        .and_then(|tname| field_kind.get(&(tname.to_string(), field.clone())))
+                        .copied()
+                        .unwrap_or(TempKind::Ptr);
+                    kinds.entry(*dst).or_insert(k);
+                }
+                Instr::GetIndex { dst, .. } => {
+                    // __vec_get returns f64.
+                    kinds.insert(*dst, TempKind::F64);
+                }
+                instr => {
+                    if let Some(dst) = instr_dst(instr) {
+                        kinds.entry(dst).or_insert(TempKind::Ptr);
+                    }
                 }
             }
+            if kinds != prev { changed = true; }
         }
-    }
 
-    // Propagate types through Copy chains (up to 16 iterations to resolve chains).
-    for _ in 0..16 {
+        // Copy propagation: propagate kind from src temp to dst temp.
         for instr in instrs {
             if let Instr::Copy { dst, src: Value::Temp(src_tid) } = instr {
                 if let Some(&src_kind) = kinds.get(src_tid) {
-                    kinds.entry(*dst).or_insert(src_kind);
+                    let old = kinds.insert(*dst, src_kind);
+                    if old != Some(src_kind) { changed = true; }
+                }
+            }
+        }
+
+        // Backward propagation: operands of arithmetic BinOp must be F64.
+        for instr in instrs {
+            if let Instr::BinOp { op, left, right, .. } = instr {
+                if op.is_arithmetic() {
+                    for operand in [left, right] {
+                        if let Value::Temp(tid) = operand {
+                            if kinds.get(tid).copied() != Some(TempKind::F64) {
+                                kinds.insert(*tid, TempKind::F64);
+                                changed = true;
+                            }
+                        }
+                    }
+                } else {
+                    // Comparison operands: set F64 only if not yet classified.
+                    for operand in [left, right] {
+                        if let Value::Temp(tid) = operand {
+                            if kinds.get(tid).is_none() {
+                                kinds.insert(*tid, TempKind::F64);
+                                changed = true;
+                            }
+                        }
+                    }
+                }
+            }
+            // SetField: if field is numeric, the value being stored should be F64.
+            if let Instr::SetField { object: Value::Temp(obj_tid), field, value: Value::Temp(val_tid) } = instr {
+                if let Some(tname) = object_type_hints.get(obj_tid) {
+                    if let Some(&TempKind::F64) = field_kind.get(&(tname.clone(), field.clone())) {
+                        if kinds.get(val_tid).copied() != Some(TempKind::F64) {
+                            kinds.entry(*val_tid).or_insert(TempKind::F64);
+                            changed = true;
+                        }
+                    }
                 }
             }
         }
     }
 
     kinds
+}
+
+/// Infer the return kind of a function body by examining its Return instructions.
+pub(crate) fn infer_return_kind(instrs: &[Instr], kinds: &HashMap<TempId, TempKind>) -> TempKind {
+    for instr in instrs {
+        if let Instr::Return(val) = instr {
+            return match val {
+                Value::ConstNum(_) => TempKind::F64,
+                Value::ConstBool(_) => TempKind::I1,
+                Value::Temp(tid) => kinds.get(tid).copied().unwrap_or(TempKind::Ptr),
+                _ => TempKind::Ptr,
+            };
+        }
+    }
+    TempKind::Ptr
 }
 
 fn is_math_builtin(name: &str) -> bool {
