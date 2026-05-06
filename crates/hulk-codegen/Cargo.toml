@@ -9,3 +9,9 @@ repository.workspace = true
 [dependencies]
 hulk-banner = { path = "../hulk-banner" }
 hulk-diagnostics = { path = "../hulk-diagnostics" }
+hulk-hir = { path = "../hulk-hir" }
+inkwell = { workspace = true }
+
+[dev-dependencies]
+hulk-diagnostics = { path = "../hulk-diagnostics" }
+hulk-driver = { path = "../hulk-driver" }
