@@ -6,13 +6,14 @@ use inkwell::{
     builder::Builder,
     context::Context,
     module::Module,
-    types::{BasicTypeEnum, StructType},
+    types::{BasicMetadataTypeEnum, BasicTypeEnum, StructType},
     values::{BasicValueEnum, FunctionValue, GlobalValue, PointerValue},
 };
 
 use hulk_banner::{BannerProgram, TempId};
 
 use crate::{
+    emit::{infer_return_kind, infer_temp_kinds},
     error::CodegenResult,
     layout::ProgramLayout,
     rt::RuntimeFunctions,
@@ -94,6 +95,12 @@ pub struct Codegen<'ctx> {
     /// Type name (user-defined) for temps produced by `New` instructions.
     /// Used by GetField/SetField to resolve struct field indices.
     pub temp_type_names: HashMap<TempId, String>,
+    /// Inferred return kind for every user function/method (keyed by short name and full name).
+    /// Populated by `predeclare_all` and used by emit_method_call for indirect call typing.
+    pub fn_return_kinds: HashMap<String, TempKind>,
+    /// Field type map: (type_name, field_name) → TempKind, derived from TypeDescriptor.pointer_map.
+    /// false in pointer_map → F64 (numeric), true → Ptr (reference).
+    pub field_kind_map: HashMap<(String, String), TempKind>,
 }
 
 impl<'ctx> Codegen<'ctx> {
@@ -120,6 +127,8 @@ impl<'ctx> Codegen<'ctx> {
             temp_slots: HashMap::new(),
             temp_kinds: HashMap::new(),
             temp_type_names: HashMap::new(),
+            fn_return_kinds: HashMap::new(),
+            field_kind_map: HashMap::new(),
         }
     }
 
@@ -131,6 +140,7 @@ impl<'ctx> Codegen<'ctx> {
         self.temp_slots.clear();
         self.temp_kinds.clear();
         self.temp_type_names.clear();
+        // fn_return_kinds and field_kind_map are program-level — don't reset.
     }
 
     /// Intern a string literal as a private null-terminated `i8` array global.
@@ -190,56 +200,125 @@ impl<'ctx> Codegen<'ctx> {
         st
     }
 
-    /// Declare a user-defined HULK function in the module without emitting a body.
+    /// Declare a typed user function.
     ///
-    /// The parameter and return types follow the conservative rule:
-    /// - Number params → f64; Boolean params → i1; everything else → ptr.
-    /// - Return type → ptr (most general; arithmetic functions are optimized later).
-    pub fn declare_user_function(
+    /// Standalone functions get typed params/return from inference.
+    /// Methods get all-ptr params with typed return (for vtable uniformity).
+    pub fn declare_typed_function(
         &mut self,
         name: &str,
-        param_count: usize,
-        returns_float: bool,
+        param_kinds: &[TempKind],
+        ret_kind: TempKind,
     ) -> FunctionValue<'ctx> {
         if let Some(&fv) = self.functions.get(name) {
             return fv;
         }
-        let ptr_ty = self.ptr_type();
-        let params: Vec<inkwell::types::BasicMetadataTypeEnum<'ctx>> =
-            std::iter::repeat_n(ptr_ty.into(), param_count).collect();
-
-        let fn_ty = if returns_float {
-            self.ctx.f64_type().fn_type(&params, false)
-        } else {
-            ptr_ty.fn_type(&params, false)
+        let params: Vec<BasicMetadataTypeEnum<'ctx>> = param_kinds
+            .iter()
+            .map(|k| self.kind_to_metadata_type(*k))
+            .collect();
+        let fn_ty = match ret_kind {
+            TempKind::F64 => self.ctx.f64_type().fn_type(&params, false),
+            TempKind::I1 => self.ctx.bool_type().fn_type(&params, false),
+            TempKind::Ptr => self.ptr_type().fn_type(&params, false),
         };
-
         let fv = self.module.add_function(name, fn_ty, None);
         self.functions.insert(name.to_string(), fv);
         fv
     }
 
+    /// Convert a TempKind to a BasicMetadataTypeEnum for function param declarations.
+    pub fn kind_to_metadata_type(&self, kind: TempKind) -> BasicMetadataTypeEnum<'ctx> {
+        match kind {
+            TempKind::F64 => self.ctx.f64_type().into(),
+            TempKind::I1 => self.ctx.bool_type().into(),
+            TempKind::Ptr => self.ptr_type().into(),
+        }
+    }
+
     /// Declare all user functions from a `BannerProgram` in the LLVM module.
     ///
-    /// Only declarations (no bodies) are created at this stage. Bodies are
-    /// emitted later by `Emitter::emit_program`.
+    /// Runs iterative type inference to determine typed signatures for all functions.
+    /// Methods use all-ptr params with typed return; standalone functions use fully
+    /// typed signatures (params and return inferred from the function body).
     pub fn predeclare_all(&mut self, program: &BannerProgram) -> CodegenResult<()> {
-        for td in &program.types {
-            for method in &td.methods {
-                let param_count = method.params.len();
-                let fv_name = &method.name;
-                self.declare_user_function(fv_name, param_count, false);
+        let field_kind_map = build_field_kind_map(program);
+        self.field_kind_map = field_kind_map.clone();
+
+        // Iterative inference: 4 passes to handle mutual recursion.
+        let mut fn_return_kinds: HashMap<String, TempKind> = HashMap::new();
+        // Seed builtin protocol method return types so inference knows what
+        // Range/Vector next() and current() return without a HULK definition.
+        fn_return_kinds.insert("next".to_string(), TempKind::I1);
+        fn_return_kinds.insert("current".to_string(), TempKind::F64);
+        for _ in 0..4 {
+            for td in &program.types {
+                for method in &td.methods {
+                    let obj_hints: HashMap<TempId, String> = if !method.params.is_empty() {
+                        [(method.params[0], td.name.clone())].into_iter().collect()
+                    } else {
+                        HashMap::new()
+                    };
+                    let kinds = infer_temp_kinds(
+                        &method.body, &fn_return_kinds, &field_kind_map, &obj_hints,
+                    );
+                    let ret_kind = infer_return_kind(&method.body, &kinds);
+                    fn_return_kinds.insert(method.name.clone(), ret_kind);
+                    let short = method.name.split('.').next_back().unwrap_or(&method.name);
+                    fn_return_kinds.entry(short.to_string()).or_insert(ret_kind);
+                }
+            }
+            for func in &program.functions {
+                let kinds = infer_temp_kinds(
+                    &func.body, &fn_return_kinds, &field_kind_map, &HashMap::new(),
+                );
+                let ret_kind = infer_return_kind(&func.body, &kinds);
+                fn_return_kinds.insert(func.name.clone(), ret_kind);
             }
         }
-        for func in &program.functions {
-            let param_count = func.params.len();
-            self.declare_user_function(&func.name, param_count, false);
+        self.fn_return_kinds = fn_return_kinds.clone();
+
+        // Declare methods: all-ptr params, typed return.
+        for td in &program.types {
+            for method in &td.methods {
+                let ret_kind = fn_return_kinds.get(&method.name).copied().unwrap_or(TempKind::Ptr);
+                let param_kinds: Vec<TempKind> =
+                    std::iter::repeat(TempKind::Ptr).take(method.params.len()).collect();
+                self.declare_typed_function(&method.name, &param_kinds, ret_kind);
+            }
         }
-        // __main__ is always present; it returns i32 to serve as C `main`.
-        let i32_t = self.ctx.i32_type();
-        let main_ty = i32_t.fn_type(&[], false);
+        // Declare standalone functions: inferred param types + inferred return.
+        for func in &program.functions {
+            let kinds = infer_temp_kinds(
+                &func.body, &fn_return_kinds, &field_kind_map, &HashMap::new(),
+            );
+            let param_kinds: Vec<TempKind> = func.params.iter()
+                .map(|p| kinds.get(p).copied().unwrap_or(TempKind::Ptr))
+                .collect();
+            let ret_kind = fn_return_kinds.get(&func.name).copied().unwrap_or(TempKind::Ptr);
+            self.declare_typed_function(&func.name, &param_kinds, ret_kind);
+        }
+        // __main__ returns i32 for C compatibility.
+        let main_ty = self.ctx.i32_type().fn_type(&[], false);
         let main_fn = self.module.add_function("main", main_ty, None);
         self.functions.insert("main".to_string(), main_fn);
         Ok(())
     }
+}
+
+/// Build a map from (type_name, field_name) → TempKind using pointer_map.
+///
+/// pointer_map[i] == false → numeric field (F64); true → reference field (Ptr).
+pub(crate) fn build_field_kind_map(
+    program: &BannerProgram,
+) -> HashMap<(String, String), TempKind> {
+    let mut map = HashMap::new();
+    for td in &program.types {
+        for (i, field_name) in td.fields.iter().enumerate() {
+            let is_ptr = td.pointer_map.get(i).copied().unwrap_or(true);
+            let kind = if is_ptr { TempKind::Ptr } else { TempKind::F64 };
+            map.insert((td.name.clone(), field_name.clone()), kind);
+        }
+    }
+    map
 }
