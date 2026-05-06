@@ -52,10 +52,79 @@ double hulk_rand(void) {
     return (double)rand() / ((double)RAND_MAX + 1.0);
 }
 
-void* hulk_range_new(double min, double max, double step) {
+void* hulk_range_new(double min, double max) {
     HulkRange* r = (HulkRange*)hulk_alloc(&hulk_range_tag, sizeof(HulkRange));
-    r->current = min;
+    /* Start one step before min so the first next() call yields min. */
+    r->current = min - 1.0;
     r->max     = max;
-    r->step    = step;
+    r->step    = 1.0;
     return (void*)r;
+}
+
+/* Advance the range iterator and return 1 if still in range, 0 otherwise. */
+int __range_next(void* range) {
+    HulkRange* r = (HulkRange*)range;
+    r->current += r->step;
+    return r->current < r->max;
+}
+
+/* Return the current value of the range iterator. */
+double __range_current(void* range) {
+    HulkRange* r = (HulkRange*)range;
+    return r->current;
+}
+
+/* String concatenation helper used by the @ operator.
+   Both arguments must be valid HulkStr heap objects. */
+void* __hulk_concat(void* a, void* b) {
+    return hulk_string_concat(a, b);
+}
+
+/* ── Vector (numeric element array) ──────────────────────────────────── */
+
+typedef struct HulkVec {
+    size_t  len;
+    size_t  cap;
+    size_t  pos;    /* iteration cursor; starts at (size_t)-1 */
+    double* data;   /* C-heap double array; not GC-traced */
+} HulkVec;
+
+TypeTag hulk_vec_tag = { "Vector", 0, NULL };
+
+void* __vec_new(double initial_cap) {
+    size_t cap = (size_t)(initial_cap > 0 ? initial_cap : 4);
+    HulkVec* v = (HulkVec*)hulk_alloc(&hulk_vec_tag, sizeof(HulkVec));
+    v->len  = 0;
+    v->cap  = cap;
+    v->pos  = (size_t)-1;
+    v->data = (double*)malloc(cap * sizeof(double));
+    return (void*)v;
+}
+
+void* __vec_push(void* vec, double elem) {
+    HulkVec* v = (HulkVec*)vec;
+    if (v->len == v->cap) {
+        v->cap  *= 2;
+        v->data  = (double*)realloc(v->data, v->cap * sizeof(double));
+    }
+    v->data[v->len++] = elem;
+    return vec;
+}
+
+double __vec_get(void* vec, double idx) {
+    HulkVec* v = (HulkVec*)vec;
+    return v->data[(size_t)idx];
+}
+
+/* Advance the vector iterator; returns 1 if there is a current element. */
+int __vec_next(void* vec) {
+    HulkVec* v = (HulkVec*)vec;
+    v->pos++;
+    return v->pos < v->len;
+}
+
+/* Return the element at the current iterator position. */
+double __vec_current(void* vec) {
+    HulkVec* v = (HulkVec*)vec;
+    return v->data[v->pos];
 }
