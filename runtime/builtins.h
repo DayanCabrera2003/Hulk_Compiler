@@ -27,14 +27,29 @@ double hulk_log(double x);
 /* Pseudo-random Number in [0.0, 1.0). Uses the C standard library rand(). */
 double hulk_rand(void);
 
-/* Construct a Range object with the given bounds.
-   The Range layout (three doubles: current, max, step) matches the attributes
-   of the HULK prelude Range type (session 16). The codegen accesses fields
-   by offset; the runtime only allocates the object with the correct size and
-   TypeTag. */
-void* hulk_range_new(double min, double max, double step);
+/* Construct a Range object [min, max) with step 1.0.
+   Internally, current is set to min-1 so the first next() call yields min. */
+void* hulk_range_new(double min, double max);
+
+/* Advance the range iterator; returns 1 while in range, 0 when done. */
+int __range_next(void* range);
+
+/* Return the current value of the range iterator. */
+double __range_current(void* range);
 
 /* TypeTag for Range objects -- no pointer fields (three doubles). */
 extern TypeTag hulk_range_tag;
+
+/* String concatenation used by the @ operator. */
+void* __hulk_concat(void* a, void* b);
+
+/* Vector (numeric element array) operations. */
+void*  __vec_new(double initial_cap);
+void*  __vec_push(void* vec, double elem);
+double __vec_get(void* vec, double idx);
+int    __vec_next(void* vec);
+double __vec_current(void* vec);
+
+extern TypeTag hulk_vec_tag;
 
 #endif /* HULK_BUILTINS_H */
