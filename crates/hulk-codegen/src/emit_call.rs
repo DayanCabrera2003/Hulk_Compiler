@@ -1,11 +1,12 @@
 use inkwell::{
+    types::BasicTypeEnum,
     values::{BasicMetadataValueEnum, CallSiteValue, FunctionValue},
 };
 
 use hulk_banner::{TempId, Value};
 
 use crate::{
-    codegen::{Codegen, LlvmVal},
+    codegen::{Codegen, LlvmVal, TempKind},
     error::{CodegenError, CodegenResult},
 };
 
@@ -32,6 +33,17 @@ impl<'ctx> Codegen<'ctx> {
         let (fv, llvm_args) = self.resolve_call(callee, args)?;
         let call_site = self.builder.build_call(fv, &llvm_args, "call")?;
         let val = extract_call_result(call_site);
+        // Track type names for Range and Vector so method dispatch can use direct calls.
+        if let Value::Global(name) = callee {
+            let type_hint = match name.as_str() {
+                "range" => Some("Range"),
+                "__vec_new" => Some("Vector"),
+                _ => None,
+            };
+            if let Some(hint) = type_hint {
+                self.temp_type_names.insert(dst, hint.to_string());
+            }
+        }
         self.store_temp(dst, val)
     }
 
@@ -48,6 +60,20 @@ impl<'ctx> Codegen<'ctx> {
         method: &str,
         args: &[Value],
     ) -> CodegenResult<()> {
+        // For Range and Vector (C runtime types with no HULK vtable), dispatch
+        // directly to the corresponding C helper functions.
+        if let Value::Temp(recv_tid) = receiver {
+            if let Some(type_name) = self.temp_type_names.get(recv_tid).cloned() {
+                match (type_name.as_str(), method) {
+                    ("Range", "next") => return self.emit_builtin_method_i32(dst, receiver, self.rt.range_next),
+                    ("Range", "current") => return self.emit_builtin_method_f64(dst, receiver, self.rt.range_current),
+                    ("Vector", "next") => return self.emit_builtin_method_i32(dst, receiver, self.rt.vec_next),
+                    ("Vector", "current") => return self.emit_builtin_method_f64(dst, receiver, self.rt.vec_current),
+                    _ => {}
+                }
+            }
+        }
+
         let method_idx = self.layout.vtable_index(method).ok_or_else(|| {
             CodegenError::Llvm(format!("method '{method}' not found in global method table"))
         })?;
@@ -91,10 +117,15 @@ impl<'ctx> Codegen<'ctx> {
             llvm_args.push(val_to_metadata(v, self)?);
         }
 
-        // The function signature for the indirect call: return ptr, all params ptr.
+        // Determine the return type from fn_return_kinds (typed return for numeric methods).
+        let ret_kind = self.fn_return_kinds.get(method).copied().unwrap_or(TempKind::Ptr);
         let n_params = llvm_args.len();
         let params: Vec<_> = (0..n_params).map(|_| ptr_ty.into()).collect();
-        let fn_ty = ptr_ty.fn_type(&params, false);
+        let fn_ty = match ret_kind {
+            TempKind::F64 => self.ctx.f64_type().fn_type(&params, false),
+            TempKind::I1 => self.ctx.bool_type().fn_type(&params, false),
+            TempKind::Ptr => ptr_ty.fn_type(&params, false),
+        };
 
         let call_site = self.builder.build_indirect_call(fn_ty, method_fn_ptr, &llvm_args, "vcall")?;
         let result = extract_call_result(call_site);
@@ -116,10 +147,13 @@ impl<'ctx> Codegen<'ctx> {
             CodegenError::Llvm(format!("static call target '{fn_name}' not declared"))
         })?;
 
+        let param_types: Vec<BasicTypeEnum<'ctx>> = fv.get_type().get_param_types();
         let mut llvm_args: Vec<BasicMetadataValueEnum<'ctx>> = Vec::new();
-        for arg in args {
+        for (i, arg) in args.iter().enumerate() {
             let v = self.load_val(arg)?;
-            llvm_args.push(val_to_metadata(v, self)?);
+            let expected_ty = param_types.get(i).copied();
+            let coerced = coerce_val_to_param(v, expected_ty, self)?;
+            llvm_args.push(coerced);
         }
 
         let call_site = self.builder.build_call(fv, &llvm_args, "scall")?;
@@ -129,7 +163,8 @@ impl<'ctx> Codegen<'ctx> {
 
     // ─── Private helpers ──────────────────────────────────────────────────
 
-    /// Resolve a callee `Value` to a `FunctionValue` and evaluate arguments.
+    /// Resolve a callee `Value` to a `FunctionValue` and evaluate arguments,
+    /// coercing each argument to match the callee's declared LLVM parameter type.
     fn resolve_call(
         &mut self,
         callee: &Value,
@@ -137,7 +172,6 @@ impl<'ctx> Codegen<'ctx> {
     ) -> CodegenResult<(FunctionValue<'ctx>, Vec<BasicMetadataValueEnum<'ctx>>)> {
         let fv = match callee {
             Value::Global(name) => {
-                // First try runtime builtins, then user-defined functions.
                 if let Some(rt_fv) = self.rt.resolve_builtin(name) {
                     rt_fv
                 } else {
@@ -147,19 +181,19 @@ impl<'ctx> Codegen<'ctx> {
                 }
             }
             other => {
-                // For a temp value used as callee, we need an indirect call.
-                // This happens when a functor/lambda is called via its `invoke` method.
-                // Fall back to null_fn (will cause a runtime error if actually called).
                 let v = self.load_val(other)?;
                 let ptr = self.coerce_to_ptr(v)?;
                 return self.emit_indirect_call(ptr, args);
             }
         };
 
+        let param_types: Vec<BasicTypeEnum<'ctx>> = fv.get_type().get_param_types();
         let mut llvm_args: Vec<BasicMetadataValueEnum<'ctx>> = Vec::new();
-        for arg in args {
+        for (i, arg) in args.iter().enumerate() {
             let v = self.load_val(arg)?;
-            llvm_args.push(val_to_metadata(v, self)?);
+            let expected_ty = param_types.get(i).copied();
+            let coerced = coerce_val_to_param(v, expected_ty, self)?;
+            llvm_args.push(coerced);
         }
         Ok((fv, llvm_args))
     }
@@ -175,6 +209,40 @@ impl<'ctx> Codegen<'ctx> {
         Err(CodegenError::Llvm(
             "indirect call through non-global callee not yet supported".to_string(),
         ))
+    }
+
+    /// Call a C function that takes `(ptr receiver)` and returns `i32` (used as bool).
+    fn emit_builtin_method_i32(
+        &mut self,
+        dst: TempId,
+        receiver: &Value,
+        fv: inkwell::values::FunctionValue<'ctx>,
+    ) -> CodegenResult<()> {
+        let recv_val = self.load_val(receiver)?;
+        let recv_ptr = self.coerce_to_ptr(recv_val)?;
+        let call = self.builder.build_call(fv, &[recv_ptr.into()], "bm_i32")?;
+        let i32_val = call.try_as_basic_value().left()
+            .ok_or_else(|| CodegenError::Llvm("builtin method returned void".to_string()))?
+            .into_int_value();
+        // Truncate i32 → i1 for boolean semantics.
+        let i1_val = self.builder.build_int_truncate(i32_val, self.ctx.bool_type(), "bm_i1")?;
+        self.store_temp(dst, LlvmVal::Int(i1_val))
+    }
+
+    /// Call a C function that takes `(ptr receiver)` and returns `double`.
+    fn emit_builtin_method_f64(
+        &mut self,
+        dst: TempId,
+        receiver: &Value,
+        fv: inkwell::values::FunctionValue<'ctx>,
+    ) -> CodegenResult<()> {
+        let recv_val = self.load_val(receiver)?;
+        let recv_ptr = self.coerce_to_ptr(recv_val)?;
+        let call = self.builder.build_call(fv, &[recv_ptr.into()], "bm_f64")?;
+        let f_val = call.try_as_basic_value().left()
+            .ok_or_else(|| CodegenError::Llvm("builtin method returned void".to_string()))?
+            .into_float_value();
+        self.store_temp(dst, LlvmVal::Float(f_val))
     }
 
     /// Dispatch a `print` call to the correct typed runtime function.
@@ -240,4 +308,48 @@ fn val_to_metadata<'ctx>(
         LlvmVal::Ptr(p) => p.into(),
         LlvmVal::Void => cg.ptr_type().const_null().into(),
     })
+}
+
+/// Coerce `val` to the `expected_ty` LLVM type for use as a function argument.
+///
+/// - Float → ptr: bitcast f64 bits to i64, then inttoptr.
+/// - Int   → ptr: zero-extend i1/i64 to i64, then inttoptr.
+/// - Ptr   → f64: ptrtoint to i64, then bitcast to f64.
+/// - Same type: pass through unchanged.
+fn coerce_val_to_param<'ctx>(
+    val: LlvmVal<'ctx>,
+    expected_ty: Option<BasicTypeEnum<'ctx>>,
+    cg: &mut Codegen<'ctx>,
+) -> CodegenResult<BasicMetadataValueEnum<'ctx>> {
+    let Some(expected) = expected_ty else {
+        return val_to_metadata(val, cg);
+    };
+    let ptr_ty: BasicTypeEnum = cg.ptr_type().into();
+    let f64_ty: BasicTypeEnum = cg.ctx.f64_type().into();
+    let i64_ty = cg.ctx.i64_type();
+
+    match (&val, expected) {
+        // Float → ptr: bitcast bits to i64, then inttoptr.
+        (LlvmVal::Float(f), t) if t == ptr_ty => {
+            let f = *f;
+            let bits = cg.builder.build_bitcast(f, i64_ty, "fbits_to_i64")?;
+            let ptr = cg.builder.build_int_to_ptr(bits.into_int_value(), cg.ptr_type(), "fbits_as_ptr")?;
+            Ok(ptr.into())
+        }
+        // Int → ptr: zero-extend, then inttoptr.
+        (LlvmVal::Int(i), t) if t == ptr_ty => {
+            let i = *i;
+            let ext = cg.builder.build_int_z_extend(i, i64_ty, "ibits_to_i64")?;
+            let ptr = cg.builder.build_int_to_ptr(ext, cg.ptr_type(), "ibits_as_ptr")?;
+            Ok(ptr.into())
+        }
+        // Ptr → f64: ptrtoint to i64, then bitcast to f64.
+        (LlvmVal::Ptr(p), t) if t == f64_ty => {
+            let p = *p;
+            let bits = cg.builder.build_ptr_to_int(p, i64_ty, "ptr_to_i64")?;
+            let f = cg.builder.build_bitcast(bits, cg.ctx.f64_type(), "i64_as_f64")?;
+            Ok(f.into())
+        }
+        _ => val_to_metadata(val, cg),
+    }
 }
