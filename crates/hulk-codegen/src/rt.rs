@@ -17,7 +17,6 @@ pub struct RuntimeFunctions<'ctx> {
     pub hulk_shadow_pop: FunctionValue<'ctx>,
     // Strings
     pub hulk_string_new: FunctionValue<'ctx>,
-    // Reserved for use by future codegen passes that bypass the BANNER `__hulk_concat` alias.
     #[allow(dead_code)]
     pub hulk_string_concat: FunctionValue<'ctx>,
     pub hulk_number_to_string: FunctionValue<'ctx>,
@@ -32,10 +31,17 @@ pub struct RuntimeFunctions<'ctx> {
     pub hulk_log: FunctionValue<'ctx>,
     pub hulk_rand: FunctionValue<'ctx>,
     pub hulk_range_new: FunctionValue<'ctx>,
-    // Helpers emitted by the BANNER lowerer
+    // Range iterator helpers
+    pub range_next: FunctionValue<'ctx>,
+    pub range_current: FunctionValue<'ctx>,
+    // String concatenation (@ operator)
     pub hulk_concat: FunctionValue<'ctx>,
+    // Vector operations
     pub vec_new: FunctionValue<'ctx>,
     pub vec_push: FunctionValue<'ctx>,
+    pub vec_get: FunctionValue<'ctx>,
+    pub vec_next: FunctionValue<'ctx>,
+    pub vec_current: FunctionValue<'ctx>,
 }
 
 impl<'ctx> RuntimeFunctions<'ctx> {
@@ -120,14 +126,28 @@ impl<'ctx> RuntimeFunctions<'ctx> {
         let hulk_rand =
             module.add_function("hulk_rand", f64_t.fn_type(&[], false), None);
 
-        // hulk_range_new(double min, double max, double step) -> void*
+        // hulk_range_new(double min, double max) -> void*
         let hulk_range_new = module.add_function(
             "hulk_range_new",
-            ptr_t.fn_type(&[f64_t.into(), f64_t.into(), f64_t.into()], false),
+            ptr_t.fn_type(&[f64_t.into(), f64_t.into()], false),
             None,
         );
 
-        // __hulk_concat(void* a, void* b) -> void*  (alias for hulk_string_concat used by BANNER)
+        // __range_next(void* range) -> i32 (used as bool)
+        let range_next = module.add_function(
+            "__range_next",
+            i32_t.fn_type(&[ptr_t.into()], false),
+            None,
+        );
+
+        // __range_current(void* range) -> double
+        let range_current = module.add_function(
+            "__range_current",
+            f64_t.fn_type(&[ptr_t.into()], false),
+            None,
+        );
+
+        // __hulk_concat(void* a, void* b) -> void*
         let hulk_concat = module.add_function(
             "__hulk_concat",
             ptr_t.fn_type(&[ptr_t.into(), ptr_t.into()], false),
@@ -141,14 +161,34 @@ impl<'ctx> RuntimeFunctions<'ctx> {
             None,
         );
 
-        // __vec_push(void* vec, void* elem) -> void*
+        // __vec_push(void* vec, double elem) -> void*
         let vec_push = module.add_function(
             "__vec_push",
-            ptr_t.fn_type(&[ptr_t.into(), ptr_t.into()], false),
+            ptr_t.fn_type(&[ptr_t.into(), f64_t.into()], false),
             None,
         );
 
-        // Mark unused for now (will be implemented in session 16+)
+        // __vec_get(void* vec, double idx) -> double
+        let vec_get = module.add_function(
+            "__vec_get",
+            f64_t.fn_type(&[ptr_t.into(), f64_t.into()], false),
+            None,
+        );
+
+        // __vec_next(void* vec) -> i32
+        let vec_next = module.add_function(
+            "__vec_next",
+            i32_t.fn_type(&[ptr_t.into()], false),
+            None,
+        );
+
+        // __vec_current(void* vec) -> double
+        let vec_current = module.add_function(
+            "__vec_current",
+            f64_t.fn_type(&[ptr_t.into()], false),
+            None,
+        );
+
         let _ = bool_t;
 
         Self {
@@ -168,9 +208,14 @@ impl<'ctx> RuntimeFunctions<'ctx> {
             hulk_log,
             hulk_rand,
             hulk_range_new,
+            range_next,
+            range_current,
             hulk_concat,
             vec_new,
             vec_push,
+            vec_get,
+            vec_next,
+            vec_current,
         }
     }
 
@@ -193,6 +238,7 @@ impl<'ctx> RuntimeFunctions<'ctx> {
             "hulk_number_to_string" => Some(self.hulk_number_to_string),
             "__vec_new" => Some(self.vec_new),
             "__vec_push" => Some(self.vec_push),
+            "__vec_get" => Some(self.vec_get),
             _ => None,
         }
     }
