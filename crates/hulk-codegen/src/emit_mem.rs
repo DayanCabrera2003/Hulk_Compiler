@@ -1,13 +1,14 @@
 use inkwell::{
     AddressSpace,
     module::Linkage,
+    types::BasicTypeEnum,
     values::GlobalValue,
 };
 
 use hulk_banner::{TempId, Value};
 
 use crate::{
-    codegen::{Codegen, LlvmVal},
+    codegen::{Codegen, LlvmVal, TempKind},
     error::{CodegenError, CodegenResult},
 };
 
@@ -65,18 +66,20 @@ impl<'ctx> Codegen<'ctx> {
         };
         self.builder.build_store(vtable_field, vtable_ptr)?;
 
-        // Invoke the constructor.
+        // Invoke the constructor, coercing each arg to the declared param type.
         let init_name = format!("{type_name}.__init__");
         let init_fv = *self.functions.get(&init_name).ok_or_else(|| {
             CodegenError::Llvm(format!("constructor '{init_name}' not declared"))
         })?;
 
+        let init_param_types: Vec<BasicTypeEnum<'ctx>> = init_fv.get_type().get_param_types();
         let mut init_args: Vec<inkwell::values::BasicMetadataValueEnum<'ctx>> =
             vec![obj_ptr.into()];
-        for arg in args {
+        for (i, arg) in args.iter().enumerate() {
             let v = self.load_val(arg)?;
-            let bv = v.as_basic().unwrap_or_else(|| self.ptr_type().const_null().into());
-            init_args.push(bv.into());
+            let expected_ty = init_param_types.get(i + 1).copied(); // +1: skip self
+            let coerced = coerce_to_param(v, expected_ty, self)?;
+            init_args.push(coerced);
         }
         self.builder.build_call(init_fv, &init_args, "init")?;
 
@@ -87,9 +90,9 @@ impl<'ctx> Codegen<'ctx> {
 
     /// Emit a `GetField { dst, object, field }` instruction.
     ///
-    /// Uses the `temp_type_names` map to determine the object's struct type,
-    /// then emits a GEP to the correct field and loads its value.
-    /// Falls back to a byte-offset GEP when the struct type is not known.
+    /// Fields are always stored as opaque `ptr` in the struct layout (8 bytes).
+    /// If the field holds a numeric value (TempKind::F64 for dst), the loaded ptr
+    /// is re-interpreted as f64 via ptrtoint → bitcast.
     pub(crate) fn emit_get_field(
         &mut self,
         dst: TempId,
@@ -101,11 +104,31 @@ impl<'ctx> Codegen<'ctx> {
 
         let (struct_ty, field_idx) = self.resolve_field(object, field)?;
         let field_ptr = self.builder.build_struct_gep(struct_ty, obj_ptr, field_idx, "fld_ptr")?;
-        let loaded = self.builder.build_load(self.ptr_type(), field_ptr, field)?;
-        self.store_temp(dst, LlvmVal::Ptr(loaded.into_pointer_value()))
+        let loaded_ptr = self.builder.build_load(self.ptr_type(), field_ptr, field)?
+            .into_pointer_value();
+
+        let dst_kind = self.temp_kinds.get(&dst).copied().unwrap_or(TempKind::Ptr);
+        match dst_kind {
+            TempKind::F64 => {
+                let i64_ty = self.ctx.i64_type();
+                let bits = self.builder.build_ptr_to_int(loaded_ptr, i64_ty, "ptoi")?;
+                let f = self.builder.build_bitcast(bits, self.ctx.f64_type(), "cast_f64")?;
+                self.store_temp(dst, LlvmVal::Float(f.into_float_value()))
+            }
+            TempKind::I1 => {
+                let i64_ty = self.ctx.i64_type();
+                let bits = self.builder.build_ptr_to_int(loaded_ptr, i64_ty, "ptoi")?;
+                let b = self.builder.build_int_truncate(bits, self.ctx.bool_type(), "cast_i1")?;
+                self.store_temp(dst, LlvmVal::Int(b))
+            }
+            TempKind::Ptr => self.store_temp(dst, LlvmVal::Ptr(loaded_ptr)),
+        }
     }
 
     /// Emit a `SetField { object, field, value }` instruction.
+    ///
+    /// Numeric values (Float/Int) are bit-cast to an opaque pointer before storing
+    /// so all field slots have a uniform `ptr` layout.
     pub(crate) fn emit_set_field(
         &mut self,
         object: &Value,
@@ -117,15 +140,28 @@ impl<'ctx> Codegen<'ctx> {
         let (struct_ty, field_idx) = self.resolve_field(object, field)?;
         let field_ptr = self.builder.build_struct_gep(struct_ty, obj_ptr, field_idx, "fld_ptr")?;
         let v = self.load_val(value)?;
-        let bv = v.as_basic().unwrap_or_else(|| self.ptr_type().const_null().into());
-        self.builder.build_store(field_ptr, bv)?;
+        let i64_ty = self.ctx.i64_type();
+        let stored: inkwell::values::BasicValueEnum<'ctx> = match v {
+            LlvmVal::Float(f) => {
+                // Bitcast f64 bits → i64 → ptr so numeric fields fit in a ptr slot.
+                let bits = self.builder.build_bitcast(f, i64_ty, "fbits")?;
+                self.builder.build_int_to_ptr(bits.into_int_value(), self.ptr_type(), "fptr")?.into()
+            }
+            LlvmVal::Int(i) => {
+                let ext = self.builder.build_int_z_extend(i, i64_ty, "ibits")?;
+                self.builder.build_int_to_ptr(ext, self.ptr_type(), "iptr")?.into()
+            }
+            LlvmVal::Ptr(p) => p.into(),
+            LlvmVal::Void => self.ptr_type().const_null().into(),
+        };
+        self.builder.build_store(field_ptr, stored)?;
         Ok(())
     }
 
     /// Emit a `GetIndex { dst, target, index }` instruction.
     ///
     /// Vectors are represented as `{ ptr data, f64 len, f64 capacity }` objects.
-    /// Index access is forwarded to `__vec_get` (declared lazily here).
+    /// Index access is forwarded to `__vec_get` which returns f64.
     pub(crate) fn emit_get_index(
         &mut self,
         dst: TempId,
@@ -140,18 +176,18 @@ impl<'ctx> Codegen<'ctx> {
             _ => return Err(CodegenError::Llvm("vector index must be f64".to_string())),
         };
 
-        let vec_get = self.get_or_declare_vec_get();
+        let vec_get = self.rt.vec_get;
         let call = self.builder.build_call(
             vec_get,
             &[vec_ptr.into(), idx_float.into()],
             "vec_get",
         )?;
-        let ptr = call
+        let f = call
             .try_as_basic_value()
             .left()
-            .unwrap_or_else(|| self.ptr_type().const_null().into())
-            .into_pointer_value();
-        self.store_temp(dst, LlvmVal::Ptr(ptr))
+            .ok_or_else(|| CodegenError::Llvm("__vec_get returned void".to_string()))?
+            .into_float_value();
+        self.store_temp(dst, LlvmVal::Float(f))
     }
 
     /// Emit a `SetIndex { target, index, value }` instruction.
@@ -344,19 +380,6 @@ impl<'ctx> Codegen<'ctx> {
         )))
     }
 
-    fn get_or_declare_vec_get(&mut self) -> inkwell::values::FunctionValue<'ctx> {
-        let name = "__vec_get";
-        if let Some(&fv) = self.functions.get(name) {
-            return fv;
-        }
-        let f64_t = self.ctx.f64_type();
-        let ptr_t = self.ptr_type();
-        let fn_ty = ptr_t.fn_type(&[ptr_t.into(), f64_t.into()], false);
-        let fv = self.module.add_function(name, fn_ty, None);
-        self.functions.insert(name.to_string(), fv);
-        fv
-    }
-
     fn get_or_declare_vec_set(&mut self) -> inkwell::values::FunctionValue<'ctx> {
         let name = "__vec_set";
         if let Some(&fv) = self.functions.get(name) {
@@ -375,5 +398,52 @@ impl<'ctx> Codegen<'ctx> {
     #[allow(dead_code)]
     pub(crate) fn get_global(&self, name: &str) -> Option<GlobalValue<'ctx>> {
         self.module.get_global(name)
+    }
+}
+
+/// Coerce `val` to `expected_ty` for use as a function argument.
+/// Mirrors the coerce_val_to_param logic in emit_call.rs.
+fn coerce_to_param<'ctx>(
+    val: crate::codegen::LlvmVal<'ctx>,
+    expected_ty: Option<BasicTypeEnum<'ctx>>,
+    cg: &mut crate::codegen::Codegen<'ctx>,
+) -> crate::error::CodegenResult<inkwell::values::BasicMetadataValueEnum<'ctx>> {
+    use crate::codegen::LlvmVal;
+    let Some(expected) = expected_ty else {
+        return Ok(match val {
+            LlvmVal::Float(f) => f.into(),
+            LlvmVal::Int(i) => i.into(),
+            LlvmVal::Ptr(p) => p.into(),
+            LlvmVal::Void => cg.ptr_type().const_null().into(),
+        });
+    };
+    let ptr_ty: BasicTypeEnum = cg.ptr_type().into();
+    let f64_ty: BasicTypeEnum = cg.ctx.f64_type().into();
+    let i64_ty = cg.ctx.i64_type();
+    match (&val, expected) {
+        (LlvmVal::Float(f), t) if t == ptr_ty => {
+            let f = *f;
+            let bits = cg.builder.build_bitcast(f, i64_ty, "fbits")?;
+            let ptr = cg.builder.build_int_to_ptr(bits.into_int_value(), cg.ptr_type(), "fptr")?;
+            Ok(ptr.into())
+        }
+        (LlvmVal::Int(i), t) if t == ptr_ty => {
+            let i = *i;
+            let ext = cg.builder.build_int_z_extend(i, i64_ty, "ibits")?;
+            let ptr = cg.builder.build_int_to_ptr(ext, cg.ptr_type(), "iptr")?;
+            Ok(ptr.into())
+        }
+        (LlvmVal::Ptr(p), t) if t == f64_ty => {
+            let p = *p;
+            let bits = cg.builder.build_ptr_to_int(p, i64_ty, "ptoi")?;
+            let f = cg.builder.build_bitcast(bits, cg.ctx.f64_type(), "i64f")?;
+            Ok(f.into())
+        }
+        _ => Ok(match val {
+            LlvmVal::Float(f) => f.into(),
+            LlvmVal::Int(i) => i.into(),
+            LlvmVal::Ptr(p) => p.into(),
+            LlvmVal::Void => cg.ptr_type().const_null().into(),
+        }),
     }
 }
