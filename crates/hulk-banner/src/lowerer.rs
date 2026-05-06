@@ -21,6 +21,11 @@ pub(crate) struct Lowerer<'h> {
     next_label: u32,
     // Maps SymbolId of a `let` binding to the temporary that holds its value.
     locals: HashMap<SymbolId, TempId>,
+    // Fallback map for desugared `let` bindings that the resolver never saw
+    // (e.g., synthetic variables introduced by the `for`-loop desugar pass).
+    // Keyed by binding name; shadowing is handled by always overwriting on bind
+    // and restoring on scope exit via `locals_by_name_stack`.
+    locals_by_name: HashMap<String, TempId>,
     // Maps a parameter name to the temporary assigned in the current frame.
     // Param names are used (instead of SymbolId) because Param nodes have no
     // NodeId and cannot be resolved through `hir.resolved_symbol`.
@@ -43,6 +48,7 @@ impl<'h> Lowerer<'h> {
             next_temp: 0,
             next_label: 0,
             locals: HashMap::new(),
+            locals_by_name: HashMap::new(),
             param_temps: HashMap::new(),
             shadow_count: 0,
             self_temp: None,
@@ -64,7 +70,7 @@ impl<'h> Lowerer<'h> {
             name: String,
             parent: Option<String>,
             parent_args: Vec<Expr>,
-            attrs: Vec<(String, Expr)>,
+            attrs: Vec<(String, Option<TypeAnn>, Expr)>,
             type_params: Vec<hulk_hir::Param>,
             methods: Vec<FunctionDecl>,
         }
@@ -85,8 +91,8 @@ impl<'h> Lowerer<'h> {
                     .members
                     .iter()
                     .filter_map(|m| {
-                        if let MemberKind::Attribute { name, value, .. } = &m.kind {
-                            Some((name.clone(), value.clone()))
+                        if let MemberKind::Attribute { name, type_ann, value } = &m.kind {
+                            Some((name.clone(), type_ann.clone(), value.clone()))
                         } else {
                             None
                         }
@@ -110,15 +116,36 @@ impl<'h> Lowerer<'h> {
         let fn_entries: Vec<FunctionDecl> = hir.program.functions.clone();
         let main_body: Expr = hir.program.body.clone();
 
+        // Build a map from type name → constructor params for implicit inheritance.
+        let params_by_type: HashMap<String, Vec<hulk_hir::Param>> = hir
+            .program
+            .types
+            .iter()
+            .map(|td| (td.name.clone(), td.params.clone()))
+            .collect();
+
         // Lower each type into a `TypeDescriptor` containing an `__init__`
         // function plus one `BannerFunction` per declared method.
         let mut types = Vec::new();
         for entry in type_entries {
+            // When a type has no explicit constructor params but inherits from a
+            // parent that does, inherit the parent's params and forward them.
+            let parent_params: Option<&[hulk_hir::Param]> =
+                if entry.type_params.is_empty() && entry.parent.is_some() {
+                    entry.parent.as_ref()
+                        .and_then(|p| params_by_type.get(p))
+                        .map(|v| v.as_slice())
+                        .filter(|p| !p.is_empty())
+                } else {
+                    None
+                };
+
             let init_fn = self.lower_type_init(
                 &entry.name,
                 entry.parent.as_deref(),
                 &entry.parent_args,
                 &entry.type_params,
+                parent_params,
                 &entry.attrs,
             );
 
@@ -128,16 +155,20 @@ impl<'h> Lowerer<'h> {
                 methods.push(lowered);
             }
 
-            // Field metadata is filled by a later pass (Task 5+); the
-            // descriptor owns the names and pointer flags but the lowerer
-            // emits attribute initialization through __init__ instead.
-            let fields: Vec<String> = entry.attrs.iter().map(|(name, _)| name.clone()).collect();
+            // Field metadata: names and pointer flags for GC tracing.
+            // Use the explicit type annotation when present; fall back to
+            // the inferred type of the initializer expression.
+            let fields: Vec<String> = entry.attrs.iter().map(|(name, _, _)| name.clone()).collect();
             let pointer_map: Vec<bool> = entry
                 .attrs
                 .iter()
-                .map(|(_, value)| {
-                    let ty = self.hir.expr_type(value.id).unwrap_or(TypeId::OBJECT);
-                    Self::is_reference(ty)
+                .map(|(_, ann, value)| {
+                    if let Some(a) = ann {
+                        !Self::is_numeric_ann(a)
+                    } else {
+                        let ty = self.hir.expr_type(value.id).unwrap_or(TypeId::OBJECT);
+                        Self::is_reference(ty)
+                    }
                 })
                 .collect();
 
@@ -181,6 +212,7 @@ impl<'h> Lowerer<'h> {
         self.next_temp = 0;
         self.next_label = 0;
         self.locals.clear();
+        self.locals_by_name.clear();
         self.param_temps.clear();
         self.shadow_count = 0;
         self.self_temp = None;
@@ -220,7 +252,8 @@ impl<'h> Lowerer<'h> {
         parent_name: Option<&str>,
         parent_args: &[Expr],
         type_params: &[hulk_hir::Param],
-        attrs: &[(String, Expr)],
+        parent_params: Option<&[hulk_hir::Param]>,
+        attrs: &[(String, Option<TypeAnn>, Expr)],
     ) -> BannerFunction {
         self.reset_for_function();
         // `self` is the first parameter for __init__.
@@ -235,9 +268,22 @@ impl<'h> Lowerer<'h> {
         // Chain the parent constructor when the type inherits.
         if let Some(parent) = parent_name {
             let mut args: Vec<Value> = vec![Value::Temp(t_self)];
-            for arg in parent_args {
-                let v = self.emit_expr(arg);
-                args.push(v);
+            if parent_args.is_empty() {
+                if let Some(pp) = parent_params {
+                    // Implicit constructor inheritance: no explicit params declared,
+                    // so register the parent's params as our own and forward them.
+                    let (inherited_temps, inherited_names) = self.setup_params(pp);
+                    for &t in &inherited_temps {
+                        args.push(Value::Temp(t));
+                    }
+                    user_params = inherited_temps;
+                    param_names = inherited_names;
+                }
+            } else {
+                for arg in parent_args {
+                    let v = self.emit_expr(arg);
+                    args.push(v);
+                }
             }
             let dst = self.fresh_temp();
             self.emit(Instr::StaticCall {
@@ -249,7 +295,7 @@ impl<'h> Lowerer<'h> {
         }
 
         // Initialize each declared attribute on `self`.
-        for (name, value) in attrs {
+        for (name, _, value) in attrs {
             let v = self.emit_expr(value);
             self.emit(Instr::SetField {
                 object: Value::Temp(t_self),
@@ -329,6 +375,37 @@ impl<'h> Lowerer<'h> {
     // (strings, vectors, user types, Object) is treated as a heap pointer.
     fn is_reference(ty: TypeId) -> bool {
         ty != TypeId::NUMBER && ty != TypeId::BOOLEAN
+    }
+
+    // Returns true if the type annotation names a numeric (unboxed) type.
+    // Used to determine pointer_map for struct fields when an explicit
+    // type annotation is present.
+    fn is_numeric_ann(ann: &TypeAnn) -> bool {
+        matches!(ann, TypeAnn::Named(n) if n == "Number" || n == "Boolean")
+    }
+
+    // If `val` is a numeric constant or its HIR source type is Number/Boolean,
+    // emit a hulk_number_to_string call and return a Value::Temp pointing to the
+    // resulting HulkStr. Otherwise return val unchanged (already a string/ptr).
+    fn coerce_to_str_val(&mut self, val: Value, expr: &Expr) -> Value {
+        let is_numeric = match &val {
+            Value::ConstNum(_) | Value::ConstBool(_) => true,
+            _ => {
+                let ty = self.hir.expr_type(expr.id).unwrap_or(TypeId::OBJECT);
+                !Self::is_reference(ty)
+            }
+        };
+        if is_numeric {
+            let tmp = self.fresh_temp();
+            self.emit(Instr::Call {
+                dst: tmp,
+                callee: Value::Global("hulk_number_to_string".to_string()),
+                args: vec![val],
+            });
+            Value::Temp(tmp)
+        } else {
+            val
+        }
     }
 
     // -------- Expression dispatcher --------
@@ -474,49 +551,56 @@ impl<'h> Lowerer<'h> {
 
     fn emit_ident(&mut self, expr: &Expr) -> Value {
         // Resolver stores a symbol for every Ident that passes semantic analysis.
-        let sym = self
-            .hir
-            .resolved_symbol(expr.id)
-            .expect("Ident has no resolved symbol");
-        let table = self.hir.symbols.table();
-        // SymbolIds are only created by the SymbolTable, so they are always valid.
-        let symbol: &Symbol = table.get(sym).expect("symbol not in table");
-        match &symbol.kind {
-            SymbolKind::Variable => {
-                // Variables are inserted into `locals` when their LetBinding is processed.
-                let t = *self.locals.get(&sym).expect("variable not in locals");
-                Value::Temp(t)
-            }
-            SymbolKind::Parameter => {
-                // Parameter names are always present in the symbol table.
-                let name = table.name_of(sym).expect("param has no name");
-                // Params are registered in `param_temps` during function frame setup.
-                let t = *self
-                    .param_temps
-                    .get(name)
-                    .expect("param not in param_temps");
-                Value::Temp(t)
-            }
-            SymbolKind::SelfValue => Value::Temp(
-                // Resolver rejects SelfValue outside of a method body.
-                self.self_temp
-                    .expect("SelfValue ident outside of a method body"),
-            ),
-            SymbolKind::Function | SymbolKind::BuiltinFunction | SymbolKind::Macro => {
-                // Functions and macros always have names in the symbol table.
-                let n = table.name_of(sym).unwrap().to_string();
-                Value::Global(n)
-            }
-            SymbolKind::BuiltinValue => {
-                // BuiltinValues are registered with their names by the builtin setup phase.
-                let name = table.name_of(sym).unwrap();
-                match name {
-                    "PI" => Value::ConstNum(std::f64::consts::PI),
-                    "E" => Value::ConstNum(std::f64::consts::E),
-                    other => panic!("unknown BuiltinValue: {other}"),
+        // Desugared nodes (e.g., from for-loop desugar) may have no resolved symbol;
+        // in that case fall back to the name-keyed map.
+        if let Some(sym) = self.hir.resolved_symbol(expr.id) {
+            let table = self.hir.symbols.table();
+            let symbol: &Symbol = table.get(sym).expect("symbol not in table");
+            match &symbol.kind {
+                SymbolKind::Variable => {
+                    if let Some(&t) = self.locals.get(&sym) {
+                        Value::Temp(t)
+                    } else {
+                        // Desugared binding: the LetBinding got a fresh NodeId so
+                        // it was stored in locals_by_name instead of locals.
+                        let name = table.name_of(sym).expect("variable has no name");
+                        let t = *self.locals_by_name.get(name)
+                            .unwrap_or_else(|| panic!("variable '{name}' not in locals or locals_by_name"));
+                        Value::Temp(t)
+                    }
                 }
+                SymbolKind::Parameter => {
+                    let name = table.name_of(sym).expect("param has no name");
+                    let t = *self.param_temps.get(name).expect("param not in param_temps");
+                    Value::Temp(t)
+                }
+                SymbolKind::SelfValue => Value::Temp(
+                    self.self_temp.expect("SelfValue ident outside of a method body"),
+                ),
+                SymbolKind::Function | SymbolKind::BuiltinFunction | SymbolKind::Macro => {
+                    let n = table.name_of(sym).unwrap().to_string();
+                    Value::Global(n)
+                }
+                SymbolKind::BuiltinValue => {
+                    let name = table.name_of(sym).unwrap();
+                    match name {
+                        "PI" => Value::ConstNum(std::f64::consts::PI),
+                        "E" => Value::ConstNum(std::f64::consts::E),
+                        other => panic!("unknown BuiltinValue: {other}"),
+                    }
+                }
+                other => panic!("Ident resolved to unexpected SymbolKind: {other:?}"),
             }
-            other => panic!("Ident resolved to unexpected SymbolKind: {other:?}"),
+        } else {
+            // Fallback for desugared Idents without a resolved symbol.
+            let ExprKind::Ident(name) = &expr.kind else {
+                panic!("emit_ident called on non-Ident node without resolved symbol");
+            };
+            if let Some(&t) = self.locals_by_name.get(name) {
+                return Value::Temp(t);
+            }
+            // Treat as a global function/builtin name.
+            Value::Global(name.clone())
         }
     }
 
@@ -526,13 +610,14 @@ impl<'h> Lowerer<'h> {
         let dst = self.fresh_temp();
         match op {
             BinOpKind::Concat => {
-                // String concatenation lowers to a runtime helper call so
-                // backends only need to deal with primitive arithmetic in
-                // BinOp instructions.
+                // Coerce numeric/boolean operands to strings before concatenating.
+                // hulk_number_to_string(double) -> void* (HulkStr heap object).
+                let lv_str = self.coerce_to_str_val(lv, left);
+                let rv_str = self.coerce_to_str_val(rv, right);
                 self.emit(Instr::Call {
                     dst,
                     callee: Value::Global("__hulk_concat".to_string()),
-                    args: vec![lv, rv],
+                    args: vec![lv_str, rv_str],
                 });
             }
             BinOpKind::ConcatSpaced => {
@@ -611,17 +696,18 @@ impl<'h> Lowerer<'h> {
     }
 
     fn emit_let_binding_expr(&mut self, lb: &LetBinding, expr: &Expr) -> Value {
-        // The resolver extension stores expr_symbols[binding_expr.id] = sym_id for every LetBinding.
-        let sym_id = self
-            .hir
-            .resolved_symbol(expr.id)
-            .expect("LetBinding has no resolved symbol — resolver extension missing");
         let val = self.emit_expr(&lb.value);
         let dst = self.fresh_temp();
         self.emit(Instr::Copy { dst, src: val });
-        self.locals.insert(sym_id, dst);
-        // Conservative classification: if the type is unknown, treat the
-        // value as a reference so the GC can still find it.
+
+        if let Some(sym_id) = self.hir.resolved_symbol(expr.id) {
+            self.locals.insert(sym_id, dst);
+        } else {
+            // Desugared binding (e.g., from for-loop): track by name.
+            self.locals_by_name.insert(lb.name.clone(), dst);
+        }
+
+        // Only push reference types onto the GC shadow stack.
         let ty = self.hir.expr_type(lb.value.id).unwrap_or(TypeId::OBJECT);
         if Self::is_reference(ty) {
             self.emit(Instr::ShadowPush(Value::Temp(dst)));
