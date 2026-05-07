@@ -33,11 +33,13 @@ impl<'ctx> Codegen<'ctx> {
         let (fv, llvm_args) = self.resolve_call(callee, args)?;
         let call_site = self.builder.build_call(fv, &llvm_args, "call")?;
         let val = extract_call_result(call_site);
-        // Track type names for Range and Vector so method dispatch can use direct calls.
+        // Track type names for the builtin range/vector so method dispatch can
+        // use direct C-runtime calls. We use sentinel names ($range / $vector)
+        // to avoid colliding with user-defined types of the same name.
         if let Value::Global(name) = callee {
             let type_hint = match name.as_str() {
-                "range" => Some("Range"),
-                "__vec_new" => Some("Vector"),
+                "range" => Some("$range"),
+                "__vec_new" => Some("$vector"),
                 _ => None,
             };
             if let Some(hint) = type_hint {
@@ -65,16 +67,16 @@ impl<'ctx> Codegen<'ctx> {
         if let Value::Temp(recv_tid) = receiver {
             if let Some(type_name) = self.temp_type_names.get(recv_tid).cloned() {
                 match (type_name.as_str(), method) {
-                    ("Range", "next") => {
+                    ("$range", "next") => {
                         return self.emit_builtin_method_i32(dst, receiver, self.rt.range_next)
                     }
-                    ("Range", "current") => {
+                    ("$range", "current") => {
                         return self.emit_builtin_method_f64(dst, receiver, self.rt.range_current)
                     }
-                    ("Vector", "next") => {
+                    ("$vector", "next") => {
                         return self.emit_builtin_method_i32(dst, receiver, self.rt.vec_next)
                     }
-                    ("Vector", "current") => {
+                    ("$vector", "current") => {
                         return self.emit_builtin_method_f64(dst, receiver, self.rt.vec_current)
                     }
                     _ => {}
@@ -122,10 +124,14 @@ impl<'ctx> Codegen<'ctx> {
             .into_pointer_value();
 
         // Build the indirect call: self + args, all passed as opaque pointers.
+        // Each arg must be coerced to ptr because the indirect call type below
+        // declares all params as `ptr` (we don't know the concrete signature
+        // through the vtable). Without coercion, passing a double directly
+        // produces an LLVM verification error.
         let mut llvm_args: Vec<BasicMetadataValueEnum<'ctx>> = vec![recv_ptr.into()];
         for arg in args {
             let v = self.load_val(arg)?;
-            llvm_args.push(val_to_metadata(v, self)?);
+            llvm_args.push(coerce_val_to_param(v, Some(ptr_ty.into()), self)?);
         }
 
         // Determine the return type from fn_return_kinds (typed return for numeric methods).
@@ -187,6 +193,10 @@ impl<'ctx> Codegen<'ctx> {
         callee: &Value,
         args: &[Value],
     ) -> CodegenResult<(FunctionValue<'ctx>, Vec<BasicMetadataValueEnum<'ctx>>)> {
+        let callee_name = match callee {
+            Value::Global(name) => Some(name.clone()),
+            _ => None,
+        };
         let fv = match callee {
             Value::Global(name) => {
                 if let Some(rt_fv) = self.rt.resolve_builtin(name) {
@@ -205,15 +215,67 @@ impl<'ctx> Codegen<'ctx> {
             }
         };
 
+        // __hulk_concat takes two strings: any Number/Boolean argument must be
+        // converted via hulk_number_to_string before passing. The default
+        // bitcast coercion would corrupt numeric values into bogus pointers
+        // and segfault inside the runtime.
+        let is_concat = callee_name.as_deref() == Some("__hulk_concat");
+
         let param_types: Vec<BasicTypeEnum<'ctx>> = fv.get_type().get_param_types();
         let mut llvm_args: Vec<BasicMetadataValueEnum<'ctx>> = Vec::new();
         for (i, arg) in args.iter().enumerate() {
             let v = self.load_val(arg)?;
-            let expected_ty = param_types.get(i).copied();
-            let coerced = coerce_val_to_param(v, expected_ty, self)?;
+            let coerced = if is_concat {
+                self.coerce_val_for_concat(v)?
+            } else {
+                let expected_ty = param_types.get(i).copied();
+                coerce_val_to_param(v, expected_ty, self)?
+            };
             llvm_args.push(coerced);
         }
         Ok((fv, llvm_args))
+    }
+
+    /// Coerce a value to a `ptr` for `__hulk_concat`, calling
+    /// `hulk_number_to_string` if the value is an unboxed Number/Boolean.
+    fn coerce_val_for_concat(
+        &mut self,
+        val: LlvmVal<'ctx>,
+    ) -> CodegenResult<BasicMetadataValueEnum<'ctx>> {
+        match val {
+            LlvmVal::Float(f) => {
+                let call = self
+                    .builder
+                    .build_call(self.rt.hulk_number_to_string, &[f.into()], "ntos")?;
+                let ptr = call
+                    .try_as_basic_value()
+                    .left()
+                    .ok_or_else(|| {
+                        CodegenError::Llvm("hulk_number_to_string returned void".to_string())
+                    })?
+                    .into_pointer_value();
+                Ok(ptr.into())
+            }
+            LlvmVal::Int(i) => {
+                // Booleans: convert via i64 → f64 via uitofp, then to_string.
+                let f = self
+                    .builder
+                    .build_unsigned_int_to_float(i, self.ctx.f64_type(), "btof")?;
+                let call = self
+                    .builder
+                    .build_call(self.rt.hulk_number_to_string, &[f.into()], "ntos")?;
+                let ptr = call
+                    .try_as_basic_value()
+                    .left()
+                    .ok_or_else(|| {
+                        CodegenError::Llvm("hulk_number_to_string returned void".to_string())
+                    })?
+                    .into_pointer_value();
+                Ok(ptr.into())
+            }
+            LlvmVal::Ptr(p) => Ok(p.into()),
+            LlvmVal::Void => Ok(self.ptr_type().const_null().into()),
+        }
     }
 
     fn emit_indirect_call(
