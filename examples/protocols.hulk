@@ -1,20 +1,11 @@
 // protocols.hulk — protocol, extends, anotación tipada y conformance implícita.
-// Snippets literales de Hulk.md:882, 892, 938, 1039.
+// Snippets de Hulk.md:882, 892. Iterable y Enumerable vienen del prelude.
 protocol Hashable {
     hash(): Number;
 }
 
 protocol Equatable extends Hashable {
     equals(other: Object): Boolean;
-}
-
-protocol Iterable {
-    next(): Boolean;
-    current(): Object;
-}
-
-protocol Enumerable extends Iterable {
-    iter(): Iterable;
 }
 
 type HashablePerson(id: Number) {
