@@ -59,10 +59,33 @@ impl ProgramLayout {
 }
 
 fn collect_fields(program: &BannerProgram) -> HashMap<String, Vec<String>> {
+    // Build a name → TypeDescriptor index for parent lookup.
+    let by_name: HashMap<&str, &hulk_banner::TypeDescriptor> =
+        program.types.iter().map(|t| (t.name.as_str(), t)).collect();
     program
         .types
         .iter()
-        .map(|td| (td.name.clone(), td.fields.clone()))
+        .map(|td| {
+            // Walk up the parent chain so the layout includes inherited fields
+            // before the type's own fields. Order: oldest ancestor first, then
+            // each child appends its own fields.
+            let mut chain: Vec<&hulk_banner::TypeDescriptor> = Vec::new();
+            let mut current = Some(td);
+            while let Some(t) = current {
+                chain.push(t);
+                current = t.parent.as_deref().and_then(|p| by_name.get(p).copied());
+            }
+            chain.reverse();
+            let mut all_fields = Vec::new();
+            for t in chain {
+                for f in &t.fields {
+                    if !all_fields.contains(f) {
+                        all_fields.push(f.clone());
+                    }
+                }
+            }
+            (td.name.clone(), all_fields)
+        })
         .collect()
 }
 
