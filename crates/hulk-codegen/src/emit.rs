@@ -599,11 +599,15 @@ pub(crate) fn infer_temp_kinds(
                     kinds.insert(*dst, k);
                 }
                 Instr::Copy { dst, src } => match src {
+                    // Use `entry().or_insert` so a concrete kind set on a
+                    // previous pass (e.g. F64 from another branch's copy of
+                    // the same dst) is not clobbered. Otherwise dual-branch
+                    // Copy targets oscillate between F64 and Ptr each pass.
                     Value::ConstNum(_) => {
-                        kinds.insert(*dst, TempKind::F64);
+                        kinds.entry(*dst).or_insert(TempKind::F64);
                     }
                     Value::ConstBool(_) => {
-                        kinds.insert(*dst, TempKind::I1);
+                        kinds.entry(*dst).or_insert(TempKind::I1);
                     }
                     Value::Temp(_) => {} // handled by copy propagation below
                     _ => {
@@ -669,6 +673,10 @@ pub(crate) fn infer_temp_kinds(
         }
 
         // Copy propagation: propagate kind from src temp to dst temp.
+        // Don't downgrade an already-concrete kind (F64/I1) to Ptr — that
+        // would oscillate when the same temp has multiple definitions
+        // across branches (e.g. `t = copy 0` in one arm and `t = copy ptr`
+        // in the other).
         for instr in instrs {
             if let Instr::Copy {
                 dst,
@@ -676,8 +684,14 @@ pub(crate) fn infer_temp_kinds(
             } = instr
             {
                 if let Some(&src_kind) = kinds.get(src_tid) {
-                    let old = kinds.insert(*dst, src_kind);
-                    if old != Some(src_kind) {
+                    let cur = kinds.get(dst).copied();
+                    let promote = match (cur, src_kind) {
+                        (None, _) => true,
+                        (Some(TempKind::Ptr), TempKind::F64 | TempKind::I1) => true,
+                        (Some(_), _) => false,
+                    };
+                    if promote {
+                        kinds.insert(*dst, src_kind);
                         changed = true;
                     }
                 }
