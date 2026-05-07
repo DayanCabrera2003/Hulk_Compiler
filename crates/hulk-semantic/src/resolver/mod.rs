@@ -22,6 +22,11 @@ pub struct Resolver {
     pub(crate) protocol_methods: HashMap<SymbolId, HashSet<String>>,
     pub(crate) protocol_extends: HashMap<SymbolId, Vec<SymbolId>>,
     pub(crate) function_param_annotations: HashMap<SymbolId, Vec<Option<TypeAnn>>>,
+    /// Per-function map: function symbol → list of its param symbol ids in
+    /// declaration order. Populated when resolving a function body so the
+    /// type inferer can register each param's declared type before walking
+    /// the body.
+    pub(crate) function_param_symbols: HashMap<SymbolId, Vec<SymbolId>>,
     pub(crate) bag: DiagnosticBag,
     pub(crate) current_type: Option<SymbolId>,
     pub(crate) current_method: Option<SymbolId>,
@@ -41,6 +46,7 @@ impl Resolver {
             protocol_methods: HashMap::new(),
             protocol_extends: HashMap::new(),
             function_param_annotations: HashMap::new(),
+            function_param_symbols: HashMap::new(),
             bag: DiagnosticBag::new(),
             current_type: None,
             current_method: None,
@@ -66,6 +72,20 @@ impl Resolver {
     #[must_use]
     pub fn expr_symbol(&self, node_id: NodeId) -> Option<SymbolId> {
         self.expr_symbols.get(&node_id).copied()
+    }
+
+    /// Returns the param symbol ids of a function (in declaration order),
+    /// or None if the function symbol is unknown.
+    #[must_use]
+    pub fn function_param_symbols(&self, function: SymbolId) -> Option<&[SymbolId]> {
+        self.function_param_symbols.get(&function).map(|v| v.as_slice())
+    }
+
+    /// Returns the param annotations of a function (in declaration order),
+    /// or None if the function symbol is unknown.
+    #[must_use]
+    pub fn function_param_annotations(&self, function: SymbolId) -> Option<&[Option<TypeAnn>]> {
+        self.function_param_annotations.get(&function).map(|v| v.as_slice())
     }
 
     /// Returns true when an expression node has an associated symbol.

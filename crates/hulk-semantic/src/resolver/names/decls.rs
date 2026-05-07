@@ -78,7 +78,14 @@ impl Resolver {
     pub(crate) fn resolve_function_decl(&mut self, function: &FunctionDecl) {
         self.push_scope();
         self.resolve_type_ann_option(&function.return_type);
-        self.define_params(&function.params);
+        let param_ids = self.define_params(&function.params);
+        // Look up the function's own symbol (registered earlier in
+        // register_global_declarations) and link the param symbol ids to it.
+        // This lets the type inferer register param types from declared
+        // annotations before walking the body.
+        if let Some(fn_id) = self.lookup(&function.name) {
+            self.function_param_symbols.insert(fn_id, param_ids);
+        }
         self.resolve_expr(&function.body);
         self.validate_expr_against_annotation(&function.body, function.return_type.as_ref());
         self.report_ambiguous_function_inference(function);
@@ -173,14 +180,17 @@ impl Resolver {
         self.pop_scope();
     }
 
-    pub(crate) fn define_params(&mut self, params: &[Param]) {
+    pub(crate) fn define_params(&mut self, params: &[Param]) -> Vec<crate::symbols::SymbolId> {
+        let mut ids = Vec::with_capacity(params.len());
         for param in params {
             self.resolve_type_ann_option(&param.type_ann);
-            self.define(
+            let id = self.define(
                 param.name.clone(),
                 SymbolKind::Parameter,
                 param.span.clone(),
             );
+            ids.push(id);
         }
+        ids
     }
 }
