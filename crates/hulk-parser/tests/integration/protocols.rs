@@ -12,13 +12,11 @@ fn parses_without_diagnostics() {
 }
 
 #[test]
-fn declares_four_protocols_in_order() {
+fn declares_two_protocols_in_order() {
+    // Iterable and Enumerable are defined in prelude/prelude.hulk (see prelude.rs tests).
     let program = parse_ok("protocols.hulk", SRC);
     let names: Vec<_> = program.protocols.iter().map(|p| p.name.clone()).collect();
-    assert_eq!(
-        names,
-        vec!["Hashable", "Equatable", "Iterable", "Enumerable"]
-    );
+    assert_eq!(names, vec!["Hashable", "Equatable"]);
 }
 
 #[test]
@@ -46,17 +44,6 @@ fn equatable_extends_hashable() {
         .find(|p| p.name == "Equatable")
         .expect("Equatable");
     assert_eq!(eq.extends, vec!["Hashable".to_string()]);
-}
-
-#[test]
-fn enumerable_extends_iterable() {
-    let program = parse_ok("protocols.hulk", SRC);
-    let enumer = program
-        .protocols
-        .iter()
-        .find(|p| p.name == "Enumerable")
-        .expect("Enumerable");
-    assert_eq!(enumer.extends, vec!["Iterable".to_string()]);
 }
 
 #[test]
