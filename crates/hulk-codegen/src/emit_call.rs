@@ -65,17 +65,27 @@ impl<'ctx> Codegen<'ctx> {
         if let Value::Temp(recv_tid) = receiver {
             if let Some(type_name) = self.temp_type_names.get(recv_tid).cloned() {
                 match (type_name.as_str(), method) {
-                    ("Range", "next") => return self.emit_builtin_method_i32(dst, receiver, self.rt.range_next),
-                    ("Range", "current") => return self.emit_builtin_method_f64(dst, receiver, self.rt.range_current),
-                    ("Vector", "next") => return self.emit_builtin_method_i32(dst, receiver, self.rt.vec_next),
-                    ("Vector", "current") => return self.emit_builtin_method_f64(dst, receiver, self.rt.vec_current),
+                    ("Range", "next") => {
+                        return self.emit_builtin_method_i32(dst, receiver, self.rt.range_next)
+                    }
+                    ("Range", "current") => {
+                        return self.emit_builtin_method_f64(dst, receiver, self.rt.range_current)
+                    }
+                    ("Vector", "next") => {
+                        return self.emit_builtin_method_i32(dst, receiver, self.rt.vec_next)
+                    }
+                    ("Vector", "current") => {
+                        return self.emit_builtin_method_f64(dst, receiver, self.rt.vec_current)
+                    }
                     _ => {}
                 }
             }
         }
 
         let method_idx = self.layout.vtable_index(method).ok_or_else(|| {
-            CodegenError::Llvm(format!("method '{method}' not found in global method table"))
+            CodegenError::Llvm(format!(
+                "method '{method}' not found in global method table"
+            ))
         })?;
 
         let recv_val = self.load_val(receiver)?;
@@ -92,7 +102,8 @@ impl<'ctx> Codegen<'ctx> {
                 "vtable_field_ptr",
             )?
         };
-        let vtable_ptr = self.builder
+        let vtable_ptr = self
+            .builder
             .build_load(ptr_ty, vtable_field_ptr, "vtable")?
             .into_pointer_value();
 
@@ -105,20 +116,24 @@ impl<'ctx> Codegen<'ctx> {
                 "method_slot",
             )?
         };
-        let method_fn_ptr = self.builder
+        let method_fn_ptr = self
+            .builder
             .build_load(ptr_ty, method_slot, "method_fn")?
             .into_pointer_value();
 
         // Build the indirect call: self + args, all passed as opaque pointers.
-        let mut llvm_args: Vec<BasicMetadataValueEnum<'ctx>> =
-            vec![recv_ptr.into()];
+        let mut llvm_args: Vec<BasicMetadataValueEnum<'ctx>> = vec![recv_ptr.into()];
         for arg in args {
             let v = self.load_val(arg)?;
             llvm_args.push(val_to_metadata(v, self)?);
         }
 
         // Determine the return type from fn_return_kinds (typed return for numeric methods).
-        let ret_kind = self.fn_return_kinds.get(method).copied().unwrap_or(TempKind::Ptr);
+        let ret_kind = self
+            .fn_return_kinds
+            .get(method)
+            .copied()
+            .unwrap_or(TempKind::Ptr);
         let n_params = llvm_args.len();
         let params: Vec<_> = (0..n_params).map(|_| ptr_ty.into()).collect();
         let fn_ty = match ret_kind {
@@ -127,7 +142,9 @@ impl<'ctx> Codegen<'ctx> {
             TempKind::Ptr => ptr_ty.fn_type(&params, false),
         };
 
-        let call_site = self.builder.build_indirect_call(fn_ty, method_fn_ptr, &llvm_args, "vcall")?;
+        let call_site =
+            self.builder
+                .build_indirect_call(fn_ty, method_fn_ptr, &llvm_args, "vcall")?;
         let result = extract_call_result(call_site);
         self.store_temp(dst, result)
     }
@@ -175,9 +192,10 @@ impl<'ctx> Codegen<'ctx> {
                 if let Some(rt_fv) = self.rt.resolve_builtin(name) {
                     rt_fv
                 } else {
-                    *self.functions.get(name).ok_or_else(|| {
-                        CodegenError::Llvm(format!("unresolved callee '{name}'"))
-                    })?
+                    *self
+                        .functions
+                        .get(name)
+                        .ok_or_else(|| CodegenError::Llvm(format!("unresolved callee '{name}'")))?
                 }
             }
             other => {
@@ -221,11 +239,15 @@ impl<'ctx> Codegen<'ctx> {
         let recv_val = self.load_val(receiver)?;
         let recv_ptr = self.coerce_to_ptr(recv_val)?;
         let call = self.builder.build_call(fv, &[recv_ptr.into()], "bm_i32")?;
-        let i32_val = call.try_as_basic_value().left()
+        let i32_val = call
+            .try_as_basic_value()
+            .left()
             .ok_or_else(|| CodegenError::Llvm("builtin method returned void".to_string()))?
             .into_int_value();
         // Truncate i32 → i1 for boolean semantics.
-        let i1_val = self.builder.build_int_truncate(i32_val, self.ctx.bool_type(), "bm_i1")?;
+        let i1_val = self
+            .builder
+            .build_int_truncate(i32_val, self.ctx.bool_type(), "bm_i1")?;
         self.store_temp(dst, LlvmVal::Int(i1_val))
     }
 
@@ -239,7 +261,9 @@ impl<'ctx> Codegen<'ctx> {
         let recv_val = self.load_val(receiver)?;
         let recv_ptr = self.coerce_to_ptr(recv_val)?;
         let call = self.builder.build_call(fv, &[recv_ptr.into()], "bm_f64")?;
-        let f_val = call.try_as_basic_value().left()
+        let f_val = call
+            .try_as_basic_value()
+            .left()
             .ok_or_else(|| CodegenError::Llvm("builtin method returned void".to_string()))?
             .into_float_value();
         self.store_temp(dst, LlvmVal::Float(f_val))
@@ -251,25 +275,33 @@ impl<'ctx> Codegen<'ctx> {
     /// - ConstBool argument → `hulk_print_bool`
     /// - String / reference → materialize and call `hulk_print`
     fn emit_print_dispatch(&mut self, dst: TempId, args: &[Value]) -> CodegenResult<()> {
-        let arg = args.first().ok_or_else(|| {
-            CodegenError::Llvm("print called with no arguments".to_string())
-        })?;
+        let arg = args
+            .first()
+            .ok_or_else(|| CodegenError::Llvm("print called with no arguments".to_string()))?;
 
         let val = self.load_val(arg)?;
         match &val {
             LlvmVal::Float(f) => {
                 let f = *f;
-                self.builder.build_call(self.rt.hulk_print_number, &[f.into()], "print_num")?;
+                self.builder
+                    .build_call(self.rt.hulk_print_number, &[f.into()], "print_num")?;
             }
             LlvmVal::Int(i) => {
                 // Extend i1 → i32 for hulk_print_bool(int b).
                 let i = *i;
-                let i32_val = self.builder.build_int_z_extend(i, self.ctx.i32_type(), "bool_ext")?;
-                self.builder.build_call(self.rt.hulk_print_bool, &[i32_val.into()], "print_bool")?;
+                let i32_val =
+                    self.builder
+                        .build_int_z_extend(i, self.ctx.i32_type(), "bool_ext")?;
+                self.builder.build_call(
+                    self.rt.hulk_print_bool,
+                    &[i32_val.into()],
+                    "print_bool",
+                )?;
             }
             _ => {
                 let ptr = self.coerce_to_ptr(val)?;
-                self.builder.build_call(self.rt.hulk_print, &[ptr.into()], "print_ref")?;
+                self.builder
+                    .build_call(self.rt.hulk_print, &[ptr.into()], "print_ref")?;
             }
         }
         // `print` returns void; store null ptr so the dest temp is defined.
@@ -333,21 +365,29 @@ fn coerce_val_to_param<'ctx>(
         (LlvmVal::Float(f), t) if t == ptr_ty => {
             let f = *f;
             let bits = cg.builder.build_bitcast(f, i64_ty, "fbits_to_i64")?;
-            let ptr = cg.builder.build_int_to_ptr(bits.into_int_value(), cg.ptr_type(), "fbits_as_ptr")?;
+            let ptr = cg.builder.build_int_to_ptr(
+                bits.into_int_value(),
+                cg.ptr_type(),
+                "fbits_as_ptr",
+            )?;
             Ok(ptr.into())
         }
         // Int → ptr: zero-extend, then inttoptr.
         (LlvmVal::Int(i), t) if t == ptr_ty => {
             let i = *i;
             let ext = cg.builder.build_int_z_extend(i, i64_ty, "ibits_to_i64")?;
-            let ptr = cg.builder.build_int_to_ptr(ext, cg.ptr_type(), "ibits_as_ptr")?;
+            let ptr = cg
+                .builder
+                .build_int_to_ptr(ext, cg.ptr_type(), "ibits_as_ptr")?;
             Ok(ptr.into())
         }
         // Ptr → f64: ptrtoint to i64, then bitcast to f64.
         (LlvmVal::Ptr(p), t) if t == f64_ty => {
             let p = *p;
             let bits = cg.builder.build_ptr_to_int(p, i64_ty, "ptr_to_i64")?;
-            let f = cg.builder.build_bitcast(bits, cg.ctx.f64_type(), "i64_as_f64")?;
+            let f = cg
+                .builder
+                .build_bitcast(bits, cg.ctx.f64_type(), "i64_as_f64")?;
             Ok(f.into())
         }
         _ => val_to_metadata(val, cg),

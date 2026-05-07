@@ -2,9 +2,9 @@ use std::path::Path;
 use std::process::Command;
 
 use inkwell::{
-    OptimizationLevel,
     module::Module,
     targets::{CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine},
+    OptimizationLevel,
 };
 
 use crate::error::{CodegenError, CodegenResult};
@@ -55,9 +55,8 @@ pub fn link_executable(
     output: &Path,
     lib_search_dir: Option<&Path>,
 ) -> CodegenResult<()> {
-    let linker = find_linker().ok_or_else(|| {
-        CodegenError::Link("neither 'clang' nor 'cc' found in PATH".to_string())
-    })?;
+    let linker = find_linker()
+        .ok_or_else(|| CodegenError::Link("neither 'clang' nor 'cc' found in PATH".to_string()))?;
 
     let mut cmd = Command::new(&linker);
     cmd.arg(object).arg("-o").arg(output);
@@ -68,9 +67,9 @@ pub fn link_executable(
 
     cmd.arg("-lhulkruntime").arg("-lm");
 
-    let status = cmd.status().map_err(|e| {
-        CodegenError::Link(format!("failed to invoke linker '{}': {}", linker, e))
-    })?;
+    let status = cmd
+        .status()
+        .map_err(|e| CodegenError::Link(format!("failed to invoke linker '{}': {}", linker, e)))?;
 
     if !status.success() {
         return Err(CodegenError::Link(format!(

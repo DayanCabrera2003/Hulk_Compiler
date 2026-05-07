@@ -32,7 +32,12 @@ impl ProgramLayout {
         let method_index = build_method_index(&all_methods);
         let vtable_methods = build_vtable_methods(program, &all_methods);
 
-        Self { fields, vtable_methods, method_index, all_methods }
+        Self {
+            fields,
+            vtable_methods,
+            method_index,
+            all_methods,
+        }
     }
 
     /// Returns the vtable slot index for a given method name.
@@ -54,7 +59,11 @@ impl ProgramLayout {
 }
 
 fn collect_fields(program: &BannerProgram) -> HashMap<String, Vec<String>> {
-    program.types.iter().map(|td| (td.name.clone(), td.fields.clone())).collect()
+    program
+        .types
+        .iter()
+        .map(|td| (td.name.clone(), td.fields.clone()))
+        .collect()
 }
 
 /// Collect every non-`__init__` method name across all types.
@@ -62,14 +71,25 @@ fn collect_all_methods(program: &BannerProgram) -> Vec<String> {
     let mut names: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
     for td in &program.types {
         for method in vtable_methods_of(td) {
-            names.insert(method.name.split('.').next_back().unwrap_or(&method.name).to_string());
+            names.insert(
+                method
+                    .name
+                    .split('.')
+                    .next_back()
+                    .unwrap_or(&method.name)
+                    .to_string(),
+            );
         }
     }
     names.into_iter().collect()
 }
 
 fn build_method_index(all_methods: &[String]) -> HashMap<String, usize> {
-    all_methods.iter().enumerate().map(|(i, name)| (name.clone(), i)).collect()
+    all_methods
+        .iter()
+        .enumerate()
+        .map(|(i, name)| (name.clone(), i))
+        .collect()
 }
 
 /// For each type, build the ordered list of method names that appear in its vtable.

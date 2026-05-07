@@ -6,13 +6,16 @@ use hulk_diagnostics::DiagnosticBag;
 use hulk_driver::build_pipeline;
 use hulk_hir::SourceFile;
 
-use hulk_codegen::pipeline::{CompileOptions, compile};
+use hulk_codegen::pipeline::{compile, CompileOptions};
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
 fn workspace_root() -> PathBuf {
     let manifest = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR");
-    PathBuf::from(manifest).join("../..").canonicalize().expect("workspace root")
+    PathBuf::from(manifest)
+        .join("../..")
+        .canonicalize()
+        .expect("workspace root")
 }
 
 fn out_dir() -> Option<PathBuf> {
@@ -38,7 +41,11 @@ fn run_source(test_name: &str, src: &str) -> Result<String, String> {
     std::fs::create_dir_all(&tmp).expect("create tmp dir");
     let exe = tmp.join("out");
 
-    let opts = CompileOptions { work_dir: Some(tmp), emit_ir: None, lib_dir: out_dir() };
+    let opts = CompileOptions {
+        work_dir: Some(tmp),
+        emit_ir: None,
+        lib_dir: out_dir(),
+    };
     compile(&hir, &exe, &opts).map_err(|e| format!("compile error in {test_name}: {e:?}"))?;
 
     let output = Command::new(&exe)
@@ -57,8 +64,7 @@ fn run_source(test_name: &str, src: &str) -> Result<String, String> {
 
 fn example_src(name: &str) -> String {
     let path = workspace_root().join("examples").join(name);
-    std::fs::read_to_string(&path)
-        .unwrap_or_else(|_| panic!("cannot read {}", path.display()))
+    std::fs::read_to_string(&path).unwrap_or_else(|_| panic!("cannot read {}", path.display()))
 }
 
 // ─── 1. hello world ──────────────────────────────────────────────────────────
@@ -110,12 +116,12 @@ fn test_booleans() {
 "#;
     let out = run_source("booleans", src).expect("booleans");
     let lines: Vec<&str> = out.trim_end().split('\n').collect();
-    assert_eq!(lines[0], "true",  "1 < 2");
-    assert_eq!(lines[1], "true",  "2 <= 2");
+    assert_eq!(lines[0], "true", "1 < 2");
+    assert_eq!(lines[1], "true", "2 <= 2");
     assert_eq!(lines[2], "false", "3 > 4");
     assert_eq!(lines[3], "false", "!(1<2)");
     assert_eq!(lines[4], "false", "true & false");
-    assert_eq!(lines[5], "true",  "true | false");
+    assert_eq!(lines[5], "true", "true | false");
 }
 
 // ─── 4. string concatenation ─────────────────────────────────────────────────
@@ -177,11 +183,11 @@ fn test_let_scoping() {
 "#;
     let out = run_source("let_scoping", src).expect("let_scoping");
     let lines: Vec<&str> = out.trim_end().split('\n').collect();
-    assert_eq!(lines[0], "42");  // 6*7
-    assert_eq!(lines[1], "42");  // inner a
-    assert_eq!(lines[2], "20");  // outer a
-    assert_eq!(lines[3], "0");   // before assign
-    assert_eq!(lines[4], "1");   // after assign
+    assert_eq!(lines[0], "42"); // 6*7
+    assert_eq!(lines[1], "42"); // inner a
+    assert_eq!(lines[2], "20"); // outer a
+    assert_eq!(lines[3], "0"); // before assign
+    assert_eq!(lines[4], "1"); // after assign
 }
 
 // ─── 7. while loop ───────────────────────────────────────────────────────────
@@ -409,7 +415,10 @@ let c = new Counter(0) in {
     let hir = hulk_driver::build_pipeline(source, &mut bag).expect("pipeline failed");
     let banner = hulk_banner::lower_program(&hir);
     for td in &banner.types {
-        eprintln!("Type: {} fields={:?} pointer_map={:?}", td.name, td.fields, td.pointer_map);
+        eprintln!(
+            "Type: {} fields={:?} pointer_map={:?}",
+            td.name, td.fields, td.pointer_map
+        );
         for m in &td.methods {
             eprintln!("  Method: {} params={:?}", m.name, m.params);
             for instr in &m.body {
@@ -482,7 +491,11 @@ fn test_debug_banner_for_range() {
     let banner = hulk_banner::lower_program(&hir);
     eprintln!("Types:");
     for td in &banner.types {
-        eprintln!("  {}: methods={:?}", td.name, td.methods.iter().map(|m| &m.name).collect::<Vec<_>>());
+        eprintln!(
+            "  {}: methods={:?}",
+            td.name,
+            td.methods.iter().map(|m| &m.name).collect::<Vec<_>>()
+        );
     }
     eprintln!("Main:");
     for instr in &banner.main.body {

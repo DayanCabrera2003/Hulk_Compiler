@@ -1,13 +1,13 @@
 use std::collections::HashMap;
 
 use inkwell::{
-    AddressSpace,
     basic_block::BasicBlock,
     builder::Builder,
     context::Context,
     module::Module,
     types::{BasicMetadataTypeEnum, BasicTypeEnum, StructType},
     values::{BasicValueEnum, FunctionValue, GlobalValue, PointerValue},
+    AddressSpace,
 };
 
 use hulk_banner::{BannerProgram, TempId};
@@ -31,7 +31,6 @@ pub enum TempKind {
     /// ptr — for all reference-typed temporaries (strings, objects, null).
     Ptr,
 }
-
 
 /// An LLVM value that may represent a Number, Boolean, reference, or void result.
 ///
@@ -81,7 +80,6 @@ pub struct Codegen<'ctx> {
     pub functions: HashMap<String, FunctionValue<'ctx>>,
 
     // ---- Per-function state (reset by `reset_frame`) ----
-
     /// Maps each BANNER `TempId` to the corresponding LLVM value (reserved for
     /// future direct-SSA emission without alloca; currently unused).
     #[allow(dead_code)]
@@ -153,7 +151,9 @@ impl<'ctx> Codegen<'ctx> {
         let name = format!("__str_{}", self.str_globals.len());
         let bytes: Vec<u8> = s.bytes().chain(std::iter::once(0u8)).collect();
         let arr_ty = self.ctx.i8_type().array_type(bytes.len() as u32);
-        let global = self.module.add_global(arr_ty, Some(AddressSpace::default()), &name);
+        let global = self
+            .module
+            .add_global(arr_ty, Some(AddressSpace::default()), &name);
 
         let init_vals: Vec<inkwell::values::IntValue<'ctx>> = bytes
             .iter()
@@ -184,11 +184,17 @@ impl<'ctx> Codegen<'ctx> {
         if let Some(&st) = self.struct_types.get(type_name) {
             return st;
         }
-        let fields = self.layout.fields.get(type_name).cloned().unwrap_or_default();
+        let fields = self
+            .layout
+            .fields
+            .get(type_name)
+            .cloned()
+            .unwrap_or_default();
         let ptr_ty = self.ptr_type();
         // Field 0 = vtable pointer; remaining = one ptr per declared field.
-        let mut field_types: Vec<BasicTypeEnum<'ctx>> =
-            std::iter::once(ptr_ty.into()).chain(fields.iter().map(|_| ptr_ty.into())).collect();
+        let mut field_types: Vec<BasicTypeEnum<'ctx>> = std::iter::once(ptr_ty.into())
+            .chain(fields.iter().map(|_| ptr_ty.into()))
+            .collect();
 
         // Ensure at least one field (LLVM requires non-empty struct for alloca of user types).
         if field_types.is_empty() {
@@ -260,7 +266,10 @@ impl<'ctx> Codegen<'ctx> {
                         HashMap::new()
                     };
                     let kinds = infer_temp_kinds(
-                        &method.body, &fn_return_kinds, &field_kind_map, &obj_hints,
+                        &method.body,
+                        &fn_return_kinds,
+                        &field_kind_map,
+                        &obj_hints,
                     );
                     let ret_kind = infer_return_kind(&method.body, &kinds);
                     fn_return_kinds.insert(method.name.clone(), ret_kind);
@@ -270,7 +279,10 @@ impl<'ctx> Codegen<'ctx> {
             }
             for func in &program.functions {
                 let kinds = infer_temp_kinds(
-                    &func.body, &fn_return_kinds, &field_kind_map, &HashMap::new(),
+                    &func.body,
+                    &fn_return_kinds,
+                    &field_kind_map,
+                    &HashMap::new(),
                 );
                 let ret_kind = infer_return_kind(&func.body, &kinds);
                 fn_return_kinds.insert(func.name.clone(), ret_kind);
@@ -281,21 +293,32 @@ impl<'ctx> Codegen<'ctx> {
         // Declare methods: all-ptr params, typed return.
         for td in &program.types {
             for method in &td.methods {
-                let ret_kind = fn_return_kinds.get(&method.name).copied().unwrap_or(TempKind::Ptr);
+                let ret_kind = fn_return_kinds
+                    .get(&method.name)
+                    .copied()
+                    .unwrap_or(TempKind::Ptr);
                 let param_kinds: Vec<TempKind> =
-                    std::iter::repeat(TempKind::Ptr).take(method.params.len()).collect();
+                    std::iter::repeat_n(TempKind::Ptr, method.params.len()).collect();
                 self.declare_typed_function(&method.name, &param_kinds, ret_kind);
             }
         }
         // Declare standalone functions: inferred param types + inferred return.
         for func in &program.functions {
             let kinds = infer_temp_kinds(
-                &func.body, &fn_return_kinds, &field_kind_map, &HashMap::new(),
+                &func.body,
+                &fn_return_kinds,
+                &field_kind_map,
+                &HashMap::new(),
             );
-            let param_kinds: Vec<TempKind> = func.params.iter()
+            let param_kinds: Vec<TempKind> = func
+                .params
+                .iter()
                 .map(|p| kinds.get(p).copied().unwrap_or(TempKind::Ptr))
                 .collect();
-            let ret_kind = fn_return_kinds.get(&func.name).copied().unwrap_or(TempKind::Ptr);
+            let ret_kind = fn_return_kinds
+                .get(&func.name)
+                .copied()
+                .unwrap_or(TempKind::Ptr);
             self.declare_typed_function(&func.name, &param_kinds, ret_kind);
         }
         // __main__ returns i32 for C compatibility.
@@ -309,9 +332,7 @@ impl<'ctx> Codegen<'ctx> {
 /// Build a map from (type_name, field_name) → TempKind using pointer_map.
 ///
 /// pointer_map[i] == false → numeric field (F64); true → reference field (Ptr).
-pub(crate) fn build_field_kind_map(
-    program: &BannerProgram,
-) -> HashMap<(String, String), TempKind> {
+pub(crate) fn build_field_kind_map(program: &BannerProgram) -> HashMap<(String, String), TempKind> {
     let mut map = HashMap::new();
     for td in &program.types {
         for (i, field_name) in td.fields.iter().enumerate() {

@@ -5,12 +5,15 @@ use hulk_diagnostics::DiagnosticBag;
 use hulk_driver::build_pipeline;
 use hulk_hir::SourceFile;
 
-use hulk_codegen::pipeline::{CompileOptions, compile};
+use hulk_codegen::pipeline::{compile, CompileOptions};
 
 fn workspace_root() -> PathBuf {
     // CARGO_MANIFEST_DIR is crates/hulk-codegen; workspace root is two levels up.
     let manifest = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR must be set");
-    PathBuf::from(manifest).join("../..").canonicalize().expect("workspace root exists")
+    PathBuf::from(manifest)
+        .join("../..")
+        .canonicalize()
+        .expect("workspace root exists")
 }
 
 fn run_hello() -> String {
@@ -33,8 +36,7 @@ fn run_hello() -> String {
         emit_ir: None,
         lib_dir: std::env::var("OUT_DIR").ok().map(PathBuf::from),
     };
-    compile(&hir, &exe_path, &opts)
-        .unwrap_or_else(|e| panic!("compile failed: {e:?}"));
+    compile(&hir, &exe_path, &opts).unwrap_or_else(|e| panic!("compile failed: {e:?}"));
 
     let output = Command::new(&exe_path)
         .output()

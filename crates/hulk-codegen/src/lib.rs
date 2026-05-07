@@ -36,4 +36,4 @@ mod rt;
 pub mod pipeline;
 
 pub use error::{CodegenError, CodegenResult};
-pub use pipeline::{CompileOptions, compile, emit_ir_string};
+pub use pipeline::{compile, emit_ir_string, CompileOptions};

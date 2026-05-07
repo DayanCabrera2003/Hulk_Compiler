@@ -24,7 +24,11 @@ pub struct CompileOptions {
 
 impl Default for CompileOptions {
     fn default() -> Self {
-        Self { work_dir: None, emit_ir: None, lib_dir: out_dir() }
+        Self {
+            work_dir: None,
+            emit_ir: None,
+            lib_dir: out_dir(),
+        }
     }
 }
 

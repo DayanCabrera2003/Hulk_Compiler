@@ -97,7 +97,10 @@ impl<'ctx> Codegen<'ctx> {
         left: &Value,
         right: &Value,
         ctx: &str,
-    ) -> CodegenResult<(inkwell::values::FloatValue<'ctx>, inkwell::values::FloatValue<'ctx>)> {
+    ) -> CodegenResult<(
+        inkwell::values::FloatValue<'ctx>,
+        inkwell::values::FloatValue<'ctx>,
+    )> {
         let lv = self.load_val(left)?;
         let rv = self.load_val(right)?;
         let l = extract_float_ctx(lv, ctx, "lhs")?;
@@ -110,7 +113,9 @@ impl<'ctx> Codegen<'ctx> {
         let f64_t = self.ctx.f64_type();
         let pow_ty = f64_t.fn_type(&[f64_t.into(), f64_t.into()], false);
         let pow_fn = self.module.add_function("llvm.pow.f64", pow_ty, None);
-        let result = self.builder.build_call(pow_fn, &[l.into(), r.into()], "pow")?;
+        let result = self
+            .builder
+            .build_call(pow_fn, &[l.into(), r.into()], "pow")?;
         let fv = result
             .try_as_basic_value()
             .left()
@@ -127,7 +132,9 @@ impl<'ctx> Codegen<'ctx> {
         name: &str,
     ) -> CodegenResult<LlvmVal<'ctx>> {
         let (l, r) = self.load_float_pair(left, right, name)?;
-        Ok(LlvmVal::Int(self.builder.build_float_compare(pred, l, r, name)?))
+        Ok(LlvmVal::Int(
+            self.builder.build_float_compare(pred, l, r, name)?,
+        ))
     }
 
     fn emit_concat_op(&mut self, left: &Value, right: &Value) -> CodegenResult<LlvmVal<'ctx>> {
@@ -136,7 +143,8 @@ impl<'ctx> Codegen<'ctx> {
         let l = self.coerce_to_ptr(lv)?;
         let r = self.coerce_to_ptr(rv)?;
         let result =
-            self.builder.build_call(self.rt.hulk_concat, &[l.into(), r.into()], "concat")?;
+            self.builder
+                .build_call(self.rt.hulk_concat, &[l.into(), r.into()], "concat")?;
         let ptr = result
             .try_as_basic_value()
             .left()
@@ -157,7 +165,9 @@ fn extract_float_ctx<'ctx>(
 ) -> CodegenResult<inkwell::values::FloatValue<'ctx>> {
     match val {
         LlvmVal::Float(f) => Ok(f),
-        _ => Err(CodegenError::Llvm(format!("expected f64 for {side} of {op}"))),
+        _ => Err(CodegenError::Llvm(format!(
+            "expected f64 for {side} of {op}"
+        ))),
     }
 }
 

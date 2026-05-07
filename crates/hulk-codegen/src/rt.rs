@@ -1,9 +1,4 @@
-use inkwell::{
-    AddressSpace,
-    context::Context,
-    module::Module,
-    values::FunctionValue,
-};
+use inkwell::{context::Context, module::Module, values::FunctionValue, AddressSpace};
 
 /// Handles for every runtime C function declared in the LLVM module.
 ///
@@ -123,8 +118,7 @@ impl<'ctx> RuntimeFunctions<'ctx> {
         let hulk_log = module.add_function("hulk_log", math_sig, None);
 
         // hulk_rand() -> double
-        let hulk_rand =
-            module.add_function("hulk_rand", f64_t.fn_type(&[], false), None);
+        let hulk_rand = module.add_function("hulk_rand", f64_t.fn_type(&[], false), None);
 
         // hulk_range_new(double min, double max) -> void*
         let hulk_range_new = module.add_function(
@@ -134,11 +128,8 @@ impl<'ctx> RuntimeFunctions<'ctx> {
         );
 
         // __range_next(void* range) -> i32 (used as bool)
-        let range_next = module.add_function(
-            "__range_next",
-            i32_t.fn_type(&[ptr_t.into()], false),
-            None,
-        );
+        let range_next =
+            module.add_function("__range_next", i32_t.fn_type(&[ptr_t.into()], false), None);
 
         // __range_current(void* range) -> double
         let range_current = module.add_function(
@@ -155,11 +146,7 @@ impl<'ctx> RuntimeFunctions<'ctx> {
         );
 
         // __vec_new(double n) -> void*
-        let vec_new = module.add_function(
-            "__vec_new",
-            ptr_t.fn_type(&[f64_t.into()], false),
-            None,
-        );
+        let vec_new = module.add_function("__vec_new", ptr_t.fn_type(&[f64_t.into()], false), None);
 
         // __vec_push(void* vec, double elem) -> void*
         let vec_push = module.add_function(
@@ -176,18 +163,12 @@ impl<'ctx> RuntimeFunctions<'ctx> {
         );
 
         // __vec_next(void* vec) -> i32
-        let vec_next = module.add_function(
-            "__vec_next",
-            i32_t.fn_type(&[ptr_t.into()], false),
-            None,
-        );
+        let vec_next =
+            module.add_function("__vec_next", i32_t.fn_type(&[ptr_t.into()], false), None);
 
         // __vec_current(void* vec) -> double
-        let vec_current = module.add_function(
-            "__vec_current",
-            f64_t.fn_type(&[ptr_t.into()], false),
-            None,
-        );
+        let vec_current =
+            module.add_function("__vec_current", f64_t.fn_type(&[ptr_t.into()], false), None);
 
         let _ = bool_t;
 

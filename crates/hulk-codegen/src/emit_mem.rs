@@ -1,9 +1,4 @@
-use inkwell::{
-    AddressSpace,
-    module::Linkage,
-    types::BasicTypeEnum,
-    values::GlobalValue,
-};
+use inkwell::{module::Linkage, types::BasicTypeEnum, values::GlobalValue, AddressSpace};
 
 use hulk_banner::{TempId, Value};
 
@@ -27,23 +22,23 @@ impl<'ctx> Codegen<'ctx> {
         type_name: &str,
         args: &[Value],
     ) -> CodegenResult<()> {
-        let struct_ty = *self.struct_types.get(type_name).ok_or_else(|| {
-            CodegenError::Llvm(format!("struct type '{type_name}' not built"))
-        })?;
-        let tag_global = *self.vtable_globals.get(&format!("{type_name}_tag")).ok_or_else(|| {
-            CodegenError::Llvm(format!("TypeTag for '{type_name}' not built"))
-        })?;
+        let struct_ty = *self
+            .struct_types
+            .get(type_name)
+            .ok_or_else(|| CodegenError::Llvm(format!("struct type '{type_name}' not built")))?;
+        let tag_global = *self
+            .vtable_globals
+            .get(&format!("{type_name}_tag"))
+            .ok_or_else(|| CodegenError::Llvm(format!("TypeTag for '{type_name}' not built")))?;
 
         // Compute sizeof(struct_type) using the null-GEP trick.
         let size = self.compute_sizeof(struct_ty)?;
         let tag_ptr = tag_global.as_pointer_value();
 
         // Allocate heap memory for the object.
-        let obj_ptr_call = self.builder.build_call(
-            self.rt.hulk_alloc,
-            &[tag_ptr.into(), size.into()],
-            "alloc",
-        )?;
+        let obj_ptr_call =
+            self.builder
+                .build_call(self.rt.hulk_alloc, &[tag_ptr.into(), size.into()], "alloc")?;
         let obj_ptr = obj_ptr_call
             .try_as_basic_value()
             .left()
@@ -68,9 +63,10 @@ impl<'ctx> Codegen<'ctx> {
 
         // Invoke the constructor, coercing each arg to the declared param type.
         let init_name = format!("{type_name}.__init__");
-        let init_fv = *self.functions.get(&init_name).ok_or_else(|| {
-            CodegenError::Llvm(format!("constructor '{init_name}' not declared"))
-        })?;
+        let init_fv = *self
+            .functions
+            .get(&init_name)
+            .ok_or_else(|| CodegenError::Llvm(format!("constructor '{init_name}' not declared")))?;
 
         let init_param_types: Vec<BasicTypeEnum<'ctx>> = init_fv.get_type().get_param_types();
         let mut init_args: Vec<inkwell::values::BasicMetadataValueEnum<'ctx>> =
@@ -103,8 +99,12 @@ impl<'ctx> Codegen<'ctx> {
         let obj_ptr = self.coerce_to_ptr(obj_val)?;
 
         let (struct_ty, field_idx) = self.resolve_field(object, field)?;
-        let field_ptr = self.builder.build_struct_gep(struct_ty, obj_ptr, field_idx, "fld_ptr")?;
-        let loaded_ptr = self.builder.build_load(self.ptr_type(), field_ptr, field)?
+        let field_ptr = self
+            .builder
+            .build_struct_gep(struct_ty, obj_ptr, field_idx, "fld_ptr")?;
+        let loaded_ptr = self
+            .builder
+            .build_load(self.ptr_type(), field_ptr, field)?
             .into_pointer_value();
 
         let dst_kind = self.temp_kinds.get(&dst).copied().unwrap_or(TempKind::Ptr);
@@ -112,13 +112,17 @@ impl<'ctx> Codegen<'ctx> {
             TempKind::F64 => {
                 let i64_ty = self.ctx.i64_type();
                 let bits = self.builder.build_ptr_to_int(loaded_ptr, i64_ty, "ptoi")?;
-                let f = self.builder.build_bitcast(bits, self.ctx.f64_type(), "cast_f64")?;
+                let f = self
+                    .builder
+                    .build_bitcast(bits, self.ctx.f64_type(), "cast_f64")?;
                 self.store_temp(dst, LlvmVal::Float(f.into_float_value()))
             }
             TempKind::I1 => {
                 let i64_ty = self.ctx.i64_type();
                 let bits = self.builder.build_ptr_to_int(loaded_ptr, i64_ty, "ptoi")?;
-                let b = self.builder.build_int_truncate(bits, self.ctx.bool_type(), "cast_i1")?;
+                let b = self
+                    .builder
+                    .build_int_truncate(bits, self.ctx.bool_type(), "cast_i1")?;
                 self.store_temp(dst, LlvmVal::Int(b))
             }
             TempKind::Ptr => self.store_temp(dst, LlvmVal::Ptr(loaded_ptr)),
@@ -138,18 +142,24 @@ impl<'ctx> Codegen<'ctx> {
         let obj_val = self.load_val(object)?;
         let obj_ptr = self.coerce_to_ptr(obj_val)?;
         let (struct_ty, field_idx) = self.resolve_field(object, field)?;
-        let field_ptr = self.builder.build_struct_gep(struct_ty, obj_ptr, field_idx, "fld_ptr")?;
+        let field_ptr = self
+            .builder
+            .build_struct_gep(struct_ty, obj_ptr, field_idx, "fld_ptr")?;
         let v = self.load_val(value)?;
         let i64_ty = self.ctx.i64_type();
         let stored: inkwell::values::BasicValueEnum<'ctx> = match v {
             LlvmVal::Float(f) => {
                 // Bitcast f64 bits → i64 → ptr so numeric fields fit in a ptr slot.
                 let bits = self.builder.build_bitcast(f, i64_ty, "fbits")?;
-                self.builder.build_int_to_ptr(bits.into_int_value(), self.ptr_type(), "fptr")?.into()
+                self.builder
+                    .build_int_to_ptr(bits.into_int_value(), self.ptr_type(), "fptr")?
+                    .into()
             }
             LlvmVal::Int(i) => {
                 let ext = self.builder.build_int_z_extend(i, i64_ty, "ibits")?;
-                self.builder.build_int_to_ptr(ext, self.ptr_type(), "iptr")?.into()
+                self.builder
+                    .build_int_to_ptr(ext, self.ptr_type(), "iptr")?
+                    .into()
             }
             LlvmVal::Ptr(p) => p.into(),
             LlvmVal::Void => self.ptr_type().const_null().into(),
@@ -177,11 +187,9 @@ impl<'ctx> Codegen<'ctx> {
         };
 
         let vec_get = self.rt.vec_get;
-        let call = self.builder.build_call(
-            vec_get,
-            &[vec_ptr.into(), idx_float.into()],
-            "vec_get",
-        )?;
+        let call =
+            self.builder
+                .build_call(vec_get, &[vec_ptr.into(), idx_float.into()], "vec_get")?;
         let f = call
             .try_as_basic_value()
             .left()
@@ -221,9 +229,12 @@ impl<'ctx> Codegen<'ctx> {
         let struct_ty = *self.struct_types.get(type_name).ok_or_else(|| {
             CodegenError::Llvm(format!("struct type '{type_name}' not built for Alloc"))
         })?;
-        let tag_global = *self.vtable_globals.get(&format!("{type_name}_tag")).ok_or_else(|| {
-            CodegenError::Llvm(format!("TypeTag for '{type_name}' not built for Alloc"))
-        })?;
+        let tag_global = *self
+            .vtable_globals
+            .get(&format!("{type_name}_tag"))
+            .ok_or_else(|| {
+                CodegenError::Llvm(format!("TypeTag for '{type_name}' not built for Alloc"))
+            })?;
         let size = self.compute_sizeof(struct_ty)?;
         let tag_ptr = tag_global.as_pointer_value();
         let call = self.builder.build_call(
@@ -257,7 +268,13 @@ impl<'ctx> Codegen<'ctx> {
         let ptr_offsets: Vec<u64> = pointer_map
             .iter()
             .enumerate()
-            .filter_map(|(i, &is_ptr)| if is_ptr { Some((i as u64 + 1) * 8) } else { None })
+            .filter_map(|(i, &is_ptr)| {
+                if is_ptr {
+                    Some((i as u64 + 1) * 8)
+                } else {
+                    None
+                }
+            })
             .collect();
 
         let num_ptrs = ptr_offsets.len() as u64;
@@ -268,7 +285,10 @@ impl<'ctx> Codegen<'ctx> {
         let offsets_ptr = if ptr_offsets.is_empty() {
             ptr_t.const_null()
         } else {
-            let arr: Vec<_> = ptr_offsets.iter().map(|&o| i64_t.const_int(o, false)).collect();
+            let arr: Vec<_> = ptr_offsets
+                .iter()
+                .map(|&o| i64_t.const_int(o, false))
+                .collect();
             let arr_global = self.module.add_global(
                 i64_t.array_type(arr.len() as u32),
                 Some(AddressSpace::default()),
@@ -281,10 +301,9 @@ impl<'ctx> Codegen<'ctx> {
         };
 
         // Build the TypeTag struct global: { ptr, i64, ptr }
-        let tag_struct_ty = self.ctx.struct_type(
-            &[ptr_t.into(), i64_t.into(), ptr_t.into()],
-            false,
-        );
+        let tag_struct_ty = self
+            .ctx
+            .struct_type(&[ptr_t.into(), i64_t.into(), ptr_t.into()], false);
         let tag_global = self.module.add_global(
             tag_struct_ty,
             Some(AddressSpace::default()),
@@ -299,7 +318,8 @@ impl<'ctx> Codegen<'ctx> {
         tag_global.set_constant(true);
         tag_global.set_linkage(Linkage::Private);
 
-        self.vtable_globals.insert(format!("{type_name}_tag"), tag_global);
+        self.vtable_globals
+            .insert(format!("{type_name}_tag"), tag_global);
     }
 
     /// Build a vtable constant global for `type_name`.
@@ -326,17 +346,18 @@ impl<'ctx> Codegen<'ctx> {
 
         let arr_ty = ptr_t.array_type(n as u32);
         let vtable_global =
-            self.module.add_global(arr_ty, Some(AddressSpace::default()), type_name);
+            self.module
+                .add_global(arr_ty, Some(AddressSpace::default()), type_name);
         vtable_global.set_linkage(Linkage::Private);
         vtable_global.set_constant(true);
 
         // LLVM requires a ConstantArray initializer from pointer values.
-        let ptr_vals: Vec<_> =
-            entries.iter().map(|bv| bv.into_pointer_value()).collect();
+        let ptr_vals: Vec<_> = entries.iter().map(|bv| bv.into_pointer_value()).collect();
         let init = ptr_t.const_array(&ptr_vals);
         vtable_global.set_initializer(&init);
 
-        self.vtable_globals.insert(type_name.to_string(), vtable_global);
+        self.vtable_globals
+            .insert(type_name.to_string(), vtable_global);
     }
 }
 
@@ -424,7 +445,9 @@ fn coerce_to_param<'ctx>(
         (LlvmVal::Float(f), t) if t == ptr_ty => {
             let f = *f;
             let bits = cg.builder.build_bitcast(f, i64_ty, "fbits")?;
-            let ptr = cg.builder.build_int_to_ptr(bits.into_int_value(), cg.ptr_type(), "fptr")?;
+            let ptr = cg
+                .builder
+                .build_int_to_ptr(bits.into_int_value(), cg.ptr_type(), "fptr")?;
             Ok(ptr.into())
         }
         (LlvmVal::Int(i), t) if t == ptr_ty => {

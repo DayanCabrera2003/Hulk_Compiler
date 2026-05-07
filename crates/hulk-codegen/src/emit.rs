@@ -34,8 +34,12 @@ impl<'ctx> Codegen<'ctx> {
 
         // Build vtable constant globals (references user-defined functions by name).
         for td in &program.types {
-            let method_names: Vec<String> =
-                self.layout.vtable_methods.get(&td.name).cloned().unwrap_or_default();
+            let method_names: Vec<String> = self
+                .layout
+                .vtable_methods
+                .get(&td.name)
+                .cloned()
+                .unwrap_or_default();
             self.build_vtable_global(&td.name, &method_names);
         }
 
@@ -68,9 +72,10 @@ impl<'ctx> Codegen<'ctx> {
     /// Emit the `__main__` BANNER function as a C-compatible `main() -> i32`.
     fn emit_main(&mut self, banner_fn: &BannerFunction) -> CodegenResult<()> {
         self.reset_frame();
-        let main_fv = *self.functions.get("main").ok_or_else(|| {
-            CodegenError::Llvm("main function not pre-declared".to_string())
-        })?;
+        let main_fv = *self
+            .functions
+            .get("main")
+            .ok_or_else(|| CodegenError::Llvm("main function not pre-declared".to_string()))?;
 
         let entry = self.ctx.append_basic_block(main_fv, "entry");
         self.builder.position_at_end(entry);
@@ -106,20 +111,24 @@ impl<'ctx> Codegen<'ctx> {
         _is_init: bool,
     ) -> CodegenResult<()> {
         self.reset_frame();
-        let fv = *self.functions.get(fn_name).ok_or_else(|| {
-            CodegenError::Llvm(format!("function '{fn_name}' not pre-declared"))
-        })?;
+        let fv = *self
+            .functions
+            .get(fn_name)
+            .ok_or_else(|| CodegenError::Llvm(format!("function '{fn_name}' not pre-declared")))?;
 
         let entry = self.ctx.append_basic_block(fv, "entry");
         self.builder.position_at_end(entry);
 
         // For methods, the first param is `self`; tell the inference which type it is
         // so GetField results on self can be typed via field_kind_map.
-        let object_type_hints: HashMap<TempId, String> = if !type_name.is_empty() && !banner_fn.params.is_empty() {
-            [(banner_fn.params[0], type_name.to_string())].into_iter().collect()
-        } else {
-            HashMap::new()
-        };
+        let object_type_hints: HashMap<TempId, String> =
+            if !type_name.is_empty() && !banner_fn.params.is_empty() {
+                [(banner_fn.params[0], type_name.to_string())]
+                    .into_iter()
+                    .collect()
+            } else {
+                HashMap::new()
+            };
 
         let kinds = infer_temp_kinds(
             &banner_fn.body,
@@ -131,7 +140,8 @@ impl<'ctx> Codegen<'ctx> {
 
         // For methods: track self param in temp_type_names so field accesses resolve.
         if !type_name.is_empty() && !banner_fn.params.is_empty() {
-            self.temp_type_names.insert(banner_fn.params[0], type_name.to_string());
+            self.temp_type_names
+                .insert(banner_fn.params[0], type_name.to_string());
         }
 
         // Store each function parameter into its own alloca.
@@ -164,9 +174,9 @@ impl<'ctx> Codegen<'ctx> {
         instrs: &[Instr],
         fv: FunctionValue<'ctx>,
     ) -> CodegenResult<()> {
-        let entry = fv.get_first_basic_block().ok_or_else(|| {
-            CodegenError::Llvm("function has no entry block".to_string())
-        })?;
+        let entry = fv
+            .get_first_basic_block()
+            .ok_or_else(|| CodegenError::Llvm("function has no entry block".to_string()))?;
 
         // Position at the very start of the entry block so allocas precede all code.
         match entry.get_first_instruction() {
@@ -197,7 +207,11 @@ impl<'ctx> Codegen<'ctx> {
         Ok(())
     }
 
-    fn build_alloca_for_kind(&self, kind: TempKind, name: &str) -> CodegenResult<PointerValue<'ctx>> {
+    fn build_alloca_for_kind(
+        &self,
+        kind: TempKind,
+        name: &str,
+    ) -> CodegenResult<PointerValue<'ctx>> {
         let ptr = match kind {
             TempKind::F64 => self.builder.build_alloca(self.ctx.f64_type(), name)?,
             TempKind::I1 => self.builder.build_alloca(self.ctx.bool_type(), name)?,
@@ -230,20 +244,43 @@ impl<'ctx> Codegen<'ctx> {
     ) -> CodegenResult<()> {
         match instr {
             Instr::Copy { dst, src } => self.emit_copy(*dst, src),
-            Instr::BinOp { dst, op, left, right } => self.emit_binop(*dst, *op, left, right),
+            Instr::BinOp {
+                dst,
+                op,
+                left,
+                right,
+            } => self.emit_binop(*dst, *op, left, right),
             Instr::UnOp { dst, op, operand } => self.emit_unop(*dst, *op, operand),
             Instr::Call { dst, callee, args } => self.emit_call(*dst, callee, args),
-            Instr::MethodCall { dst, receiver, method, args } => {
-                self.emit_method_call(*dst, receiver, method, args)
-            }
-            Instr::StaticCall { dst, type_name, method, args } => {
-                self.emit_static_call(*dst, type_name, method, args)
-            }
-            Instr::New { dst, type_name, args } => self.emit_new(*dst, type_name, args),
+            Instr::MethodCall {
+                dst,
+                receiver,
+                method,
+                args,
+            } => self.emit_method_call(*dst, receiver, method, args),
+            Instr::StaticCall {
+                dst,
+                type_name,
+                method,
+                args,
+            } => self.emit_static_call(*dst, type_name, method, args),
+            Instr::New {
+                dst,
+                type_name,
+                args,
+            } => self.emit_new(*dst, type_name, args),
             Instr::GetField { dst, object, field } => self.emit_get_field(*dst, object, field),
-            Instr::SetField { object, field, value } => self.emit_set_field(object, field, value),
+            Instr::SetField {
+                object,
+                field,
+                value,
+            } => self.emit_set_field(object, field, value),
             Instr::GetIndex { dst, target, index } => self.emit_get_index(*dst, target, index),
-            Instr::SetIndex { target, index, value } => self.emit_set_index(target, index, value),
+            Instr::SetIndex {
+                target,
+                index,
+                value,
+            } => self.emit_set_index(target, index, value),
             Instr::Label(name) => self.emit_label(name),
             Instr::Jump(label) => self.emit_jump(label),
             Instr::JumpIf { condition, label } => self.emit_jumpif(condition, label, fv),
@@ -301,7 +338,8 @@ impl<'ctx> Codegen<'ctx> {
 
         let then_bb = self.get_or_err_block(label)?;
         let cont_bb = self.ctx.append_basic_block(fv, "cont");
-        self.builder.build_conditional_branch(cond_i1, then_bb, cont_bb)?;
+        self.builder
+            .build_conditional_branch(cond_i1, then_bb, cont_bb)?;
         self.builder.position_at_end(cont_bb);
         Ok(())
     }
@@ -339,16 +377,14 @@ impl<'ctx> Codegen<'ctx> {
     fn emit_shadow_push(&mut self, val: &Value) -> CodegenResult<()> {
         let v = self.load_val(val)?;
         let ptr_val = self.coerce_to_ptr(v)?;
-        self.builder.build_call(
-            self.rt.hulk_shadow_push,
-            &[ptr_val.into()],
-            "shadow_push",
-        )?;
+        self.builder
+            .build_call(self.rt.hulk_shadow_push, &[ptr_val.into()], "shadow_push")?;
         Ok(())
     }
 
     fn emit_shadow_pop(&mut self) -> CodegenResult<()> {
-        self.builder.build_call(self.rt.hulk_shadow_pop, &[], "shadow_pop")?;
+        self.builder
+            .build_call(self.rt.hulk_shadow_pop, &[], "shadow_pop")?;
         Ok(())
     }
 }
@@ -360,9 +396,9 @@ impl<'ctx> Codegen<'ctx> {
     pub(crate) fn load_val(&mut self, val: &Value) -> CodegenResult<LlvmVal<'ctx>> {
         match val {
             Value::ConstNum(n) => Ok(LlvmVal::Float(self.ctx.f64_type().const_float(*n))),
-            Value::ConstBool(b) => {
-                Ok(LlvmVal::Int(self.ctx.bool_type().const_int(u64::from(*b), false)))
-            }
+            Value::ConstBool(b) => Ok(LlvmVal::Int(
+                self.ctx.bool_type().const_int(u64::from(*b), false),
+            )),
             Value::ConstNull => Ok(LlvmVal::Ptr(self.ptr_type().const_null())),
             Value::ConstStr(s) => {
                 // Materialize as a GC-managed HulkStr object.
@@ -392,7 +428,9 @@ impl<'ctx> Codegen<'ctx> {
         })?;
         let kind = self.temp_kinds.get(&tid).copied().unwrap_or(TempKind::Ptr);
         let llvm_ty = self.kind_to_llvm_type(kind);
-        let loaded = self.builder.build_load(llvm_ty, alloca, &format!("ld{}", tid.0))?;
+        let loaded = self
+            .builder
+            .build_load(llvm_ty, alloca, &format!("ld{}", tid.0))?;
         Ok(llvm_val_from_basic(loaded, kind))
     }
 
@@ -420,11 +458,9 @@ impl<'ctx> Codegen<'ctx> {
     pub(crate) fn materialize_string(&mut self, s: &str) -> CodegenResult<PointerValue<'ctx>> {
         let str_global = self.intern_str(s);
         let c_str_ptr = str_global.as_pointer_value();
-        let result = self.builder.build_call(
-            self.rt.hulk_string_new,
-            &[c_str_ptr.into()],
-            "str_new",
-        )?;
+        let result =
+            self.builder
+                .build_call(self.rt.hulk_string_new, &[c_str_ptr.into()], "str_new")?;
         let ptr = result
             .try_as_basic_value()
             .left()
@@ -472,10 +508,7 @@ impl<'ctx> Codegen<'ctx> {
         }
     }
 
-    pub(crate) fn kind_to_llvm_type(
-        &self,
-        kind: TempKind,
-    ) -> inkwell::types::BasicTypeEnum<'ctx> {
+    pub(crate) fn kind_to_llvm_type(&self, kind: TempKind) -> inkwell::types::BasicTypeEnum<'ctx> {
         match kind {
             TempKind::F64 => self.ctx.f64_type().into(),
             TempKind::I1 => self.ctx.bool_type().into(),
@@ -484,9 +517,10 @@ impl<'ctx> Codegen<'ctx> {
     }
 
     fn get_or_err_block(&self, label: &str) -> CodegenResult<BasicBlock<'ctx>> {
-        self.blocks.get(label).copied().ok_or_else(|| {
-            CodegenError::Llvm(format!("label '{label}' has no basic block"))
-        })
+        self.blocks
+            .get(label)
+            .copied()
+            .ok_or_else(|| CodegenError::Llvm(format!("label '{label}' has no basic block")))
     }
 }
 
@@ -549,7 +583,11 @@ pub(crate) fn infer_temp_kinds(
             let prev = kinds.clone();
             match instr {
                 Instr::BinOp { dst, op, .. } => {
-                    let k = if op.is_arithmetic() { TempKind::F64 } else { TempKind::I1 };
+                    let k = if op.is_arithmetic() {
+                        TempKind::F64
+                    } else {
+                        TempKind::I1
+                    };
                     kinds.insert(*dst, k);
                 }
                 Instr::UnOp { dst, op, .. } => {
@@ -561,28 +599,44 @@ pub(crate) fn infer_temp_kinds(
                     kinds.insert(*dst, k);
                 }
                 Instr::Copy { dst, src } => match src {
-                    Value::ConstNum(_) => { kinds.insert(*dst, TempKind::F64); }
-                    Value::ConstBool(_) => { kinds.insert(*dst, TempKind::I1); }
+                    Value::ConstNum(_) => {
+                        kinds.insert(*dst, TempKind::F64);
+                    }
+                    Value::ConstBool(_) => {
+                        kinds.insert(*dst, TempKind::I1);
+                    }
                     Value::Temp(_) => {} // handled by copy propagation below
-                    _ => { kinds.entry(*dst).or_insert(TempKind::Ptr); }
+                    _ => {
+                        kinds.entry(*dst).or_insert(TempKind::Ptr);
+                    }
                 },
                 Instr::Call { dst, callee, .. } => {
                     let k = match callee {
                         Value::Global(name) if is_math_builtin(name) => TempKind::F64,
-                        Value::Global(name) => {
-                            fn_return_kinds.get(name.as_str()).copied().unwrap_or(TempKind::Ptr)
-                        }
+                        Value::Global(name) => fn_return_kinds
+                            .get(name.as_str())
+                            .copied()
+                            .unwrap_or(TempKind::Ptr),
                         _ => TempKind::Ptr,
                     };
                     kinds.entry(*dst).or_insert(k);
                 }
                 Instr::MethodCall { dst, method, .. } => {
-                    let k = fn_return_kinds.get(method.as_str()).copied().unwrap_or(TempKind::Ptr);
+                    let k = fn_return_kinds
+                        .get(method.as_str())
+                        .copied()
+                        .unwrap_or(TempKind::Ptr);
                     kinds.entry(*dst).or_insert(k);
                 }
-                Instr::StaticCall { dst, type_name, method, .. } => {
+                Instr::StaticCall {
+                    dst,
+                    type_name,
+                    method,
+                    ..
+                } => {
                     let full = format!("{type_name}.{method}");
-                    let k = fn_return_kinds.get(full.as_str())
+                    let k = fn_return_kinds
+                        .get(full.as_str())
                         .or_else(|| fn_return_kinds.get(method.as_str()))
                         .copied()
                         .unwrap_or(TempKind::Ptr);
@@ -609,22 +663,33 @@ pub(crate) fn infer_temp_kinds(
                     }
                 }
             }
-            if kinds != prev { changed = true; }
+            if kinds != prev {
+                changed = true;
+            }
         }
 
         // Copy propagation: propagate kind from src temp to dst temp.
         for instr in instrs {
-            if let Instr::Copy { dst, src: Value::Temp(src_tid) } = instr {
+            if let Instr::Copy {
+                dst,
+                src: Value::Temp(src_tid),
+            } = instr
+            {
                 if let Some(&src_kind) = kinds.get(src_tid) {
                     let old = kinds.insert(*dst, src_kind);
-                    if old != Some(src_kind) { changed = true; }
+                    if old != Some(src_kind) {
+                        changed = true;
+                    }
                 }
             }
         }
 
         // Backward propagation: operands of arithmetic BinOp must be F64.
         for instr in instrs {
-            if let Instr::BinOp { op, left, right, .. } = instr {
+            if let Instr::BinOp {
+                op, left, right, ..
+            } = instr
+            {
                 if op.is_arithmetic() {
                     for operand in [left, right] {
                         if let Value::Temp(tid) = operand {
@@ -638,7 +703,7 @@ pub(crate) fn infer_temp_kinds(
                     // Comparison operands: set F64 only if not yet classified.
                     for operand in [left, right] {
                         if let Value::Temp(tid) = operand {
-                            if kinds.get(tid).is_none() {
+                            if !kinds.contains_key(tid) {
                                 kinds.insert(*tid, TempKind::F64);
                                 changed = true;
                             }
@@ -647,7 +712,12 @@ pub(crate) fn infer_temp_kinds(
                 }
             }
             // SetField: if field is numeric, the value being stored should be F64.
-            if let Instr::SetField { object: Value::Temp(obj_tid), field, value: Value::Temp(val_tid) } = instr {
+            if let Instr::SetField {
+                object: Value::Temp(obj_tid),
+                field,
+                value: Value::Temp(val_tid),
+            } = instr
+            {
                 if let Some(tname) = object_type_hints.get(obj_tid) {
                     if let Some(&TempKind::F64) = field_kind.get(&(tname.clone(), field.clone())) {
                         if kinds.get(val_tid).copied() != Some(TempKind::F64) {
@@ -691,8 +761,12 @@ impl BinOpExt for BinOpKind {
     fn is_arithmetic(&self) -> bool {
         matches!(
             self,
-            BinOpKind::Add | BinOpKind::Sub | BinOpKind::Mul | BinOpKind::Div
-            | BinOpKind::Mod | BinOpKind::Pow
+            BinOpKind::Add
+                | BinOpKind::Sub
+                | BinOpKind::Mul
+                | BinOpKind::Div
+                | BinOpKind::Mod
+                | BinOpKind::Pow
         )
     }
 }

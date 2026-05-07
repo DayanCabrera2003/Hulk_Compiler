@@ -91,7 +91,12 @@ impl<'h> Lowerer<'h> {
                     .members
                     .iter()
                     .filter_map(|m| {
-                        if let MemberKind::Attribute { name, type_ann, value } = &m.kind {
+                        if let MemberKind::Attribute {
+                            name,
+                            type_ann,
+                            value,
+                        } = &m.kind
+                        {
                             Some((name.clone(), type_ann.clone(), value.clone()))
                         } else {
                             None
@@ -132,7 +137,9 @@ impl<'h> Lowerer<'h> {
             // parent that does, inherit the parent's params and forward them.
             let parent_params: Option<&[hulk_hir::Param]> =
                 if entry.type_params.is_empty() && entry.parent.is_some() {
-                    entry.parent.as_ref()
+                    entry
+                        .parent
+                        .as_ref()
                         .and_then(|p| params_by_type.get(p))
                         .map(|v| v.as_slice())
                         .filter(|p| !p.is_empty())
@@ -158,7 +165,11 @@ impl<'h> Lowerer<'h> {
             // Field metadata: names and pointer flags for GC tracing.
             // Use the explicit type annotation when present; fall back to
             // the inferred type of the initializer expression.
-            let fields: Vec<String> = entry.attrs.iter().map(|(name, _, _)| name.clone()).collect();
+            let fields: Vec<String> = entry
+                .attrs
+                .iter()
+                .map(|(name, _, _)| name.clone())
+                .collect();
             let pointer_map: Vec<bool> = entry
                 .attrs
                 .iter()
@@ -564,18 +575,23 @@ impl<'h> Lowerer<'h> {
                         // Desugared binding: the LetBinding got a fresh NodeId so
                         // it was stored in locals_by_name instead of locals.
                         let name = table.name_of(sym).expect("variable has no name");
-                        let t = *self.locals_by_name.get(name)
-                            .unwrap_or_else(|| panic!("variable '{name}' not in locals or locals_by_name"));
+                        let t = *self.locals_by_name.get(name).unwrap_or_else(|| {
+                            panic!("variable '{name}' not in locals or locals_by_name")
+                        });
                         Value::Temp(t)
                     }
                 }
                 SymbolKind::Parameter => {
                     let name = table.name_of(sym).expect("param has no name");
-                    let t = *self.param_temps.get(name).expect("param not in param_temps");
+                    let t = *self
+                        .param_temps
+                        .get(name)
+                        .expect("param not in param_temps");
                     Value::Temp(t)
                 }
                 SymbolKind::SelfValue => Value::Temp(
-                    self.self_temp.expect("SelfValue ident outside of a method body"),
+                    self.self_temp
+                        .expect("SelfValue ident outside of a method body"),
                 ),
                 SymbolKind::Function | SymbolKind::BuiltinFunction | SymbolKind::Macro => {
                     let n = table.name_of(sym).unwrap().to_string();
