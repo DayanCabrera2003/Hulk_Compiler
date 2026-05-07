@@ -80,8 +80,15 @@ pub fn emit_ir_string(hir: &Hir) -> CodegenResult<String> {
     Ok(link::ir_string(&cg.module))
 }
 
-/// Attempt to read the cargo `OUT_DIR` environment variable, which points to
-/// the directory where `build.rs` placed `libhulkruntime.a`.
+/// Directory containing `libhulkruntime.a`.
+///
+/// Prefers the runtime `OUT_DIR` env var (set by cargo while building
+/// hulk-codegen and its tests). Falls back to the build-time `OUT_DIR`
+/// captured via `env!`, so binaries (like `hulkc`) that link against
+/// hulk-codegen still find the runtime when invoked outside cargo.
 fn out_dir() -> Option<PathBuf> {
-    std::env::var("OUT_DIR").ok().map(PathBuf::from)
+    if let Ok(dir) = std::env::var("OUT_DIR") {
+        return Some(PathBuf::from(dir));
+    }
+    Some(PathBuf::from(env!("OUT_DIR")))
 }
