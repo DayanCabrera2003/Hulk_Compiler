@@ -2,7 +2,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use hulk_diagnostics::DiagnosticBag;
-use hulk_driver::build_hir;
+use hulk_driver::{build_hir, PRELUDE};
 use hulk_hir::{ExprKind, Hir, SourceFile, SymbolKind, TypeId};
 
 fn examples_dir() -> PathBuf {
@@ -21,6 +21,14 @@ fn load_example(name: &str) -> (String, String) {
 
 fn build_source(name: &str, source: &str) -> (Option<Hir>, DiagnosticBag) {
     let source = SourceFile::new(name, source);
+    let mut bag = DiagnosticBag::new();
+    let hir = build_hir(source, &mut bag);
+    (hir, bag)
+}
+
+fn build_source_with_prelude(name: &str, source: &str) -> (Option<Hir>, DiagnosticBag) {
+    let combined = format!("{PRELUDE}\n{source}");
+    let source = SourceFile::new(name, &combined);
     let mut bag = DiagnosticBag::new();
     let hir = build_hir(source, &mut bag);
     (hir, bag)
@@ -58,7 +66,7 @@ fn builds_hir_for_all_example_programs() {
 
     for example in examples {
         let (name, source) = load_example(example);
-        let (hir, bag) = build_source(&name, &source);
+        let (hir, bag) = build_source_with_prelude(&name, &source);
 
         assert!(
             bag.is_empty(),

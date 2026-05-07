@@ -10,6 +10,8 @@ use hulk_parser::parse;
 use hulk_semantic::Resolver as SemanticResolver;
 use hulk_types::{TypeEnv, TypeInferer};
 
+const PRELUDE: &str = include_str!("../../../../../prelude/prelude.hulk");
+
 fn examples_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("..")
@@ -25,7 +27,8 @@ fn load_example(name: &str) -> (String, String) {
 }
 
 fn build_source(name: &str, source: &str) -> (Option<Hir>, DiagnosticBag) {
-    let source = SourceFile::new(name, source);
+    let combined = format!("{PRELUDE}\n{source}");
+    let source = SourceFile::new(name, &combined);
 
     let mut bag = DiagnosticBag::new();
 

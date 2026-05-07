@@ -8,7 +8,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use hulk_diagnostics::DiagnosticBag;
-use hulk_driver::build_pipeline;
+use hulk_driver::{build_pipeline, PRELUDE};
 use hulk_hir::{Expr, ExprKind, Hir, SourceFile};
 
 fn examples_dir() -> PathBuf {
@@ -24,7 +24,8 @@ fn load_example(name: &str) -> String {
 }
 
 fn run_pipeline(name: &str, source: &str) -> (Option<Hir>, DiagnosticBag) {
-    let sf = SourceFile::new(name, source);
+    let combined = format!("{PRELUDE}\n{source}");
+    let sf = SourceFile::new(name, &combined);
     let mut bag = DiagnosticBag::new();
     let hir = build_pipeline(sf, &mut bag);
     (hir, bag)
