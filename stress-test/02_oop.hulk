@@ -1,0 +1,115 @@
+// OOP stress test: deep inheritance, polymorphism, self/base, fields, methods.
+
+type Shape(name: String) {
+    name: String = name;
+    getName(): String => self.name;
+    area(): Number => 0;
+    describe(): String => self.getName() @ " with area " @ self.area();
+}
+
+type Circle(radius: Number) inherits Shape("Circle") {
+    radius: Number = radius;
+    getRadius(): Number => self.radius;
+    area(): Number => PI * self.radius * self.radius;
+}
+
+type Square(side: Number) inherits Shape("Square") {
+    side: Number = side;
+    getSide(): Number => self.side;
+    area(): Number => self.side * self.side;
+}
+
+type Rectangle(w: Number, h: Number) inherits Shape("Rectangle") {
+    width: Number = w;
+    height: Number = h;
+    getWidth(): Number => self.width;
+    getHeight(): Number => self.height;
+    area(): Number => self.width * self.height;
+}
+
+type ColoredCircle(r: Number, color: String) inherits Circle(r) {
+    color: String = color;
+    getColor(): String => self.color;
+}
+
+type Animal(name: String, legs: Number) {
+    name: String = name;
+    legs: Number = legs;
+    speak(): String => "...";
+    introduce(): String => "I am " @ self.name @ " and I have " @ self.legs @ " legs.";
+}
+
+type Dog(name: String) inherits Animal(name, 4) {
+    speak(): String => "Woof!";
+}
+
+type Cat(name: String) inherits Animal(name, 4) {
+    speak(): String => "Meow!";
+}
+
+type Puppy(name: String) inherits Dog(name) {
+    speak(): String => base() @@ "(but tiny)";
+}
+
+type Counter(start: Number) {
+    value: Number = start;
+    get(): Number => self.value;
+    inc(): Number => self.value := self.value + 1;
+    incBy(n: Number): Number => self.value := self.value + n;
+    reset(): Number => self.value := 0;
+}
+
+{
+    print("=== Shapes ===");
+    let c = new Circle(5) in {
+        print(c.getName());
+        print(c.getRadius());
+        print(c.area());
+        print(c.describe());
+    };
+    let s = new Square(4) in {
+        print(s.getName());
+        print(s.area());
+        print(s.describe());
+    };
+    let r = new Rectangle(3, 7) in {
+        print(r.getName());
+        print(r.getWidth());
+        print(r.getHeight());
+        print(r.area());
+    };
+    let cc = new ColoredCircle(2, "red") in {
+        print(cc.getColor());
+        print(cc.getRadius());
+        print(cc.area());
+        print(cc.getName());
+        print(cc.describe());
+    };
+
+    print("=== Animals (polymorphism) ===");
+    let d = new Dog("Rex") in {
+        print(d.introduce());
+        print(d.speak());
+    };
+    let cat = new Cat("Whiskers") in {
+        print(cat.introduce());
+        print(cat.speak());
+    };
+    let p = new Puppy("Buddy") in {
+        print(p.introduce());
+        print(p.speak());
+    };
+
+    print("=== Counter (mutable state) ===");
+    let counter = new Counter(0) in {
+        print(counter.get());
+        counter.inc();
+        counter.inc();
+        counter.inc();
+        print(counter.get());
+        counter.incBy(10);
+        print(counter.get());
+        counter.reset();
+        print(counter.get());
+    };
+}

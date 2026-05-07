@@ -1,0 +1,70 @@
+// Math stress test: arithmetic precedence, builtins, deep nesting, recursion.
+
+function abs(x: Number): Number => if (x < 0) 0 - x else x;
+
+function pow(b: Number, exp: Number): Number =>
+    if (exp == 0) 1
+    elif (exp == 1) b
+    else b * pow(b, exp - 1);
+
+function fact(n: Number): Number =>
+    if (n <= 1) 1 else n * fact(n - 1);
+
+function gcd(a: Number, b: Number): Number =>
+    if (b == 0) a else gcd(b, a % b);
+
+function lcm(a: Number, b: Number): Number => a * b / gcd(a, b);
+
+function nearly_eq(a: Number, b: Number): Boolean =>
+    let d = a - b in (if (d < 0) 0 - d else d) < 0.0001;
+
+{
+    print("=== Arithmetic precedence ===");
+    print(2 + 3 * 4);
+    print((2 + 3) * 4);
+    print(2 ^ 10);
+    print(2 ^ 3 ^ 2);
+    print(20 / 6);
+    print(20 % 6);
+    print(0 - 5 + 3);
+    print(0 - (5 + 3));
+
+    print("=== Builtins ===");
+    print(sqrt(144));
+    print(sqrt(2));
+    print(exp(0));
+    print(log(2, 1024));
+    print(log(10, 1000));
+    print(nearly_eq(sin(0), 0));
+    print(nearly_eq(cos(0), 1));
+    print(nearly_eq(sin(PI / 2), 1));
+    print(nearly_eq(sin(PI) * cos(PI), 0));
+
+    print("=== Constants ===");
+    print(PI > 3);
+    print(PI < 4);
+    print(E > 2);
+    print(E < 3);
+
+    print("=== Recursion ===");
+    print(pow(2, 16));
+    print(pow(3, 10));
+    print(fact(10));
+    print(gcd(48, 36));
+    print(gcd(1071, 462));
+    print(lcm(4, 6));
+    print(lcm(15, 20));
+
+    print("=== Mod, abs, comparisons ===");
+    print(abs(0 - 42));
+    print(abs(7));
+    print(101 % 7);
+    print((101 % 7) == 3);
+    print(!(1 > 2));
+    print(!(2 > 1));
+    print((5 > 3) & (4 > 2));
+    print((5 < 3) | (4 > 2));
+
+    print("=== Big nested expression ===");
+    print(((((1 + 2) * 3 - 4) ^ 2) % 17) + sqrt(64) - log(2, 8));
+}

@@ -1,0 +1,82 @@
+// Recursion stress test: fib, ack, mutual recursion, accumulators.
+
+function fib(n: Number): Number =>
+    if (n <= 1) n
+    else fib(n - 1) + fib(n - 2);
+
+function fibIter(n: Number, a: Number, b: Number): Number =>
+    if (n <= 0) a
+    else fibIter(n - 1, b, a + b);
+
+function ack(m: Number, n: Number): Number =>
+    if (m == 0) n + 1
+    elif (n == 0) ack(m - 1, 1)
+    else ack(m - 1, ack(m, n - 1));
+
+function isEven(n: Number): Boolean =>
+    if (n == 0) true else isOdd(n - 1);
+
+function isOdd(n: Number): Boolean =>
+    if (n == 0) false else isEven(n - 1);
+
+function sumTo(n: Number): Number =>
+    if (n == 0) 0 else n + sumTo(n - 1);
+
+function sumRange(a: Number, b: Number): Number =>
+    if (a > b) 0 else a + sumRange(a + 1, b);
+
+function pow(b: Number, n: Number): Number =>
+    if (n == 0) 1
+    elif (n % 2 == 0) let h = pow(b, n / 2) in h * h
+    else b * pow(b, n - 1);
+
+function gcd(a: Number, b: Number): Number =>
+    if (b == 0) a else gcd(b, a % b);
+
+{
+    print("=== Naive Fibonacci ===");
+    print(fib(0));
+    print(fib(1));
+    print(fib(5));
+    print(fib(10));
+    print(fib(20));
+
+    print("=== Iterative Fibonacci ===");
+    print(fibIter(0, 0, 1));
+    print(fibIter(10, 0, 1));
+    print(fibIter(30, 0, 1));
+    print(fibIter(50, 0, 1));
+
+    print("=== Ackermann ===");
+    print(ack(0, 0));
+    print(ack(1, 1));
+    print(ack(2, 2));
+    print(ack(3, 3));
+
+    print("=== Mutual recursion (even/odd) ===");
+    print(isEven(0));
+    print(isEven(7));
+    print(isEven(100));
+    print(isOdd(7));
+    print(isOdd(100));
+
+    print("=== Sum to N ===");
+    print(sumTo(0));
+    print(sumTo(10));
+    print(sumTo(100));
+
+    print("=== Sum range ===");
+    print(sumRange(1, 10));
+    print(sumRange(50, 100));
+
+    print("=== Fast power ===");
+    print(pow(2, 16));
+    print(pow(3, 10));
+    print(pow(7, 5));
+
+    print("=== GCD chain ===");
+    print(gcd(48, 36));
+    print(gcd(1071, 462));
+    print(gcd(123456, 7890));
+    print(gcd(gcd(60, 90), gcd(45, 75)));
+}

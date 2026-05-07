@@ -1,0 +1,60 @@
+// Vector stress test: literals, indexing, comprehensions, sums.
+
+{
+    print("=== Literals ===");
+    let v = [1, 2, 3, 4, 5] in {
+        print(v[0]);
+        print(v[2]);
+        print(v[4]);
+    };
+
+    print("=== Iterate literal ===");
+    for (x in [10, 20, 30, 40, 50]) print(x);
+
+    print("=== Comprehension: squares ===");
+    let sq = [x ^ 2 | x in range(0, 8)] in {
+        print(sq[0]);
+        print(sq[1]);
+        print(sq[2]);
+        print(sq[7]);
+    };
+
+    print("=== Comprehension: cubes ===");
+    let cubes = [x ^ 3 | x in range(1, 6)] in
+        for (c in cubes) print(c);
+
+    print("=== Comprehension: doubled ===");
+    for (x in [n * 2 | n in range(0, 5)]) print(x);
+
+    print("=== Mixed ===");
+    let xs = [3, 1, 4, 1, 5, 9, 2, 6, 5, 3, 5] in {
+        print(xs[0]);
+        print(xs[xs[0]]);
+        let total = 0 in {
+            for (x in xs) total := total + x;
+            print(total);
+        };
+    };
+
+    print("=== Conditional via comprehension iteration ===");
+    let evens = [n | n in range(0, 10)] in {
+        let count = 0 in {
+            for (n in evens) {
+                if (n % 2 == 0) count := count + 1;
+            };
+            print(count);
+        };
+    };
+
+    print("=== Range sum via for + vector ===");
+    let total = 0 in {
+        for (n in [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]) total := total + n;
+        print(total);
+    };
+
+    print("=== Comprehension referencing outer let ===");
+    let factor = 10 in {
+        let m = [i * factor | i in range(1, 4)] in
+            for (x in m) print(x);
+    };
+}

@@ -1,0 +1,59 @@
+// String stress test: concatenation, escapes, mixing types, deep nesting.
+
+function tag(name: String, content: String): String =>
+    "<" @ name @ ">" @ content @ "</" @ name @ ">";
+
+function repeat3(s: String): String => s @ s @ s;
+
+function describe(name: String, age: Number, score: Number): String =>
+    name @@ "is" @@ age @@ "years old" @@ "with score" @@ score;
+
+{
+    print("=== Basic ===");
+    print("Hello World");
+    print("Hello" @ " " @ "World");
+    print("Hello" @@ "World");
+
+    print("=== Escapes ===");
+    print("She said \"yes\".");
+    print("Line A\nLine B");
+    print("Col1\tCol2\tCol3");
+    print("Backslash: \\");
+
+    print("=== String + Number ===");
+    print("Year: " @ 2026);
+    print("Pi is approximately " @ PI);
+    print("Sum is " @ (10 + 20 + 30));
+    print("Negative: " @ (0 - 42));
+
+    print("=== Deep concatenation ===");
+    print("a" @ "b" @ "c" @ "d" @ "e" @ "f" @ "g" @ "h");
+    print(repeat3("hi"));
+    print(repeat3(repeat3("x")));
+
+    print("=== Tag function ===");
+    print(tag("b", "bold"));
+    print(tag("html", tag("body", tag("p", "paragraph"))));
+
+    print("=== Spaced concat ===");
+    print("a" @@ "b" @@ "c" @@ "d");
+    print(describe("Alice", 30, 95));
+
+    print("=== Mixed via let ===");
+    let name = "Bob", age = 25, msg = "Hello" in
+        print(msg @ ", " @ name @ "! You are " @ age @ ".");
+
+    print("=== Conditional strings ===");
+    let n = 7 in
+        print("n is " @ (if (n > 5) "big" else "small"));
+    let n = 3 in
+        print(if (n % 2 == 0) "even" elif (n == 1) "one" else "odd");
+
+    print("=== Loop building output ===");
+    let counter = 0 in {
+        while (counter < 5) {
+            print("count=" @ counter);
+            counter := counter + 1;
+        };
+    };
+}

@@ -1,0 +1,148 @@
+// Combined mega-program: types, inheritance, recursion, vectors, strings, and loops
+// all in one program. ~150 lines.
+
+type Person(name: String, age: Number) {
+    name: String = name;
+    age: Number = age;
+    greet(): String => "Hi, I am " @ self.name @ ", age " @ self.age;
+    isAdult(): Boolean => self.age >= 18;
+}
+
+type Employee(name: String, age: Number, salary: Number) inherits Person(name, age) {
+    salary: Number = salary;
+    annual(): Number => self.salary * 12;
+    raise(amount: Number): Number => self.salary := self.salary + amount;
+    summary(): String => self.name @@ "earns" @@ self.salary @ "/mo";
+}
+
+type Manager(name: String, age: Number, salary: Number, teamSize: Number)
+    inherits Employee(name, age, salary)
+{
+    teamSize: Number = teamSize;
+    bonusFactor(): Number => self.teamSize * 100;
+    totalAnnual(): Number => self.annual() + self.bonusFactor() * 12;
+}
+
+type Stack(capacity: Number) {
+    cap: Number = capacity;
+    size: Number = 0;
+    sum: Number = 0;
+    push(x: Number): Number => {
+        self.sum := self.sum + x;
+        self.size := self.size + 1;
+    };
+    avg(): Number => if (self.size == 0) 0 else self.sum / self.size;
+    getSize(): Number => self.size;
+    getSum(): Number => self.sum;
+}
+
+function fact(n: Number): Number =>
+    if (n <= 1) 1 else n * fact(n - 1);
+
+function gcd(a: Number, b: Number): Number =>
+    if (b == 0) a else gcd(b, a % b);
+
+function isPrime(n: Number): Boolean =>
+    if (n < 2) false
+    elif (n == 2) true
+    elif (n % 2 == 0) false
+    else
+        let p = true, d = 3 in {
+            while (p & (d * d <= n)) {
+                if (n % d == 0) p := false;
+                d := d + 2;
+            };
+            p;
+        };
+
+function makeReport(name: String, value: Number, ok: Boolean): String =>
+    name @ ": " @ value @ " (" @ (if (ok) "OK" else "FAIL") @ ")";
+
+{
+    print("====== HULK Mega Test ======");
+
+    print("--- People ---");
+    let alice = new Person("Alice", 30) in {
+        print(alice.greet());
+        print(alice.isAdult());
+    };
+    let bob = new Person("Bob", 16) in {
+        print(bob.greet());
+        print(bob.isAdult());
+    };
+
+    print("--- Employees ---");
+    let e = new Employee("Charlie", 25, 5000) in {
+        print(e.greet());
+        print(e.summary());
+        print(e.annual());
+        e.raise(500);
+        print(e.summary());
+        print(e.annual());
+    };
+
+    print("--- Managers ---");
+    let m = new Manager("Dana", 42, 8000, 12) in {
+        print(m.greet());
+        print(m.summary());
+        print(m.bonusFactor());
+        print(m.totalAnnual());
+    };
+
+    print("--- Stack ---");
+    let s = new Stack(100) in {
+        for (n in range(1, 11)) s.push(n);
+        print(s.getSize());
+        print(s.getSum());
+        print(s.avg());
+    };
+
+    print("--- Pure functions ---");
+    print(fact(0));
+    print(fact(5));
+    print(fact(10));
+    print(gcd(48, 36));
+    print(gcd(1071, 462));
+
+    print("--- Primes 2..50 ---");
+    let count = 0 in {
+        for (n in range(2, 50)) {
+            if (isPrime(n)) {
+                print(n);
+                count := count + 1;
+            };
+        };
+        print("Total primes: " @ count);
+    };
+
+    print("--- Reports ---");
+    print(makeReport("threshold", 10, true));
+    print(makeReport("error_rate", 73, false));
+    print(makeReport("uptime%", 99, true));
+
+    print("--- Math identities ===");
+    let r = sin(PI / 6) in print("sin(30°) ~= " @ r);
+    let r = cos(0) in print("cos(0) = " @ r);
+    let r = log(2, 1024) in print("log2(1024) = " @ r);
+    let r = sqrt(144) in print("sqrt(144) = " @ r);
+
+    print("--- Vector pipeline ---");
+    let squares = [x ^ 2 | x in range(1, 8)] in {
+        print("squares[0] = " @ squares[0]);
+        print("squares[6] = " @ squares[6]);
+        let sum = 0 in {
+            for (s in squares) sum := sum + s;
+            print("sum of squares 1..7 = " @ sum);
+        };
+    };
+
+    print("--- Conditional cascade ---");
+    let n = 42 in
+        print(if (n < 0) "neg"
+              elif (n == 0) "zero"
+              elif (n < 10) "small"
+              elif (n < 100) "medium"
+              else "large");
+
+    print("====== END ======");
+}
