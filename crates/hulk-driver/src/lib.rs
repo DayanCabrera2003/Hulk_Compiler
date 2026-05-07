@@ -84,6 +84,7 @@ pub(crate) fn merge_diagnostics(target: &mut DiagnosticBag, source: &DiagnosticB
 
 pub(crate) fn infer_program(program: &Program, inferer: &mut TypeInferer<'_>) {
     for function in &program.functions {
+        inferer.register_function_params_by_name(&function.name);
         inferer.infer_expr(&function.body);
     }
 

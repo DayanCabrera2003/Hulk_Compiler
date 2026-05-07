@@ -157,6 +157,10 @@ fn run_middleend(hir: Hir, bag: &mut DiagnosticBag) -> Result<Hir, Vec<Diagnosti
 /// Runs the type inferer over all declarations and the program body.
 fn infer_all(program: &Program, inferer: &mut TypeInferer<'_>) {
     for function in &program.functions {
+        // Register the function's param types from the declared annotations
+        // so the body's Ident lookups see Number/String/Boolean instead of
+        // defaulting to Object.
+        inferer.register_function_params_by_name(&function.name);
         inferer.infer_expr(&function.body);
     }
 
