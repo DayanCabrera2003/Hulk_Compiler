@@ -1,6 +1,6 @@
-use hulk_ast::{BinOpKind, Expr, ExprKind, UnaryOpKind};
+use hulk_ast::{BinOpKind, Expr, ExprKind, TypeAnn, UnaryOpKind};
 use hulk_diagnostics::DiagnosticBag;
-use hulk_semantic::Resolver;
+use hulk_semantic::{Resolver, SymbolId};
 
 use crate::env::TypeEnv;
 use crate::type_id::{TypeId, TypeKind};
@@ -17,6 +17,51 @@ impl<'a> TypeInferer<'a> {
     /// Create a new type inferer.
     pub fn new(env: &'a mut TypeEnv, resolver: &'a Resolver, bag: &'a DiagnosticBag) -> Self {
         Self { env, resolver, bag }
+    }
+
+    /// Register the declared types of a function's parameters so that
+    /// subsequent identifier lookups inside the body see the correct type.
+    /// Without this, every param defaults to Object and codegen fails to
+    /// coerce numeric args (e.g. for `print(s @ n)` inside a function).
+    pub fn register_function_params_by_name(&mut self, name: &str) {
+        let Some(fn_id) = self.resolver.lookup(name) else {
+            return;
+        };
+        self.register_function_params(fn_id);
+    }
+
+    /// Same as [`register_function_params_by_name`] but takes a SymbolId.
+    pub fn register_function_params(&mut self, function_id: SymbolId) {
+        let syms = self
+            .resolver
+            .function_param_symbols(function_id)
+            .map(<[SymbolId]>::to_vec);
+        let anns = self
+            .resolver
+            .function_param_annotations(function_id)
+            .map(<[Option<TypeAnn>]>::to_vec);
+        let (Some(syms), Some(anns)) = (syms, anns) else {
+            return;
+        };
+        for (sym, ann) in syms.iter().zip(anns.iter()) {
+            let ty = match ann {
+                Some(TypeAnn::Named(n)) => self.resolve_named_type(n),
+                _ => continue,
+            };
+            self.env.register_symbol_type(*sym, ty);
+        }
+    }
+
+    fn resolve_named_type(&self, name: &str) -> TypeId {
+        match name {
+            "Number" => TypeId::NUMBER,
+            "String" => TypeId::STRING,
+            "Boolean" => TypeId::BOOLEAN,
+            "Object" => TypeId::OBJECT,
+            // For user-defined types we don't have a fast lookup; fall back
+            // to OBJECT — codegen handles user types as ptr anyway.
+            _ => TypeId::OBJECT,
+        }
     }
 
     /// Infer the type of an expression bottom-up.
@@ -122,7 +167,17 @@ impl<'a> TypeInferer<'a> {
             // retrieve the value's type via hir.expr_type(lb.value.id) and
             // falls back to TypeId::OBJECT, incorrectly treating numeric
             // bindings as reference types and emitting spurious ShadowPush.
-            ExprKind::LetBinding(lb) => self.infer_expr(&lb.value),
+            //
+            // Also propagate the inferred value type to the binding's symbol
+            // so subsequent Ident references (e.g. `t @ n` where `n` was
+            // bound to a Number) resolve to the right type.
+            ExprKind::LetBinding(lb) => {
+                let value_ty = self.infer_expr(&lb.value);
+                if let Some(symbol_id) = self.resolver.expr_symbol(expr.id) {
+                    self.env.register_symbol_type(symbol_id, value_ty);
+                }
+                value_ty
+            }
         };
 
         self.env.register_expr_type(expr.id, ty);
