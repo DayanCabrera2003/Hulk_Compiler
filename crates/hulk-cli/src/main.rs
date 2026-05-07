@@ -95,6 +95,10 @@ fn main() {
 
         Commands::Run { file } => {
             let tmp = std::env::temp_dir().join("hulkc_run");
+            if let Err(e) = std::fs::create_dir_all(&tmp) {
+                eprintln!("error: cannot create '{}': {e}", tmp.display());
+                process::exit(1);
+            }
             let exe_path = tmp.join(
                 file.file_stem()
                     .unwrap_or_else(|| std::ffi::OsStr::new("program")),
