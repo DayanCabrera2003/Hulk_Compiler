@@ -6,5 +6,10 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 
+[[bin]]
+name = "hulkc"
+path = "src/main.rs"
+
 [dependencies]
 hulk-driver = { path = "../hulk-driver" }
+clap = { workspace = true, features = ["derive"] }
