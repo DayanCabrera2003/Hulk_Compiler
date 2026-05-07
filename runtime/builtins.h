@@ -22,7 +22,7 @@ double hulk_sqrt(double x);
 double hulk_sin(double x);
 double hulk_cos(double x);
 double hulk_exp(double x);
-double hulk_log(double x);
+double hulk_log(double base, double x);
 
 /* Pseudo-random Number in [0.0, 1.0). Uses the C standard library rand(). */
 double hulk_rand(void);

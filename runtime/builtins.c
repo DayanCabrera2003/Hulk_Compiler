@@ -45,7 +45,7 @@ double hulk_sqrt(double x) { return sqrt(x);  }
 double hulk_sin(double x)  { return sin(x);   }
 double hulk_cos(double x)  { return cos(x);   }
 double hulk_exp(double x)  { return exp(x);   }
-double hulk_log(double x)  { return log(x);   }
+double hulk_log(double base, double x) { return log(x) / log(base); }
 
 double hulk_rand(void) {
     /* Dividing by RAND_MAX+1.0 yields [0.0, 1.0) -- never exactly 1.0. */
