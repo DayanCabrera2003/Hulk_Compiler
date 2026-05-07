@@ -1,15 +1,41 @@
+//! HULK compiler driver.
+//!
+//! Orchestrates all compilation phases (lex → parse → resolve → type-infer →
+//! macros → desugar → BANNER → LLVM → link) and exposes two public entry
+//! points:
+//!
+//! - [`compile`]: full compilation from a `.hulk` file to an artefact.
+//! - [`check`]: semantic-only check that reports diagnostics without emitting code.
+//!
+//! The built-in prelude (`prelude/prelude.hulk`) is automatically prepended to
+//! every user source before any phase runs.
+
+mod compile;
+mod options;
+
+pub use compile::{check, compile, PRELUDE};
+pub use hulk_diagnostics::Diagnostic;
+pub use options::{CompileOptions, EmitKind};
+
+// Keep the low-level `build_hir` and `build_pipeline` helpers public so that
+// existing tests in `hulk-hir` and other crates that use the driver directly
+// continue to work.
+
 use hulk_desugar::desugar;
 use hulk_diagnostics::DiagnosticBag;
 use hulk_hir::{Hir, MemberKind, Program, Resolver, SourceFile, TypeEnv, TypedAst};
-use hulk_lexer::lex;
 use hulk_macros::expand_macros;
-use hulk_parser::parse;
 use hulk_types::TypeInferer;
 
-/// Builds a HIR value from source text by running lexing, parsing, name
-/// resolution, and type inference in sequence.
+/// Builds a HIR from source text by running lexing, parsing, name resolution,
+/// and type inference.
+///
+/// Returns `None` and accumulates diagnostics in `bag` when any phase fails.
 #[must_use]
 pub fn build_hir(source: SourceFile, bag: &mut DiagnosticBag) -> Option<Hir> {
+    use hulk_lexer::lex;
+    use hulk_parser::parse;
+
     let mut lexer_bag = DiagnosticBag::new();
     let tokens = lex(&source, &mut lexer_bag);
     merge_diagnostics(bag, &lexer_bag);
@@ -38,8 +64,8 @@ pub fn build_hir(source: SourceFile, bag: &mut DiagnosticBag) -> Option<Hir> {
     }
 }
 
-/// Runs the complete implemented pipeline: lex → parse → resolve → infer →
-/// expand_macros → desugar. Returns a fully-lowered HIR with no sugar nodes.
+/// Runs the complete pipeline: lex → parse → resolve → infer → expand_macros
+/// → desugar. Returns a fully-lowered HIR with no sugar nodes.
 #[must_use]
 pub fn build_pipeline(source: SourceFile, bag: &mut DiagnosticBag) -> Option<Hir> {
     let hir = build_hir(source, bag)?;
@@ -50,17 +76,13 @@ pub fn build_pipeline(source: SourceFile, bag: &mut DiagnosticBag) -> Option<Hir
     Some(desugar(hir, bag))
 }
 
-pub fn hulk_driver() -> &'static str {
-    "hulk-driver"
-}
-
-fn merge_diagnostics(target: &mut DiagnosticBag, source: &DiagnosticBag) {
+pub(crate) fn merge_diagnostics(target: &mut DiagnosticBag, source: &DiagnosticBag) {
     for diagnostic in source.diagnostics() {
         target.push(diagnostic.clone());
     }
 }
 
-fn infer_program(program: &Program, inferer: &mut TypeInferer<'_>) {
+pub(crate) fn infer_program(program: &Program, inferer: &mut TypeInferer<'_>) {
     for function in &program.functions {
         inferer.infer_expr(&function.body);
     }
@@ -94,8 +116,17 @@ fn infer_program(program: &Program, inferer: &mut TypeInferer<'_>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
     #[test]
-    fn test_hulk_driver() {
-        assert_eq!(hulk_driver(), "hulk-driver");
+    fn prelude_parses_without_errors() {
+        let source = SourceFile::new("prelude.hulk", PRELUDE);
+        let mut bag = DiagnosticBag::new();
+        let hir = build_hir(source, &mut bag);
+        assert!(
+            !bag.has_errors(),
+            "prelude produced errors: {:?}",
+            bag.diagnostics()
+        );
+        assert!(hir.is_some(), "prelude did not produce a HIR");
     }
 }
