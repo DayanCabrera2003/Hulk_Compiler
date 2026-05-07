@@ -46,7 +46,7 @@ fn allowed_deps() -> HashMap<&'static str, HashSet<&'static str>> {
         ),
         (
             "hulk-codegen",
-            HashSet::from(["hulk-banner", "hulk-diagnostics"]),
+            HashSet::from(["hulk-banner", "hulk-diagnostics", "hulk-hir"]),
         ),
         (
             "hulk-driver",
