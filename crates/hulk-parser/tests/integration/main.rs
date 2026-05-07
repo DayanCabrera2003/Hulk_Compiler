@@ -15,6 +15,7 @@ mod common;
 mod arithmetic;
 mod classes;
 mod combined;
+mod prelude;
 mod conditionals;
 mod functions;
 mod functors;
