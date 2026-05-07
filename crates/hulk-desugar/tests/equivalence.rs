@@ -367,10 +367,11 @@ fn vec_generator_desugar_produces_correct_let_new_block_shape() {
         matches!(
             &vec_binding.value.kind,
             ExprKind::Call { callee, args }
-                if args.is_empty()
+                if args.len() == 1
+                    && matches!(args[0].kind, ExprKind::Number(n) if n == 0.0)
                     && matches!(&callee.kind, ExprKind::Ident(n) if n == "__vec_new")
         ),
-        "vec binding value must be __vec_new()"
+        "vec binding value must be __vec_new(0)"
     );
 
     // Inner: block { for_lowered; __vec_N }

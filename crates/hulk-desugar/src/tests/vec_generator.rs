@@ -148,10 +148,11 @@ fn assert_vec_generator_shape(expr: &Expr) {
         matches!(
             binding.value.kind,
             ExprKind::Call { ref callee, ref args }
-                if args.is_empty()
+                if args.len() == 1
+                    && matches!(args[0].kind, ExprKind::Number(n) if n == 0.0)
                     && matches!(callee.kind, ExprKind::Ident(ref name) if name == "__vec_new")
         ),
-        "expected __vec_new() call as binding value"
+        "expected __vec_new(0) call as binding value"
     );
 
     let ExprKind::Block(stmts) = &body.kind else {
