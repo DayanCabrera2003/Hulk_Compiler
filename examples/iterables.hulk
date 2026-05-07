@@ -1,19 +1,4 @@
-// iterables.hulk — implementación canónica de `Iterable` vía `Range`.
-// `protocol Iterable` (Hulk.md:938) + `type Range(...)` (Hulk.md:947).
-// La conformance es implícita: `Range` provee `next()` y `current()` y por lo
-// tanto puede usarse como iterable.
-protocol Iterable {
-    next(): Boolean;
-    current(): Object;
-}
-
-type Range(min: Number, max: Number) {
-    min: Number = min;
-    max: Number = max;
-    current: Number = min - 1;
-
-    next(): Boolean => (self.current := self.current + 1) < self.max;
-    current(): Number => self.current;
-}
-
+// iterables.hulk — uso de iterables vía el protocolo Iterable y el tipo Range.
+// Iterable y Range se definen en prelude/prelude.hulk (Hulk.md §15).
+// El driver los prepende automáticamente antes de parsear el fuente del usuario.
 for (x in new Range(0, 5)) print(x);
