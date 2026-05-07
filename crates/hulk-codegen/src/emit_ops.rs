@@ -112,7 +112,10 @@ impl<'ctx> Codegen<'ctx> {
         let (l, r) = self.load_float_pair(left, right, "pow")?;
         let f64_t = self.ctx.f64_type();
         let pow_ty = f64_t.fn_type(&[f64_t.into(), f64_t.into()], false);
-        let pow_fn = self.module.add_function("llvm.pow.f64", pow_ty, None);
+        let pow_fn = self
+            .module
+            .get_function("llvm.pow.f64")
+            .unwrap_or_else(|| self.module.add_function("llvm.pow.f64", pow_ty, None));
         let result = self
             .builder
             .build_call(pow_fn, &[l.into(), r.into()], "pow")?;
