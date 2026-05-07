@@ -1,0 +1,21 @@
+// Built-in protocols and types available in every HULK program.
+// This file is prepended to every user source before parsing.
+// Defines Iterable, Enumerable, and Range (see Hulk.md §15).
+
+protocol Iterable {
+    next(): Boolean;
+    current(): Object;
+}
+
+protocol Enumerable {
+    iter(): Iterable;
+}
+
+type Range(min: Number, max: Number) {
+    min: Number = min;
+    max: Number = max;
+    current: Number = min - 1;
+
+    next(): Boolean => (self.current := self.current + 1) < self.max;
+    current(): Number => self.current;
+}
