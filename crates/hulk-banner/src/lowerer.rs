@@ -292,7 +292,15 @@ impl<'h> Lowerer<'h> {
         let (mut user_params, mut param_names) = self.setup_params(type_params);
 
         // Chain the parent constructor when the type inherits.
-        if let Some(parent) = parent_name {
+        // Skip when the parent is a protocol — protocols define no
+        // constructor and emitting StaticCall("Protocol.__init__") would
+        // crash at codegen with "static call target not declared". A type
+        // inheriting a protocol still has the protocol's methods available
+        // through structural conformance; no chained init is needed.
+        let parent_is_protocol = parent_name
+            .map(|p| self.hir.program.protocols.iter().any(|pr| pr.name == p))
+            .unwrap_or(false);
+        if let Some(parent) = parent_name.filter(|_| !parent_is_protocol) {
             let mut args: Vec<Value> = vec![Value::Temp(t_self)];
             if parent_args.is_empty() {
                 if let Some(pp) = parent_params {

@@ -549,6 +549,33 @@ function apply_lambda(x: Number, p: (Number) -> Number): Number => p(x);
 }
 
 #[test]
+fn test_type_inherits_protocol_compiles_and_runs() {
+    // Regression: a type inheriting a protocol crashed the codegen with
+    // "static call target 'Protocol.__init__' not declared", because the
+    // banner lowerer always emitted a chained __init__ call to the parent.
+    // Protocols have no constructor, so the chain is now skipped when the
+    // parent is a protocol; structural conformance still gives the type
+    // access to the protocol's methods.
+    let src = r#"
+protocol Greet {
+    hi(): String;
+}
+type Dog inherits Greet {
+    hi(): String => "woof";
+}
+type Cat inherits Greet {
+    hi(): String => "meow";
+}
+{
+    print(new Dog().hi());
+    print(new Cat().hi());
+}
+"#;
+    let out = run_source("inherits_protocol", src).expect("inherits_protocol");
+    assert_eq!(out.trim_end(), "woof\nmeow");
+}
+
+#[test]
 fn test_boolean_field_printed_directly() {
     // Regression: Boolean fields were stored in the same "non-pointer" slot
     // as Number fields (pointer_map was Vec<bool>), so build_field_kind_map
