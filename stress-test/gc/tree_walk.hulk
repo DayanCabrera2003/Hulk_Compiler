@@ -32,9 +32,8 @@ function make_tree(depth: Number, seed: Number): Leaf =>
 function noise(rounds: Number, per_round: Number): Number =>
     let total = 0 in {
         for (r in range(0, rounds)) {
-            for (i in range(0, per_round)) {
-                let b = new Box(i) in total := total + b.get();
-            };
+            for (i in range(0, per_round))
+                total := total + (new Box(i)).get();
         };
         total;
     };

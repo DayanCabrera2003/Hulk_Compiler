@@ -436,6 +436,25 @@ print(new SumMany().run());
     assert_eq!(out.trim_end(), "5");
 }
 
+#[test]
+fn test_method_call_on_new_inside_function_body() {
+    // Regression: the resolver populated `type_methods` only when walking
+    // type declarations, but function bodies were walked before types, so
+    // `(new T()).method()` inside a function falsely reported "método no
+    // existe" even when the method was perfectly valid. Types are now
+    // resolved before function bodies.
+    let src = r#"
+type Box(v: Number) {
+    v: Number = v;
+    get(): Number => self.v;
+}
+function unwrap(): Number => (new Box(42)).get();
+print(unwrap());
+"#;
+    let out = run_source("new_method_in_fn", src).expect("new_method_in_fn");
+    assert_eq!(out.trim_end(), "42");
+}
+
 // ─── 18. Sesión 17 complex programs + GC stress (E2E) ────────────────────────
 
 /// Compile and run a HULK program, asserting its stdout equals the contents

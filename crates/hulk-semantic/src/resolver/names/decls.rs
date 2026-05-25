@@ -17,12 +17,17 @@ impl Resolver {
         self.register_global_declarations(program);
         self.register_protocol_details(&program.protocols);
 
-        for function in &program.functions {
-            self.resolve_function_decl(function);
-        }
-
+        // Resolve type declarations before function bodies so that any method
+        // signature is registered in `type_methods` by the time a function
+        // body validates calls like `(new T()).method()`. Otherwise the
+        // function body sees an empty method table for `T` and the validator
+        // reports a false "método no existe".
         for type_decl in &program.types {
             self.resolve_type_decl(type_decl);
+        }
+
+        for function in &program.functions {
+            self.resolve_function_decl(function);
         }
 
         for macro_decl in &program.macros {
