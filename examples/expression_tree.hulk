@@ -1,0 +1,97 @@
+// expression_tree.hulk — class hierarchy modelling arithmetic expression trees
+// with evaluation, pretty-printing and algebraic simplification. Simplification
+// is realised through virtual dispatch (`simplify` is overridden on every
+// subtype) plus light type-discriminator helpers (is_zero/is_one/is_const), so
+// it works without HULK's match-case construct (still gated behind the parser).
+
+type Expr {
+    eval(): Number => 0;
+    show(): String => "?";
+    simplify(): Expr => self;
+    is_zero(): Boolean => false;
+    is_one(): Boolean => false;
+    is_const(): Boolean => false;
+    value(): Number => 0;
+}
+
+type Num(v: Number) inherits Expr {
+    v: Number = v;
+    eval(): Number => self.v;
+    show(): String => "" @ self.v;
+    is_zero(): Boolean => self.v == 0;
+    is_one(): Boolean => self.v == 1;
+    is_const(): Boolean => true;
+    value(): Number => self.v;
+}
+
+type Add(l: Expr, r: Expr) inherits Expr {
+    l: Expr = l;
+    r: Expr = r;
+    eval(): Number => self.l.eval() + self.r.eval();
+    show(): String => "(" @ self.l.show() @ " + " @ self.r.show() @ ")";
+    simplify(): Expr =>
+        let ls = self.l.simplify(), rs = self.r.simplify() in
+            if (ls.is_zero()) rs
+            elif (rs.is_zero()) ls
+            elif (ls.is_const() & rs.is_const()) new Num(ls.value() + rs.value())
+            else new Add(ls, rs);
+}
+
+type Sub(l: Expr, r: Expr) inherits Expr {
+    l: Expr = l;
+    r: Expr = r;
+    eval(): Number => self.l.eval() - self.r.eval();
+    show(): String => "(" @ self.l.show() @ " - " @ self.r.show() @ ")";
+    simplify(): Expr =>
+        let ls = self.l.simplify(), rs = self.r.simplify() in
+            if (rs.is_zero()) ls
+            elif (ls.is_const() & rs.is_const()) new Num(ls.value() - rs.value())
+            else new Sub(ls, rs);
+}
+
+type Mul(l: Expr, r: Expr) inherits Expr {
+    l: Expr = l;
+    r: Expr = r;
+    eval(): Number => self.l.eval() * self.r.eval();
+    show(): String => "(" @ self.l.show() @ " * " @ self.r.show() @ ")";
+    simplify(): Expr =>
+        let ls = self.l.simplify(), rs = self.r.simplify() in
+            if (ls.is_zero() | rs.is_zero()) new Num(0)
+            elif (ls.is_one()) rs
+            elif (rs.is_one()) ls
+            elif (ls.is_const() & rs.is_const()) new Num(ls.value() * rs.value())
+            else new Mul(ls, rs);
+}
+
+function n(v: Number): Expr => new Num(v);
+
+{
+    print("=== eval ===");
+    // (2 + 3) * (10 - 4) = 30
+    let e = new Mul(new Add(n(2), n(3)), new Sub(n(10), n(4))) in {
+        print(e.show());
+        print(e.eval());
+    };
+
+    print("=== simplify: identity laws ===");
+    // x*1 + 0  with x = 7 — both arms reduce to Num(7)
+    let e = new Add(new Mul(n(7), n(1)), n(0)) in {
+        print(e.show());
+        print(e.simplify().show());
+        print(e.simplify().eval());
+    };
+
+    print("=== simplify: zero annihilator ===");
+    // (5 + 3) * 0  collapses to Num(0)
+    let e = new Mul(new Add(n(5), n(3)), n(0)) in {
+        print(e.show());
+        print(e.simplify().show());
+    };
+
+    print("=== simplify: constant folding ===");
+    // ((1+2) * (3+4)) - 0  → Num(21)
+    let e = new Sub(new Mul(new Add(n(1), n(2)), new Add(n(3), n(4))), n(0)) in {
+        print(e.show());
+        print(e.simplify().show());
+    };
+}

@@ -1,0 +1,13 @@
+=== eval ===
+((2 + 3) * (10 - 4))
+30
+=== simplify: identity laws ===
+((7 * 1) + 0)
+7
+7
+=== simplify: zero annihilator ===
+((5 + 3) * 0)
+0
+=== simplify: constant folding ===
+(((1 + 2) * (3 + 4)) - 0)
+21
