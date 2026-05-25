@@ -7,7 +7,10 @@ use crate::Desugarer;
 
 impl<'a> Desugarer<'a> {
     /// Lowers a lambda expression into a fresh synthetic type with an
-    /// `invoke` method plus a `new T()` constructor expression.
+    /// `__invoke` method plus a `new T()` constructor expression. The leading
+    /// underscores guarantee the synthesised slot can never collide with a
+    /// user-defined method named `invoke` in the global vtable, where method
+    /// slots are keyed by short name.
     pub(crate) fn lower_lambda(
         &mut self,
         params: Vec<Param>,
@@ -124,7 +127,7 @@ impl<'a> Desugarer<'a> {
         span: Span,
     ) {
         let invoke_method = FunctionDecl {
-            name: "invoke".to_owned(),
+            name: "__invoke".to_owned(),
             params,
             return_type,
             body,

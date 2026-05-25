@@ -437,6 +437,32 @@ print(new SumMany().run());
 }
 
 #[test]
+fn test_protocol_invoke_coexists_with_lambda() {
+    // Regression: lambdas were lowered to a synthetic type with a method
+    // literally named `invoke`. When a user protocol also declared
+    // `invoke(...)`, both methods landed in the same global vtable slot and
+    // the program segfaulted as soon as the lambda was used. The synthetic
+    // method is now named `__invoke` (a name no HULK identifier can take)
+    // so the two namespaces stay isolated.
+    let src = r#"
+protocol Parser {
+    invoke(x: Number): Number;
+}
+type Lit(want: Number) {
+    want: Number = want;
+    invoke(x: Number): Number => self.want + x;
+}
+function apply_lambda(x: Number, p: (Number) -> Number): Number => p(x);
+{
+    print(new Lit(10).invoke(5));
+    print(apply_lambda(7, (x: Number): Number => x * 3));
+}
+"#;
+    let out = run_source("invoke_lambda_coexist", src).expect("invoke_lambda_coexist");
+    assert_eq!(out.trim_end(), "15\n21");
+}
+
+#[test]
 fn test_method_call_on_new_inside_function_body() {
     // Regression: the resolver populated `type_methods` only when walking
     // type declarations, but function bodies were walked before types, so

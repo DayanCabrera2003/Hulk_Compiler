@@ -105,7 +105,7 @@ fn for_inside_lambda_body_both_lowered() {
         .iter()
         .find_map(|m| {
             if let MemberKind::Method(method) = &m.kind {
-                if method.name == "invoke" {
+                if method.name == "__invoke" {
                     Some(method)
                 } else {
                     None
