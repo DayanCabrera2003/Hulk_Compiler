@@ -93,8 +93,18 @@ let hir = build_hir(source, &mut bag).expect("hello.hulk should be valid");
 ## Validación
 
 - `cargo build -p hulk-hir`: correcto.
-- `cargo test -p hulk-hir`: 1/1 tests correctos.
+- `cargo test -p hulk-hir`: 27/27 tests correctos.
 - `cargo test -p hulk-driver`: correcto (incluye los tests de integración de `build_hir`).
+
+### Cobertura de la suite
+
+La suite de `hulk-hir` se reparte en tres áreas:
+
+- **Programas válidos basados en ejemplos** (`tests/semantic/valid/examples.rs`): construye el HIR para los 13 programas de `examples/` y verifica resolución de `print`, `self`, `base`, protocolos, tipos de operaciones de concatenación y forma de condicionales.
+- **Inferencia de tipos** (`tests/semantic/valid/inference.rs`): cubre cadenas `is`/`as`, llamadas en estilo protocolo, herencia multinivel y funciones sin anotaciones.
+- **Errores semánticos** (`tests/semantic/errors/mod.rs`): 15 tests que validan mensajes específicos para identificadores no declarados, redefiniciones, tipos inexistentes, asignación a `self`, uso de `base` fuera de método o sin padre, herencia inválida, anotaciones incompatibles, métodos inexistentes, no-conformancia con protocolos, inferencias ambiguas, ciclos de herencia y acumulación de varios errores en una sola pasada.
+
+Los tests end-to-end que ejercitan `build_hir` sobre el pipeline completo viven en `hulk-driver/tests/build_hir.rs` y `hulk-driver/tests/error_cases.rs`.
 
 ## Inspección del HIR
 
