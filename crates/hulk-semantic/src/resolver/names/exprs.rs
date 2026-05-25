@@ -265,6 +265,22 @@ impl Resolver {
     }
 
     pub(crate) fn resolve_call(&mut self, callee: &Expr, call_expr: &Expr) {
+        // Pattern-matching intrinsics emitted by the parser are not real
+        // function calls — the macro expander rewrites them at expansion
+        // time. Their argument subtrees may reference pattern-variable
+        // names (`x1`, `x2`, …) that aren't in scope yet, so resolving
+        // them as ordinary expressions would emit spurious "identificador
+        // no declarado" diagnostics. Resolve only the callee Ident itself
+        // so it gets a BuiltinFunction symbol id, then stop.
+        if let ExprKind::Ident(name) = &callee.kind {
+            if is_match_pattern_intrinsic(name) {
+                if let Some(symbol_id) = self.lookup(name) {
+                    self.expr_symbols.insert(callee.id, symbol_id);
+                }
+                return;
+            }
+        }
+
         let mut callee_symbol = None;
 
         if let ExprKind::Ident(name) = &callee.kind {
@@ -314,4 +330,16 @@ impl Resolver {
             }
         }
     }
+}
+
+fn is_match_pattern_intrinsic(name: &str) -> bool {
+    matches!(
+        name,
+        "__hulk_match"
+            | "__hulk_case_lit"
+            | "__hulk_case_var"
+            | "__hulk_case_binop"
+            | "__hulk_case_binop_right_lit"
+            | "__hulk_default"
+    )
 }

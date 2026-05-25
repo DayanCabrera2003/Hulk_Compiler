@@ -78,6 +78,7 @@ impl Parser {
             Token::If => return self.parse_if_expr(),
             Token::While => return self.parse_while_expr(),
             Token::For => return self.parse_for_expr(),
+            Token::Match => return self.parse_match_expr(),
             Token::New => return self.parse_new_expr(),
             Token::LBracket => return self.parse_vec_literal_or_generator(),
             Token::LParen if self.is_lambda_start() => return self.parse_lambda_expr(),

@@ -1,11 +1,21 @@
 //! Parsers for complex expression forms that begin with a keyword or a
 //! bracket group: `let`, `if/elif/else`, `while`, `for`, `new`, lambdas,
-//! vector literals and generators.
+//! vector literals, generators, and `match` (structural pattern matching
+//! for macros, per Hulk.md §1472).
 
 use hulk_ast::{Expr, ExprKind, LetBinding, Param};
 use hulk_tokens::{Span, Token};
 
 use crate::Parser;
+
+// Intrinsic names recognised by hulk-macros::expander at expansion time.
+// Kept as constants here so the encoding stays in one place.
+const MATCH_INTRINSIC: &str = "__hulk_match";
+const CASE_LITERAL_INTRINSIC: &str = "__hulk_case_lit";
+const CASE_VARIABLE_INTRINSIC: &str = "__hulk_case_var";
+const CASE_BINOP_INTRINSIC: &str = "__hulk_case_binop";
+const CASE_BINOP_RIGHT_LITERAL_INTRINSIC: &str = "__hulk_case_binop_right_lit";
+const DEFAULT_CASE_INTRINSIC: &str = "__hulk_default";
 
 impl Parser {
     // ---- let expression ---------------------------------------------------
@@ -323,5 +333,293 @@ impl Parser {
             },
             span,
         )
+    }
+
+    /// `match (subject) { case <pattern> => <body>; ... default => <body>; }`
+    ///
+    /// Patterns are limited to the forms the spec demonstrates inside macros
+    /// (Hulk.md §1472–1490):
+    /// - a literal (Number, String, Boolean) — matches that exact value;
+    /// - a typed binding `name:Type` — captures the subject if its type
+    ///   conforms to `Type`;
+    /// - a parenthesised binop pattern,
+    ///   `(name1:Type op name2:Type)` or `(name:Type op literal)`, which
+    ///   destructures a BinOp subject and captures the operands.
+    ///
+    /// The match expression is lowered to a call to `__hulk_match` whose
+    /// arguments are the subject followed by one `__hulk_case_*` or
+    /// `__hulk_default` intrinsic call per arm. The macro expander
+    /// (`hulk-macros::expander`) consumes that encoding at expansion time.
+    pub(crate) fn parse_match_expr(&mut self) -> Expr {
+        let match_tok = self.advance(); // consume 'match'
+        self.expect(&Token::LParen, "se esperaba '(' después de 'match'");
+        let subject = self.parse_expression();
+        self.expect(&Token::RParen, "se esperaba ')' al cerrar match subject");
+        self.expect(&Token::LBrace, "se esperaba '{' para el cuerpo del match");
+
+        let mut args: Vec<Expr> = vec![subject];
+        while !self.at(&Token::RBrace) && !self.at(&Token::Eof) {
+            match self.peek() {
+                Token::Case => {
+                    self.advance();
+                    let case_call = self.parse_match_case();
+                    args.push(case_call);
+                }
+                Token::Default => {
+                    self.advance();
+                    self.expect(&Token::FatArrow, "se esperaba '=>' después de 'default'");
+                    let body = self.parse_expression();
+                    // Trailing semicolon between arms is required; optional
+                    // before '}'.
+                    if self.at(&Token::Semicolon) {
+                        self.advance();
+                    }
+                    args.push(self.intrinsic_call(
+                        DEFAULT_CASE_INTRINSIC,
+                        vec![body.clone()],
+                        body.span,
+                    ));
+                }
+                _ => {
+                    let span = self.peek_span();
+                    let label = format!("token inesperado: {:?}", self.peek());
+                    self.bag_mut().push(
+                        hulk_diagnostics::Diagnostic::error(label)
+                            .with_label(span, "se esperaba 'case' o 'default'"),
+                    );
+                    self.advance();
+                }
+            }
+        }
+
+        let end_span = self
+            .expect(&Token::RBrace, "se esperaba '}' al cerrar match")
+            .map(|t| t.span)
+            .unwrap_or_else(|| match_tok.span.clone());
+        let span = match_tok.span.merge(end_span);
+
+        self.intrinsic_call(MATCH_INTRINSIC, args, span)
+    }
+
+    /// Parses one `case <pattern> => <body>;` arm and returns the
+    /// `__hulk_case_*` intrinsic call that encodes it.
+    fn parse_match_case(&mut self) -> Expr {
+        let pattern_span_start = self.peek_span();
+        let pattern_encoding = self.parse_match_pattern();
+        self.expect(&Token::FatArrow, "se esperaba '=>' después del patrón");
+        let body = self.parse_expression();
+        if self.at(&Token::Semicolon) {
+            self.advance();
+        }
+        let span = pattern_span_start.clone().merge(body.span.clone());
+
+        // Each pattern parser returns either:
+        // - a single-element vec [<literal>] meaning literal case;
+        // - a two-element vec [<name_ident>, <type_string>] meaning typed
+        //   variable case;
+        // - a six-element vec for a full binop case
+        //   [<op_str>, <l_name>, <l_ty>, <r_name>, <r_ty>] (5 args, the body
+        //   is appended here); we reuse the first element to disambiguate.
+        match pattern_encoding {
+            PatternEncoding::Literal(lit) => {
+                let args = vec![lit, body];
+                self.intrinsic_call(CASE_LITERAL_INTRINSIC, args, span)
+            }
+            PatternEncoding::Variable { name, ty_name } => {
+                let n = self.ident(&name, pattern_span_start.clone());
+                let t = self.string_lit(&ty_name, pattern_span_start);
+                let args = vec![n, t, body];
+                self.intrinsic_call(CASE_VARIABLE_INTRINSIC, args, span)
+            }
+            PatternEncoding::BinOp {
+                op,
+                left_name,
+                left_ty,
+                right_name,
+                right_ty,
+            } => {
+                let op_s = self.string_lit(&op, pattern_span_start.clone());
+                let ln = self.ident(&left_name, pattern_span_start.clone());
+                let lt = self.string_lit(&left_ty, pattern_span_start.clone());
+                let rn = self.ident(&right_name, pattern_span_start.clone());
+                let rt = self.string_lit(&right_ty, pattern_span_start);
+                let args = vec![op_s, ln, lt, rn, rt, body];
+                self.intrinsic_call(CASE_BINOP_INTRINSIC, args, span)
+            }
+            PatternEncoding::BinOpRightLiteral {
+                op,
+                left_name,
+                left_ty,
+                right_literal,
+            } => {
+                let op_s = self.string_lit(&op, pattern_span_start.clone());
+                let ln = self.ident(&left_name, pattern_span_start.clone());
+                let lt = self.string_lit(&left_ty, pattern_span_start);
+                let args = vec![op_s, ln, lt, right_literal, body];
+                self.intrinsic_call(CASE_BINOP_RIGHT_LITERAL_INTRINSIC, args, span)
+            }
+        }
+    }
+
+    /// Parses a pattern. Patterns are not regular expressions so they have
+    /// their own tiny grammar; the result is a [`PatternEncoding`] that the
+    /// caller turns into one of the case intrinsic calls.
+    fn parse_match_pattern(&mut self) -> PatternEncoding {
+        // Parenthesised binop pattern: `(name1:Type op name2:Type)` or
+        // `(name:Type op literal)`.
+        if self.at(&Token::LParen) {
+            self.advance(); // consume '('
+            let left = self.parse_typed_binding_pattern();
+            let op_token = self.advance();
+            let op_str = binop_token_to_str(&op_token.token).unwrap_or_else(|| {
+                self.bag_mut().push(
+                    hulk_diagnostics::Diagnostic::error(format!(
+                        "operador no soportado en patrón: {:?}",
+                        op_token.token
+                    ))
+                    .with_label(op_token.span.clone(), "operador inválido"),
+                );
+                "+".to_owned()
+            });
+            // Right side: either a typed binding (`name:Type`) or a literal.
+            let right_is_literal = matches!(
+                self.peek(),
+                Token::Number(_) | Token::StringLit(_) | Token::True | Token::False
+            );
+            let encoded = if right_is_literal {
+                let lit = self.parse_atom_pattern_literal();
+                self.expect(&Token::RParen, "se esperaba ')' cerrando patrón binop");
+                PatternEncoding::BinOpRightLiteral {
+                    op: op_str,
+                    left_name: left.0,
+                    left_ty: left.1,
+                    right_literal: lit,
+                }
+            } else {
+                let right = self.parse_typed_binding_pattern();
+                self.expect(&Token::RParen, "se esperaba ')' cerrando patrón binop");
+                PatternEncoding::BinOp {
+                    op: op_str,
+                    left_name: left.0,
+                    left_ty: left.1,
+                    right_name: right.0,
+                    right_ty: right.1,
+                }
+            };
+            return encoded;
+        }
+
+        // Typed binding pattern at top level: `name:Type`.
+        if let Token::Ident(_) = self.peek() {
+            if self.lookahead_is_typed_binding() {
+                let (name, ty_name) = self.parse_typed_binding_pattern();
+                return PatternEncoding::Variable { name, ty_name };
+            }
+        }
+
+        // Otherwise expect a literal.
+        let lit = self.parse_atom_pattern_literal();
+        PatternEncoding::Literal(lit)
+    }
+
+    fn parse_typed_binding_pattern(&mut self) -> (String, String) {
+        let (name, _) = self
+            .expect_ident("se esperaba nombre de variable en patrón")
+            .unwrap_or_else(|| (String::new(), self.peek_span()));
+        self.expect(&Token::Colon, "se esperaba ':' después del nombre");
+        let (ty_name, _) = self
+            .expect_ident("se esperaba nombre de tipo después de ':'")
+            .unwrap_or_else(|| ("Object".to_owned(), self.peek_span()));
+        (name, ty_name)
+    }
+
+    fn parse_atom_pattern_literal(&mut self) -> Expr {
+        let tok = self.advance();
+        let kind = match tok.token {
+            Token::Number(v) => ExprKind::Number(v),
+            Token::StringLit(s) => ExprKind::StringLit(s),
+            Token::True => ExprKind::Bool(true),
+            Token::False => ExprKind::Bool(false),
+            other => {
+                self.bag_mut().push(
+                    hulk_diagnostics::Diagnostic::error(format!(
+                        "literal esperado en patrón, encontré {other:?}"
+                    ))
+                    .with_label(tok.span.clone(), "no es un literal válido"),
+                );
+                ExprKind::Number(0.0)
+            }
+        };
+        self.make_expr(kind, tok.span)
+    }
+
+    fn lookahead_is_typed_binding(&self) -> bool {
+        // Cheap one-token lookahead: we know peek() is Ident; check the
+        // token after it without consuming.
+        matches!(self.peek_at(1), Token::Colon)
+    }
+
+    fn intrinsic_call(&mut self, name: &str, args: Vec<Expr>, span: Span) -> Expr {
+        let callee = Expr::new(
+            ExprKind::Ident(name.to_owned()),
+            span.clone(),
+            self.next_node_id(),
+        );
+        self.make_expr(
+            ExprKind::Call {
+                callee: Box::new(callee),
+                args,
+            },
+            span,
+        )
+    }
+
+    fn ident(&mut self, name: &str, span: Span) -> Expr {
+        Expr::new(ExprKind::Ident(name.to_owned()), span, self.next_node_id())
+    }
+
+    fn string_lit(&mut self, value: &str, span: Span) -> Expr {
+        Expr::new(
+            ExprKind::StringLit(value.to_owned()),
+            span,
+            self.next_node_id(),
+        )
+    }
+}
+
+enum PatternEncoding {
+    Literal(Expr),
+    Variable {
+        name: String,
+        ty_name: String,
+    },
+    BinOp {
+        op: String,
+        left_name: String,
+        left_ty: String,
+        right_name: String,
+        right_ty: String,
+    },
+    BinOpRightLiteral {
+        op: String,
+        left_name: String,
+        left_ty: String,
+        right_literal: Expr,
+    },
+}
+
+fn binop_token_to_str(tok: &Token) -> Option<String> {
+    match tok {
+        Token::Plus => Some("+".to_owned()),
+        Token::Minus => Some("-".to_owned()),
+        Token::Star => Some("*".to_owned()),
+        Token::Slash => Some("/".to_owned()),
+        Token::EqualEqual => Some("==".to_owned()),
+        Token::BangEqual => Some("!=".to_owned()),
+        Token::Less => Some("<".to_owned()),
+        Token::LessEqual => Some("<=".to_owned()),
+        Token::Greater => Some(">".to_owned()),
+        Token::GreaterEqual => Some(">=".to_owned()),
+        _ => None,
     }
 }

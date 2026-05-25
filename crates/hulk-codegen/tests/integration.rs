@@ -554,6 +554,48 @@ function apply_lambda(x: Number, p: (Number) -> Number): Number => p(x);
 }
 
 #[test]
+fn test_match_case_structural_pattern_matching_in_macros() {
+    // Hulk.md §1472–1490: macros support structural pattern matching over
+    // their argument AST. The parser had no handling for `match (x) { case
+    // ... => ...; default => ...; }`, so the spec example simply didn't
+    // compile. The parser now lowers each arm to the existing __hulk_case_*
+    // intrinsic encoding the macro expander already understood; the
+    // intrinsics are registered as builtin functions so the resolver and
+    // inferer don't reject them.
+    let src = r#"
+def simplify(expr: Number): Number =>
+    match (expr) {
+        case (x1: Number + 0) => simplify(x1);
+        case (x1: Number * 1) => simplify(x1);
+        case (x1: Number + x2: Number) => simplify(x1) + simplify(x2);
+        default => expr;
+    };
+print(simplify((42 + 0) * 1));
+"#;
+    let out = run_source("match_simplify", src).expect("match_simplify");
+    assert_eq!(out.trim_end(), "42");
+}
+
+#[test]
+fn test_match_case_literal_arms() {
+    let src = r#"
+def label(n: Number): String =>
+    match (n) {
+        case 0 => "zero";
+        case 1 => "one";
+        default => "other";
+    };
+{
+    print(label(0));
+    print(label(1));
+    print(label(99));
+}
+"#;
+    let out = run_source("match_lit", src).expect("match_lit");
+    assert_eq!(out.trim_end(), "zero\none\nother");
+}
+
+#[test]
 fn test_for_over_user_type_with_iter() {
     // Regression: per Hulk.md §1130, a user type with an iter() method that
     // returns an Iterable should drive the Enumerable path of the for loop.
