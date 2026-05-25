@@ -38,7 +38,7 @@ mod tests;
 pub fn desugar(hir: Hir, _bag: &mut DiagnosticBag) -> Hir {
     let Hir {
         mut program,
-        symbols,
+        mut symbols,
         mut types,
     } = hir;
 
@@ -48,7 +48,7 @@ pub fn desugar(hir: Hir, _bag: &mut DiagnosticBag) -> Hir {
         node_ids: NodeIdGen::with_start(start_id),
         temp_counter: 0,
         type_counter: 0,
-        resolver: &symbols,
+        resolver: &mut symbols,
         types: &mut types,
         function_sigs,
         wrapper_cache: HashMap::new(),
@@ -91,7 +91,7 @@ pub(crate) struct Desugarer<'a> {
     pub(crate) node_ids: NodeIdGen,
     pub(crate) temp_counter: u64,
     pub(crate) type_counter: u64,
-    pub(crate) resolver: &'a Resolver,
+    pub(crate) resolver: &'a mut Resolver,
     pub(crate) types: &'a mut TypeEnv,
     pub(crate) function_sigs: HashMap<String, FunctionSignature>,
     pub(crate) wrapper_cache: HashMap<String, String>,

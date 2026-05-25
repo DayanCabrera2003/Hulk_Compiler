@@ -758,43 +758,69 @@ impl<'h> Lowerer<'h> {
             _ => panic!("Assign target is not an AssignTarget node"),
         };
         match target_kind {
-            AssignTarget::Ident(_) => {
-                // The resolver extension stores expr_symbols[node_id] = sym_id for AssignTarget::Ident.
-                let sym = self
-                    .hir
-                    .resolved_symbol(target.id)
-                    .expect("AssignTarget::Ident has no resolved symbol");
-                let table = self.hir.symbols.table();
-                // SymbolIds are only created by the SymbolTable, so they are always valid.
-                let symbol = table.get(sym).expect("symbol not in table");
-                match &symbol.kind {
-                    SymbolKind::Variable => {
-                        // Variables are inserted into `locals` when their LetBinding is processed.
-                        let dst = *self.locals.get(&sym).expect("variable not in locals");
-                        self.emit(Instr::Copy {
-                            dst,
-                            src: v.clone(),
-                        });
-                        v
-                    }
-                    SymbolKind::Parameter => {
-                        // Parameter names are always present in the symbol table.
-                        let name = table.name_of(sym).expect("param has no name").to_string();
-                        // Params are registered in `param_temps` during function frame setup.
-                        let dst = *self
-                            .param_temps
-                            .get(&name)
-                            .expect("param not in param_temps");
-                        self.emit(Instr::Copy {
-                            dst,
-                            src: v.clone(),
-                        });
-                        v
-                    }
-                    other => {
-                        panic!("AssignTarget::Ident resolved to unexpected SymbolKind: {other:?}")
+            AssignTarget::Ident(name) => {
+                // Resolved-symbol lookup is the fast path. Macro expansion
+                // refreshes node IDs on the substituted body, which drops
+                // expr_symbols entries for AssignTarget nodes; in that
+                // case fall back to a name lookup against the active
+                // locals_by_name / param_temps maps. Without the fallback,
+                // any macro whose body contains `:=` panics the lowerer.
+                if let Some(sym) = self.hir.resolved_symbol(target.id) {
+                    let table = self.hir.symbols.table();
+                    // SymbolIds are only created by the SymbolTable, so they are always valid.
+                    let symbol = table.get(sym).expect("symbol not in table");
+                    match &symbol.kind {
+                        SymbolKind::Variable => {
+                            // Variables are inserted into `locals` when their LetBinding is processed.
+                            let dst = *self.locals.get(&sym).expect("variable not in locals");
+                            self.emit(Instr::Copy {
+                                dst,
+                                src: v.clone(),
+                            });
+                            return v;
+                        }
+                        SymbolKind::Parameter => {
+                            // Parameter names are always present in the symbol table.
+                            let name = table.name_of(sym).expect("param has no name").to_string();
+                            // Params are registered in `param_temps` during function frame setup.
+                            let dst = *self
+                                .param_temps
+                                .get(&name)
+                                .expect("param not in param_temps");
+                            self.emit(Instr::Copy {
+                                dst,
+                                src: v.clone(),
+                            });
+                            return v;
+                        }
+                        other => {
+                            panic!(
+                                "AssignTarget::Ident resolved to unexpected SymbolKind: {other:?}"
+                            )
+                        }
                     }
                 }
+
+                // Fallback: macro-expanded body lost its resolved symbol.
+                // Look up the local by name (sanitised macro locals land
+                // in locals_by_name, function params in param_temps).
+                if let Some(&dst) = self.locals_by_name.get(name) {
+                    self.emit(Instr::Copy {
+                        dst,
+                        src: v.clone(),
+                    });
+                    return v;
+                }
+                if let Some(&dst) = self.param_temps.get(name) {
+                    self.emit(Instr::Copy {
+                        dst,
+                        src: v.clone(),
+                    });
+                    return v;
+                }
+                panic!(
+                    "AssignTarget::Ident '{name}' has no resolved symbol and no matching local/param"
+                );
             }
             AssignTarget::Field { receiver, field } => {
                 let rv = self.emit_expr(receiver);

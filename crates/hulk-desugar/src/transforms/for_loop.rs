@@ -1,4 +1,4 @@
-use hulk_hir::{Expr, ExprKind, NodeId, Span, TypeKind};
+use hulk_hir::{Expr, ExprKind, NodeId, Span, TypeAnn, TypeKind};
 
 use crate::Desugarer;
 
@@ -45,7 +45,7 @@ impl<'a> Desugarer<'a> {
         span: Span,
         id: NodeId,
     ) -> Expr {
-        let strategy = self.for_strategy(iterable_expr.id);
+        let strategy = self.for_strategy(&iterable_expr);
         let iter_name = self.fresh_temp("it");
 
         if strategy == ForStrategy::Enumerable {
@@ -104,15 +104,37 @@ impl<'a> Desugarer<'a> {
     /// the iterable is an Ident, the symbol's declared/inferred type — so
     /// `let m = new MyList(...) in for (x in m)` correctly classifies `m`
     /// as Enumerable even when `expr_type(ident_id)` is absent.
-    pub(crate) fn for_strategy(&self, iterable_node: NodeId) -> ForStrategy {
-        if let Some(ty) = self.types.expr_type(iterable_node) {
+    pub(crate) fn for_strategy(&self, iterable: &Expr) -> ForStrategy {
+        // (1) Direct `new T(...)` iterable: read the type name straight from
+        // the New expression so we don't need expr_type to have survived
+        // macro expansion / desugar's node-id refresh.
+        if let ExprKind::New {
+            type_ann: TypeAnn::Named(name),
+            ..
+        } = &iterable.kind
+        {
+            if self.resolver.type_with_name_has_method(name, "iter")
+                && !self.resolver.type_with_name_has_method(name, "next")
+            {
+                return ForStrategy::Enumerable;
+            }
+        }
+
+        // (2) Inferer-reported type for the iterable expression. Works for
+        // most user code that hasn't been through identity-changing
+        // transforms.
+        if let Some(ty) = self.types.expr_type(iterable.id) {
             if let Some(kind) = self.types.type_kind(ty) {
                 if is_enumerable_kind(kind) || user_type_is_enumerable(kind, self) {
                     return ForStrategy::Enumerable;
                 }
             }
         }
-        if let Some(symbol_id) = self.resolver.expr_symbol(iterable_node) {
+
+        // (3) Resolved-symbol type for Ident iterables — picks up
+        // `let m = new MyList(...) in for (x in m) ...` where expr_type
+        // on the Ident node is often missing.
+        if let Some(symbol_id) = self.resolver.expr_symbol(iterable.id) {
             if let Some(symbol_ty) = self.types.symbol_type(symbol_id) {
                 if let Some(kind) = self.types.type_kind(symbol_ty) {
                     if is_enumerable_kind(kind) || user_type_is_enumerable(kind, self) {
@@ -121,6 +143,7 @@ impl<'a> Desugarer<'a> {
                 }
             }
         }
+
         ForStrategy::Iterable
     }
 }

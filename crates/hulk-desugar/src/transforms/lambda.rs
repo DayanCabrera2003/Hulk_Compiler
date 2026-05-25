@@ -112,15 +112,19 @@ impl<'a> Desugarer<'a> {
             .register_type(type_name.clone(), Some(TypeId::OBJECT));
         self.generated_types.push(generated);
 
-        // Build the `new SyntheticLambda(cap1, cap2, ...)` call site.
+        // Build the `new SyntheticLambda(cap1, cap2, ...)` call site. Each
+        // ctor arg gets a freshly minted NodeId; bind it to the captured
+        // variable's resolved symbol so the BANNER lowerer (which keys
+        // Ident emissions off `expr_symbols`) can find the right local /
+        // param when the lambda is constructed.
         let ctor_args: Vec<Expr> = free
             .iter()
             .map(|v| {
-                Expr::new(
-                    ExprKind::Ident(v.name.clone()),
-                    v.span.clone(),
-                    self.node_ids.next_id(),
-                )
+                let id = self.node_ids.next_id();
+                if let Some(sym) = v.symbol_id {
+                    self.resolver.bind_expr_symbol(id, sym);
+                }
+                Expr::new(ExprKind::Ident(v.name.clone()), v.span.clone(), id)
             })
             .collect();
 
@@ -302,6 +306,7 @@ impl<'a> Desugarer<'a> {
                     name: name.clone(),
                     type_ann,
                     span: expr.span.clone(),
+                    symbol_id: Some(symbol_id),
                 });
             }
             ExprKind::BinOp { left, right, .. } => {
@@ -598,19 +603,27 @@ impl<'a> Desugarer<'a> {
     /// Returns `true` when `callee` is a bound variable or parameter — i.e. a
     /// functor-style call that should become a `.invoke(...)` method call.
     pub(crate) fn should_rewrite_functor_call(&self, callee: &Expr) -> bool {
-        let ExprKind::Ident(_) = &callee.kind else {
-            return false;
-        };
-
-        let Some(symbol_id) = self.resolver.expr_symbol(callee.id) else {
-            return false;
-        };
-
-        let Some(symbol) = self.resolver.table().get(symbol_id) else {
-            return false;
-        };
-
-        matches!(symbol.kind, SymbolKind::Variable | SymbolKind::Parameter)
+        match &callee.kind {
+            ExprKind::Ident(_) => {
+                let Some(symbol_id) = self.resolver.expr_symbol(callee.id) else {
+                    return false;
+                };
+                let Some(symbol) = self.resolver.table().get(symbol_id) else {
+                    return false;
+                };
+                matches!(symbol.kind, SymbolKind::Variable | SymbolKind::Parameter)
+            }
+            // Chained call like `scaler(2)(5)`: the result of the inner call
+            // is a functor object and the outer `(5)` invokes it. Rewrite
+            // unconditionally — if the value happens not to expose `invoke`
+            // we fail later with a clear "method 'invoke' not found" error
+            // rather than the cryptic "indirect call through non-global
+            // callee not supported".
+            ExprKind::Call { .. } | ExprKind::MethodCall { .. } | ExprKind::FieldAccess { .. } => {
+                true
+            }
+            _ => false,
+        }
     }
 }
 
@@ -621,4 +634,8 @@ struct FreeVar {
     name: String,
     type_ann: TypeAnn,
     span: Span,
+    /// Resolver SymbolId of the captured variable in the enclosing scope.
+    /// Used to bind the ctor-arg Ident's NodeId so the BANNER lowerer
+    /// resolves it to the correct local / parameter.
+    symbol_id: Option<hulk_hir::SymbolId>,
 }
