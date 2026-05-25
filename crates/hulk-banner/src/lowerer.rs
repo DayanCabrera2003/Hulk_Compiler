@@ -170,17 +170,31 @@ impl<'h> Lowerer<'h> {
                 .iter()
                 .map(|(name, _, _)| name.clone())
                 .collect();
-            let pointer_map: Vec<bool> = entry
+            let field_kinds: Vec<crate::ir::FieldKind> = entry
                 .attrs
                 .iter()
                 .map(|(_, ann, value)| {
                     if let Some(a) = ann {
-                        !Self::is_numeric_ann(a)
+                        match a {
+                            TypeAnn::Named(n) if n == "Number" => crate::ir::FieldKind::Number,
+                            TypeAnn::Named(n) if n == "Boolean" => crate::ir::FieldKind::Boolean,
+                            _ => crate::ir::FieldKind::Reference,
+                        }
                     } else {
                         let ty = self.hir.expr_type(value.id).unwrap_or(TypeId::OBJECT);
-                        Self::is_reference(ty)
+                        if ty == TypeId::NUMBER {
+                            crate::ir::FieldKind::Number
+                        } else if ty == TypeId::BOOLEAN {
+                            crate::ir::FieldKind::Boolean
+                        } else {
+                            crate::ir::FieldKind::Reference
+                        }
                     }
                 })
+                .collect();
+            let pointer_map: Vec<bool> = field_kinds
+                .iter()
+                .map(|k| matches!(k, crate::ir::FieldKind::Reference))
                 .collect();
 
             types.push(TypeDescriptor {
@@ -188,6 +202,7 @@ impl<'h> Lowerer<'h> {
                 parent: entry.parent,
                 fields,
                 pointer_map,
+                field_kinds,
                 methods,
             });
         }
@@ -386,13 +401,6 @@ impl<'h> Lowerer<'h> {
     // (strings, vectors, user types, Object) is treated as a heap pointer.
     fn is_reference(ty: TypeId) -> bool {
         ty != TypeId::NUMBER && ty != TypeId::BOOLEAN
-    }
-
-    // Returns true if the type annotation names a numeric (unboxed) type.
-    // Used to determine pointer_map for struct fields when an explicit
-    // type annotation is present.
-    fn is_numeric_ann(ann: &TypeAnn) -> bool {
-        matches!(ann, TypeAnn::Named(n) if n == "Number" || n == "Boolean")
     }
 
     // If `val` is a numeric constant or its HIR source type is Number/Boolean,

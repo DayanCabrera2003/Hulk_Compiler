@@ -2,7 +2,7 @@ mod ir;
 mod lowerer;
 mod print;
 
-pub use ir::{BannerFunction, BannerProgram, Instr, TempId, TypeDescriptor, Value};
+pub use ir::{BannerFunction, BannerProgram, FieldKind, Instr, TempId, TypeDescriptor, Value};
 
 use hulk_hir::Hir;
 

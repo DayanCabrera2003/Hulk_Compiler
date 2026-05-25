@@ -64,6 +64,7 @@ fn print_type_descriptor() {
             parent: None,
             fields: vec!["x".to_string()],
             pointer_map: vec![false],
+            field_kinds: vec![hulk_banner::FieldKind::Number],
             methods: vec![],
         }],
         functions: vec![],

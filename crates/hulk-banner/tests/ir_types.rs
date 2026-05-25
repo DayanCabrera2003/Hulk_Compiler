@@ -30,7 +30,12 @@ fn type_descriptor_fields_and_pointer_map_are_parallel() {
         parent: None,
         fields: vec!["x".to_string(), "y".to_string()],
         pointer_map: vec![false, false],
+        field_kinds: vec![
+            hulk_banner::FieldKind::Number,
+            hulk_banner::FieldKind::Number,
+        ],
         methods: vec![],
     };
     assert_eq!(td.fields.len(), td.pointer_map.len());
+    assert_eq!(td.fields.len(), td.field_kinds.len());
 }

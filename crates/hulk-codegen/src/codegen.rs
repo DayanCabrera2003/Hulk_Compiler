@@ -362,14 +362,14 @@ impl<'ctx> Codegen<'ctx> {
     }
 }
 
-/// Build a map from (type_name, field_name) → TempKind using pointer_map.
-///
-/// pointer_map[i] == false → numeric field (F64); true → reference field (Ptr).
+/// Build a map from (type_name, field_name) → TempKind using `field_kinds`.
 ///
 /// Inherited fields are registered under the subtype's name too, so `self.v`
 /// inside an override resolves to the kind declared by the ancestor that owns
 /// the field. Mirrors the parent-chain walk in `layout::collect_fields`.
 pub(crate) fn build_field_kind_map(program: &BannerProgram) -> HashMap<(String, String), TempKind> {
+    use hulk_banner::FieldKind;
+
     let by_name: HashMap<&str, &hulk_banner::TypeDescriptor> =
         program.types.iter().map(|t| (t.name.as_str(), t)).collect();
 
@@ -386,8 +386,11 @@ pub(crate) fn build_field_kind_map(program: &BannerProgram) -> HashMap<(String, 
         chain.reverse();
         for ancestor in chain {
             for (i, field_name) in ancestor.fields.iter().enumerate() {
-                let is_ptr = ancestor.pointer_map.get(i).copied().unwrap_or(true);
-                let kind = if is_ptr { TempKind::Ptr } else { TempKind::F64 };
+                let kind = match ancestor.field_kinds.get(i).copied() {
+                    Some(FieldKind::Number) => TempKind::F64,
+                    Some(FieldKind::Boolean) => TempKind::I1,
+                    _ => TempKind::Ptr,
+                };
                 map.insert((td.name.clone(), field_name.clone()), kind);
             }
         }

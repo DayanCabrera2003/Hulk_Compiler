@@ -549,6 +549,28 @@ function apply_lambda(x: Number, p: (Number) -> Number): Number => p(x);
 }
 
 #[test]
+fn test_boolean_field_printed_directly() {
+    // Regression: Boolean fields were stored in the same "non-pointer" slot
+    // as Number fields (pointer_map was Vec<bool>), so build_field_kind_map
+    // gave them TempKind::F64. A method returning the field would then print
+    // its bits reinterpreted as a double (the infamous "4.94066e-324" for
+    // `true`). TypeDescriptor now carries an explicit field_kinds vector so
+    // I1, F64 and Ptr are all distinguishable.
+    let src = r#"
+type Box(b: Boolean) {
+    b: Boolean = b;
+    get(): Boolean => self.b;
+}
+{
+    print(new Box(true).get());
+    print(new Box(false).get());
+}
+"#;
+    let out = run_source("bool_field", src).expect("bool_field");
+    assert_eq!(out.trim_end(), "true\nfalse");
+}
+
+#[test]
 fn test_user_functor_protocol_works_with_call_syntax() {
     // Regression: spec §1149 says `f(x)` desugars to `f.invoke(x)` so that
     // any user-defined functor protocol (a protocol with `invoke`) can be

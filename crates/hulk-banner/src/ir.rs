@@ -109,16 +109,32 @@ pub struct BannerFunction {
     pub body: Vec<Instr>,
 }
 
+/// LLVM-level kind of a struct field, used by the codegen to pick the right
+/// alloca/load/store width. `pointer_map` retains only the boolean "needs GC
+/// tracing?" answer; `field_kinds` carries the full distinction.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FieldKind {
+    /// Number — stored as 8-byte f64.
+    Number,
+    /// Boolean — stored as i1 (1-byte slot with the rest padded).
+    Boolean,
+    /// Reference (string, vector, user type, Object).
+    Reference,
+}
+
 /// Describes a user-defined type as needed by the codegen and GC layers.
 ///
 /// `pointer_map` has one entry per field; `true` means the field holds a
-/// heap-allocated reference that the GC must trace.
+/// heap-allocated reference that the GC must trace. `field_kinds` mirrors
+/// the same indices but carries the full LLVM kind (so Number and Boolean
+/// are not collapsed into the same "not a pointer" bucket).
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypeDescriptor {
     pub name: String,
     pub parent: Option<String>,
     pub fields: Vec<String>,
     pub pointer_map: Vec<bool>,
+    pub field_kinds: Vec<FieldKind>,
     pub methods: Vec<BannerFunction>,
 }
 
