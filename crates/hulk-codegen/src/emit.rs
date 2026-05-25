@@ -741,6 +741,25 @@ pub(crate) fn infer_temp_kinds(
                     }
                 }
             }
+            // Vector indices are always Numbers, so any temp used as an index
+            // to GetIndex/SetIndex must be F64.
+            let index_temp = match instr {
+                Instr::GetIndex {
+                    index: Value::Temp(tid),
+                    ..
+                }
+                | Instr::SetIndex {
+                    index: Value::Temp(tid),
+                    ..
+                } => Some(*tid),
+                _ => None,
+            };
+            if let Some(tid) = index_temp {
+                if kinds.get(&tid).copied() != Some(TempKind::F64) {
+                    kinds.insert(tid, TempKind::F64);
+                    changed = true;
+                }
+            }
         }
     }
 

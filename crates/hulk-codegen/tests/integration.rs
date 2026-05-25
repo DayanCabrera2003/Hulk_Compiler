@@ -372,6 +372,23 @@ let k = new Knight("Phil", "Collins") in print(k.name());
 }
 
 #[test]
+fn test_function_param_used_as_vector_index() {
+    // Regression: a `Number` function param used as a vector index used to
+    // emit "vector index must be f64" because the parameter's TempKind was
+    // never constrained to F64; only BinOp operands triggered the backward
+    // propagation. Now GetIndex/SetIndex also force the index temp to F64.
+    let src = r#"
+function cell(g: Number[], i: Number): Number => g[i];
+let v = [10, 20, 30] in {
+    print(cell(v, 0));
+    print(cell(v, 2));
+};
+"#;
+    let out = run_source("param_vec_index", src).expect("param_vec_index");
+    assert_eq!(out.trim_end(), "10\n30");
+}
+
+#[test]
 fn test_override_accesses_inherited_numeric_field() {
     // Regression: when a subtype overrode a method that read an inherited
     // Number field via `self.v`, the codegen used to type `self.v` as Ptr
