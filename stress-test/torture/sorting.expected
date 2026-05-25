@@ -1,0 +1,13 @@
+=== source ===
+5 2 8 1 9 3
+=== minimum ===
+1
+=== length ===
+6
+=== selection sort ===
+1 2 3 5 8 9
+=== insertion sort ===
+1 2 3 5 8 9
+=== empty / single ===
+[]
+7

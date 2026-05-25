@@ -1,0 +1,108 @@
+// rpn_calculator.hulk — Reverse Polish Notation evaluator using a class
+// hierarchy. Exercises: virtual dispatch, dynamic type tests (is/as),
+// deep recursion, closures-as-strategy, vector iteration, conditionals.
+//
+// Tokens are represented as a tiny class hierarchy:
+//   Token
+//   ├─ NumToken(v)
+//   └─ OpToken(op_code)   // 1 = +, 2 = -, 3 = *, 4 = /
+//
+// A program is a Number[] where each entry encodes the token via:
+//   - non-negative value → NumToken value
+//   - -1, -2, -3, -4    → OpToken (plus/minus/times/div)
+//
+// We decode at evaluation time and dispatch through the type hierarchy so
+// the evaluator only knows about the abstract `Token` interface.
+
+type Token {
+    is_num(): Boolean => false;
+    value(): Number => 0;
+    op_code(): Number => 0;
+}
+
+type NumToken(v: Number) inherits Token {
+    v: Number = v;
+    is_num(): Boolean => true;
+    value(): Number => self.v;
+}
+
+type OpToken(code: Number) inherits Token {
+    code: Number = code;
+    is_num(): Boolean => false;
+    op_code(): Number => self.code;
+}
+
+function decode(raw: Number): Token =>
+    if (raw < 0) new OpToken(0 - raw)
+    else new NumToken(raw);
+
+function apply_op(op: Number, a: Number, b: Number): Number =>
+    if (op == 1) a + b
+    elif (op == 2) a - b
+    elif (op == 3) a * b
+    else a / b;
+
+// Mini stack: store up to MAX entries in a Number[]. push/pop return new
+// stack states encoded as (data, size). Because we can't mutate vectors in
+// place we re-render on every push by allocating a fresh result vector; we
+// keep size cheap by tracking it as a separate Number.
+type Stack {
+    size: Number = 0;
+    // Three slots are enough for our test program (5 1 2 + 4 * + 3 -)
+    s0: Number = 0;
+    s1: Number = 0;
+    s2: Number = 0;
+    s3: Number = 0;
+    s4: Number = 0;
+    push(x: Number): Number => {
+        if (self.size == 0) self.s0 := x
+        elif (self.size == 1) self.s1 := x
+        elif (self.size == 2) self.s2 := x
+        elif (self.size == 3) self.s3 := x
+        else self.s4 := x;
+        self.size := self.size + 1;
+        0;
+    };
+    pop(): Number => {
+        self.size := self.size - 1;
+        if (self.size == 0) self.s0
+        elif (self.size == 1) self.s1
+        elif (self.size == 2) self.s2
+        elif (self.size == 3) self.s3
+        else self.s4;
+    };
+    top(): Number =>
+        if (self.size == 1) self.s0
+        elif (self.size == 2) self.s1
+        elif (self.size == 3) self.s2
+        elif (self.size == 4) self.s3
+        else self.s4;
+}
+
+function evaluate(program: Number[], n: Number): Number =>
+    let stack = new Stack(), i = 0 in {
+        while (i < n) {
+            let t = decode(program[i]) in
+                if (t.is_num()) stack.push(t.value())
+                else {
+                    let b = stack.pop(), a = stack.pop() in
+                        stack.push(apply_op(t.op_code(), a, b));
+                };
+            i := i + 1;
+        };
+        stack.top();
+    };
+
+{
+    // (5 1 2 + 4 * +) = 5 + (1 + 2) * 4 = 17
+    print(evaluate([5, 1, 2, 0 - 1, 4, 0 - 3, 0 - 1], 7));
+
+    // 10 6 - = 4
+    print(evaluate([10, 6, 0 - 2], 3));
+
+    // 8 4 / = 2
+    print(evaluate([8, 4, 0 - 4], 3));
+
+    // ((2 + 3) * 4 - 1) = 19
+    print(evaluate([2, 3, 0 - 1, 4, 0 - 3, 1, 0 - 2], 7));
+}

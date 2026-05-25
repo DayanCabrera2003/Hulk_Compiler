@@ -1,0 +1,62 @@
+// matrix.hulk — Matrix multiplication on row-major 1D vectors.
+// Exercises: vector literals, 2D indexing via arithmetic, triple-nested
+// loops, function parameters, conditionals, and floating-point arithmetic
+// at scale.
+
+function get(m: Number[], cols: Number, r: Number, c: Number): Number =>
+    m[r * cols + c];
+
+// Multiply an L×M matrix by an M×N matrix, producing an L×N matrix
+// returned as a flattened Number[] via a comprehension over each output
+// cell index.
+function multiply(
+    a: Number[], al: Number, am: Number,
+    b: Number[], bn: Number
+): Number[] =>
+    [
+        let r = idx / bn, c = idx % bn,
+            sum = 0, k = 0 in {
+            r := (idx - c) / bn;
+            while (k < am) {
+                sum := sum + get(a, am, r, k) * get(b, bn, k, c);
+                k := k + 1;
+            };
+            sum;
+        }
+        | idx in range(0, al * bn)
+    ];
+
+function print_matrix(m: Number[], rows: Number, cols: Number) {
+    for (r in range(0, rows)) {
+        let line = "" in {
+            for (c in range(0, cols)) {
+                if (c > 0) line := line @@ "";
+                line := line @ get(m, cols, r, c) @ " ";
+            };
+            print(line);
+        };
+    };
+}
+
+{
+    // 2x3 times 3x2 -> 2x2
+    let a = [1, 2, 3,
+             4, 5, 6] in
+    let b = [7,  8,
+             9,  10,
+             11, 12] in {
+        print("=== A * B ===");
+        let c = multiply(a, 2, 3, b, 2) in print_matrix(c, 2, 2);
+    };
+
+    // 3x3 identity times a small matrix.
+    let id = [1, 0, 0,
+              0, 1, 0,
+              0, 0, 1] in
+    let m = [2, 4, 6,
+             1, 3, 5,
+             0, 7, 8] in {
+        print("=== I * M ===");
+        let c = multiply(id, 3, 3, m, 3) in print_matrix(c, 3, 3);
+    };
+}

@@ -1,0 +1,83 @@
+// sorting.hulk — Bubble sort + selection sort over an immutable linked list.
+// Exercises: recursive types with virtual dispatch, polymorphic Sortable
+// protocol, recursive list constructors / pretty-printing, multiple inheritance
+// chains, string concatenation, comparisons.
+//
+// Because HULK currently has no in-place vector mutation, the "sort" returns
+// a new sorted list each time instead of swapping elements.
+
+type List(v: Number) {
+    v: Number = v;
+    is_empty(): Boolean => true;
+    head(): Number => self.v;
+    tail(): List => self;
+    length(): Number => 0;
+    show(): String => "[]";
+    minimum(): Number => 1000000;
+}
+
+type Cons(v: Number, nxt: List) inherits List(v) {
+    nxt: List = nxt;
+    is_empty(): Boolean => false;
+    tail(): List => self.nxt;
+    length(): Number => 1 + self.nxt.length();
+    show(): String =>
+        if (self.nxt.is_empty()) "" @ self.v
+        else self.v @ " " @ self.nxt.show();
+    minimum(): Number =>
+        if (self.nxt.is_empty()) self.v
+        else
+            let m = self.nxt.minimum() in
+                if (self.v < m) self.v else m;
+}
+
+function empty(): List => new List(0);
+function cons(v: Number, t: List): List => new Cons(v, t);
+
+// Build a list directly: cons(a, cons(b, cons(c, empty()))).
+function l1(): List => cons(5, cons(2, cons(8, cons(1, cons(9, cons(3, empty()))))));
+
+// Remove the first occurrence of `target` from `xs`.
+function remove_first(xs: List, target: Number): List =>
+    if (xs.is_empty()) xs
+    elif (xs.head() == target) xs.tail()
+    else cons(xs.head(), remove_first(xs.tail(), target));
+
+// Selection sort: pull the minimum each iteration and recurse on the rest.
+function selection_sort(xs: List): List =>
+    if (xs.is_empty()) xs
+    else
+        let m = xs.minimum() in
+            cons(m, selection_sort(remove_first(xs, m)));
+
+// Insert `n` into a sorted list, preserving order.
+function insert_sorted(n: Number, xs: List): List =>
+    if (xs.is_empty()) cons(n, xs)
+    elif (n <= xs.head()) cons(n, xs)
+    else cons(xs.head(), insert_sorted(n, xs.tail()));
+
+// Insertion sort: insert each head into the sorted tail.
+function insertion_sort(xs: List): List =>
+    if (xs.is_empty()) xs
+    else insert_sorted(xs.head(), insertion_sort(xs.tail()));
+
+{
+    print("=== source ===");
+    print(l1().show());
+
+    print("=== minimum ===");
+    print(l1().minimum());
+
+    print("=== length ===");
+    print(l1().length());
+
+    print("=== selection sort ===");
+    print(selection_sort(l1()).show());
+
+    print("=== insertion sort ===");
+    print(insertion_sort(l1()).show());
+
+    print("=== empty / single ===");
+    print(selection_sort(empty()).show());
+    print(insertion_sort(cons(7, empty())).show());
+}

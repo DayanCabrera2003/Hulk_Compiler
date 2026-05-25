@@ -784,6 +784,21 @@ fn test_gc_tree_walk() {
 }
 
 #[test]
+fn test_torture_sorting() {
+    assert_program_matches_expected("stress-test/torture/sorting.hulk", "torture_sorting");
+}
+
+#[test]
+fn test_torture_rpn_calculator() {
+    assert_program_matches_expected("stress-test/torture/rpn_calculator.hulk", "torture_rpn");
+}
+
+#[test]
+fn test_torture_matrix_multiply() {
+    assert_program_matches_expected("stress-test/torture/matrix.hulk", "torture_matrix");
+}
+
+#[test]
 #[ignore = "debug-only: dumps IR/BANNER for manual inspection, run with `cargo test -- --ignored --nocapture`"]
 fn test_debug_ir_class_simple() {
     let src = r#"
