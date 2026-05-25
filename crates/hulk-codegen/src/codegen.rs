@@ -283,11 +283,10 @@ impl<'ctx> Codegen<'ctx> {
                     let ret_kind = infer_return_kind(&method.body, &kinds);
                     fn_return_kinds.insert(method.name.clone(), ret_kind);
                     let short = method.name.split('.').next_back().unwrap_or(&method.name);
-                    // Prefer a concrete F64/I1 over Ptr when the same method
-                    // name is declared on multiple types. The vtable call site
-                    // only has the short name to look up, so resolving to Ptr
-                    // when an override actually returns a number would reinterpret
-                    // the returned bits as a pointer and produce garbage.
+                    // Short-name entry is the fallback when the call site has
+                    // no static receiver type. Prefer a concrete F64/I1 over
+                    // Ptr when conflicting overloads register the same short
+                    // name, so a covariant-return chain doesn't degrade to Ptr.
                     match fn_return_kinds.get(short) {
                         None => {
                             fn_return_kinds.insert(short.to_string(), ret_kind);
@@ -311,6 +310,16 @@ impl<'ctx> Codegen<'ctx> {
                 fn_return_kinds.insert(func.name.clone(), ret_kind);
             }
         }
+
+        // Hierarchy unification: HULK's spec requires covariant return types
+        // (Hulk.md §919), so every override of a method declared on a base
+        // type returns the same (or descendant) value. If body inference
+        // produced Ptr for one type's method but F64/I1 for an ancestor's or
+        // descendant's same-named method, propagate the concrete kind through
+        // the whole chain so vtable indirect calls receive the right LLVM
+        // signature regardless of which type's method actually dispatches.
+        unify_method_kinds_across_hierarchy(program, &mut fn_return_kinds);
+
         self.fn_return_kinds = fn_return_kinds.clone();
 
         // Declare methods: all-ptr params, typed return.
@@ -477,4 +486,123 @@ pub(crate) fn infer_fn_return_structs(program: &BannerProgram) -> HashMap<String
         }
     }
     map
+}
+
+/// Propagate the most-concrete return TempKind across every type that owns
+/// (directly or by inheritance) the same short method name.
+///
+/// The vtable for a subtype shares a slot index per short method name with
+/// the rest of the hierarchy. An indirect call reconstructs its LLVM signature
+/// from `fn_return_kinds`; if one type's qualified entry is Ptr (because
+/// its body simply returns a param the inferer never typed) but a covariant
+/// override returns Number/Boolean, callers that pick the Ptr entry would
+/// reinterpret the f64/i1 bits as a pointer. Unify both directions so any
+/// qualified or short-name lookup converges on the same kind.
+pub(crate) fn unify_method_kinds_across_hierarchy(
+    program: &BannerProgram,
+    fn_return_kinds: &mut HashMap<String, TempKind>,
+) {
+    use std::collections::BTreeSet;
+
+    let by_name: HashMap<&str, &hulk_banner::TypeDescriptor> =
+        program.types.iter().map(|t| (t.name.as_str(), t)).collect();
+
+    // For each type, collect all ancestor names (including itself) ordered
+    // from the type down to the root. The vtable for each type uses methods
+    // sourced from this chain.
+    let chains: HashMap<&str, Vec<&str>> = program
+        .types
+        .iter()
+        .map(|td| {
+            let mut chain: Vec<&str> = Vec::new();
+            let mut current = Some(td);
+            while let Some(t) = current {
+                chain.push(t.name.as_str());
+                current = t.parent.as_deref().and_then(|p| by_name.get(p).copied());
+            }
+            (td.name.as_str(), chain)
+        })
+        .collect();
+
+    // Collect every short method name in the program.
+    let mut short_names: BTreeSet<String> = BTreeSet::new();
+    for td in &program.types {
+        for method in &td.methods {
+            let s = method
+                .name
+                .split('.')
+                .next_back()
+                .unwrap_or(&method.name)
+                .to_string();
+            short_names.insert(s);
+        }
+    }
+
+    // Iterate to a fixed point so transitively-related types converge.
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for short in &short_names {
+            // Build connected components: two types are connected when they
+            // share an inheritance chain that contains this method short
+            // name. Pick the most concrete kind in each component and rewrite
+            // every qualified entry in that component to use it.
+            let mut groups: Vec<Vec<&str>> = Vec::new();
+            for td in &program.types {
+                let chain = chains
+                    .get(td.name.as_str())
+                    .map(Vec::as_slice)
+                    .unwrap_or(&[]);
+                let mut owning: Vec<&str> = chain
+                    .iter()
+                    .copied()
+                    .filter(|t| {
+                        let qualified = format!("{t}.{short}");
+                        fn_return_kinds.contains_key(&qualified)
+                    })
+                    .collect();
+                if owning.is_empty() {
+                    continue;
+                }
+                // Merge with any existing group that already mentions one of these names.
+                if let Some(existing) = groups
+                    .iter_mut()
+                    .find(|g| owning.iter().any(|n| g.contains(n)))
+                {
+                    for n in owning.drain(..) {
+                        if !existing.contains(&n) {
+                            existing.push(n);
+                        }
+                    }
+                } else {
+                    groups.push(owning);
+                }
+            }
+
+            for group in groups {
+                let best = group
+                    .iter()
+                    .filter_map(|t| fn_return_kinds.get(&format!("{t}.{short}")).copied())
+                    .fold(TempKind::Ptr, |acc, k| match (acc, k) {
+                        (TempKind::Ptr, other) => other,
+                        (other, TempKind::Ptr) => other,
+                        (a, _) => a,
+                    });
+                if best == TempKind::Ptr {
+                    continue;
+                }
+                for t in &group {
+                    let qualified = format!("{t}.{short}");
+                    if fn_return_kinds.get(&qualified).copied() != Some(best) {
+                        fn_return_kinds.insert(qualified, best);
+                        changed = true;
+                    }
+                }
+                if fn_return_kinds.get(short).copied() != Some(best) {
+                    fn_return_kinds.insert(short.clone(), best);
+                    changed = true;
+                }
+            }
+        }
+    }
 }

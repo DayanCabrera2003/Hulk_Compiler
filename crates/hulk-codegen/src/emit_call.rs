@@ -140,11 +140,19 @@ impl<'ctx> Codegen<'ctx> {
             llvm_args.push(coerce_val_to_param(v, Some(ptr_ty.into()), self)?);
         }
 
-        // Determine the return type from fn_return_kinds (typed return for numeric methods).
-        let ret_kind = self
-            .fn_return_kinds
-            .get(method)
-            .copied()
+        // Determine the return type from fn_return_kinds. Prefer the
+        // qualified `<TypeName>.<method>` entry when the receiver's static
+        // type is known, so two different methods sharing the same short
+        // name (e.g. a user protocol's `invoke` returning a struct vs a
+        // lambda's synthesised `invoke` returning Boolean) don't collide.
+        let recv_type_name: Option<String> = match receiver {
+            Value::Temp(tid) => self.temp_type_names.get(tid).cloned(),
+            _ => None,
+        };
+        let ret_kind = recv_type_name
+            .as_ref()
+            .and_then(|tn| self.fn_return_kinds.get(&format!("{tn}.{method}")).copied())
+            .or_else(|| self.fn_return_kinds.get(method).copied())
             .unwrap_or(TempKind::Ptr);
         let n_params = llvm_args.len();
         let params: Vec<_> = (0..n_params).map(|_| ptr_ty.into()).collect();
@@ -158,7 +166,15 @@ impl<'ctx> Codegen<'ctx> {
             self.builder
                 .build_indirect_call(fn_ty, method_fn_ptr, &llvm_args, "vcall")?;
         let result = extract_call_result(call_site);
-        if let Some(struct_name) = self.fn_return_struct.get(method).cloned() {
+        let struct_hint = recv_type_name
+            .as_ref()
+            .and_then(|tn| {
+                self.fn_return_struct
+                    .get(&format!("{tn}.{method}"))
+                    .cloned()
+            })
+            .or_else(|| self.fn_return_struct.get(method).cloned());
+        if let Some(struct_name) = struct_hint {
             self.temp_type_names.insert(dst, struct_name);
         }
         self.store_temp(dst, result)

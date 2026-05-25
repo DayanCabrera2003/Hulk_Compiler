@@ -72,7 +72,7 @@ fn lowers_lambda_into_synthetic_type_and_new() {
     assert_eq!(generated.members.len(), 1);
     match &generated.members[0].kind {
         MemberKind::Method(method) => {
-            assert_eq!(method.name, "__invoke");
+            assert_eq!(method.name, "invoke");
             assert_eq!(method.params.len(), 1);
             assert_eq!(method.params[0].name, "x");
             assert!(matches!(
@@ -160,7 +160,7 @@ fn wraps_function_arguments_with_synthetic_wrapper_type() {
 
     match &wrapper.members[0].kind {
         MemberKind::Method(method) => {
-            assert_eq!(method.name, "__invoke");
+            assert_eq!(method.name, "invoke");
             assert_eq!(method.params.len(), 1);
             assert_eq!(method.params[0].name, "__arg_0");
             assert!(matches!(
@@ -239,7 +239,7 @@ fn rewrites_functor_style_call_to_invoke_method_call() {
             ref receiver,
             ..
         }
-            if method == "__invoke"
+            if method == "invoke"
                 && matches!(receiver.kind, ExprKind::Ident(ref name) if name == "filter")
     ));
 }

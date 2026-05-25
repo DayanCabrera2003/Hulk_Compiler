@@ -522,12 +522,14 @@ function mk(x: Number): Pair => new Pair(x, x * 2);
 
 #[test]
 fn test_protocol_invoke_coexists_with_lambda() {
-    // Regression: lambdas were lowered to a synthetic type with a method
-    // literally named `invoke`. When a user protocol also declared
-    // `invoke(...)`, both methods landed in the same global vtable slot and
-    // the program segfaulted as soon as the lambda was used. The synthetic
-    // method is now named `__invoke` (a name no HULK identifier can take)
-    // so the two namespaces stay isolated.
+    // Regression: when a user protocol declared `invoke(...)` and the same
+    // program also used a lambda (which lowers to a synthetic functor with
+    // its own `invoke`), the global return-kind table mixed the two kinds
+    // and indirect calls dispatched to the right function but interpreted
+    // the bits with the wrong LLVM signature. Method calls now look up
+    // `<TypeName>.<method>` first so the user-defined `invoke` and the
+    // synthetic lambda's `invoke` resolve independently when the receiver's
+    // static type is known.
     let src = r#"
 protocol Parser {
     invoke(x: Number): Number;
@@ -544,6 +546,32 @@ function apply_lambda(x: Number, p: (Number) -> Number): Number => p(x);
 "#;
     let out = run_source("invoke_lambda_coexist", src).expect("invoke_lambda_coexist");
     assert_eq!(out.trim_end(), "15\n21");
+}
+
+#[test]
+fn test_user_functor_protocol_works_with_call_syntax() {
+    // Regression: spec §1149 says `f(x)` desugars to `f.invoke(x)` so that
+    // any user-defined functor protocol (a protocol with `invoke`) can be
+    // used with call syntax. An earlier attempt to fix the lambda/protocol
+    // collision renamed the synthetic invoke to `__invoke`, which broke
+    // every user-defined functor since they had no `__invoke`.
+    let src = r#"
+protocol Filter {
+    invoke(x: Number): Boolean;
+}
+type IsOdd {
+    invoke(x: Number): Boolean => x % 2 == 1;
+}
+function count_if(n: Number, f: Filter): Number =>
+    let total = 0 in {
+        for (i in range(0, n))
+            if (f(i)) total := total + 1;
+        total;
+    };
+print(count_if(10, new IsOdd()));
+"#;
+    let out = run_source("user_functor", src).expect("user_functor");
+    assert_eq!(out.trim_end(), "5");
 }
 
 #[test]

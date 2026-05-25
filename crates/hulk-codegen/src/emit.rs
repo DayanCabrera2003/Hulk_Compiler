@@ -306,7 +306,7 @@ impl<'ctx> Codegen<'ctx> {
             Instr::Label(name) => self.emit_label(name),
             Instr::Jump(label) => self.emit_jump(label),
             Instr::JumpIf { condition, label } => self.emit_jumpif(condition, label, fv),
-            Instr::Return(val) => self.emit_return(val, is_main),
+            Instr::Return(val) => self.emit_return_for_fn(val, fv, is_main),
             Instr::ShadowPush(val) => self.emit_shadow_push(val),
             Instr::ShadowPop => self.emit_shadow_pop(),
             Instr::Alloc { dst, type_name } => self.emit_alloc(*dst, type_name),
@@ -366,7 +366,12 @@ impl<'ctx> Codegen<'ctx> {
         Ok(())
     }
 
-    fn emit_return(&mut self, val: &Value, is_main: bool) -> CodegenResult<()> {
+    fn emit_return_for_fn(
+        &mut self,
+        val: &Value,
+        fv: FunctionValue<'ctx>,
+        is_main: bool,
+    ) -> CodegenResult<()> {
         if is_main {
             // HULK main always exits with status 0.
             let zero = self.ctx.i32_type().const_int(0, false);
@@ -379,19 +384,30 @@ impl<'ctx> Codegen<'ctx> {
             return Ok(());
         }
         let llvm_val = self.load_val(val)?;
-        match llvm_val {
-            LlvmVal::Void => {
-                let null = self.ptr_type().const_null();
-                self.builder.build_return(Some(&null))?;
+        // The body's inferred kind for `val` may not match the function's
+        // declared return type — for instance after method-kind unification
+        // promotes Many.combine from Ptr to F64 even though the body just
+        // returns a Ptr-typed param. Coerce to the declared type so the
+        // LLVM `ret` instruction always matches the function signature.
+        let ret_ty = fv.get_type().get_return_type();
+        let coerced = match (&llvm_val, ret_ty) {
+            (LlvmVal::Void, _) => LlvmVal::Ptr(self.ptr_type().const_null()),
+            (other, Some(target)) if target.is_float_type() => {
+                LlvmVal::Float(self.coerce_to_f64(other.clone())?)
             }
-            other => {
-                if let Some(bv) = other.as_basic() {
-                    self.builder.build_return(Some(&bv))?;
-                } else {
-                    let null = self.ptr_type().const_null();
-                    self.builder.build_return(Some(&null))?;
-                }
+            (other, Some(target)) if target.is_int_type() => {
+                LlvmVal::Int(self.coerce_to_bool(other.clone())?)
             }
+            (other, Some(target)) if target.is_pointer_type() => {
+                LlvmVal::Ptr(self.coerce_to_ptr(other.clone())?)
+            }
+            (other, _) => other.clone(),
+        };
+        if let Some(bv) = coerced.as_basic() {
+            self.builder.build_return(Some(&bv))?;
+        } else {
+            let null = self.ptr_type().const_null();
+            self.builder.build_return(Some(&null))?;
         }
         Ok(())
     }
@@ -517,6 +533,33 @@ impl<'ctx> Codegen<'ctx> {
                 .build_is_not_null(p, "bool_cast")
                 .unwrap_or_else(|_| self.ctx.bool_type().const_int(1, false))),
             LlvmVal::Void => Ok(self.ctx.bool_type().const_int(0, false)),
+        }
+    }
+
+    /// Convert an `LlvmVal` to an `f64`, bitcasting opaque pointer bits when
+    /// the source already holds a numeric value packed as a pointer (the
+    /// usual case after a hierarchy-unified method return).
+    pub(crate) fn coerce_to_f64(
+        &mut self,
+        val: LlvmVal<'ctx>,
+    ) -> CodegenResult<inkwell::values::FloatValue<'ctx>> {
+        match val {
+            LlvmVal::Float(f) => Ok(f),
+            LlvmVal::Int(i) => {
+                Ok(self
+                    .builder
+                    .build_unsigned_int_to_float(i, self.ctx.f64_type(), "btof")?)
+            }
+            LlvmVal::Ptr(p) => {
+                let bits = self
+                    .builder
+                    .build_ptr_to_int(p, self.ctx.i64_type(), "ptr_bits")?;
+                Ok(self
+                    .builder
+                    .build_bitcast(bits, self.ctx.f64_type(), "bits_to_f64")?
+                    .into_float_value())
+            }
+            LlvmVal::Void => Ok(self.ctx.f64_type().const_float(0.0)),
         }
     }
 
@@ -709,10 +752,23 @@ pub(crate) fn infer_temp_kinds(
                     };
                     kinds.entry(*dst).or_insert(k);
                 }
-                Instr::MethodCall { dst, method, .. } => {
-                    let k = fn_return_kinds
-                        .get(method.as_str())
-                        .copied()
+                Instr::MethodCall {
+                    dst,
+                    receiver,
+                    method,
+                    ..
+                } => {
+                    // Prefer the qualified `<TypeName>.<method>` entry when
+                    // the receiver's static struct is known, so methods that
+                    // share a short name across different types don't clobber
+                    // each other's typed return kind.
+                    let recv_type = match receiver {
+                        Value::Temp(tid) => temp_structs.get(tid).map(String::as_str),
+                        _ => None,
+                    };
+                    let k = recv_type
+                        .and_then(|tn| fn_return_kinds.get(&format!("{tn}.{method}")).copied())
+                        .or_else(|| fn_return_kinds.get(method.as_str()).copied())
                         .unwrap_or(TempKind::Ptr);
                     kinds.entry(*dst).or_insert(k);
                 }

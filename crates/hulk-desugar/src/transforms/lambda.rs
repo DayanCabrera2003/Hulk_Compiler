@@ -89,7 +89,7 @@ impl<'a> Desugarer<'a> {
             .collect();
 
         let invoke_method = FunctionDecl {
-            name: "__invoke".to_owned(),
+            name: "invoke".to_owned(),
             params,
             return_type,
             body: rewritten_body,
@@ -229,7 +229,7 @@ impl<'a> Desugarer<'a> {
         span: Span,
     ) {
         let invoke_method = FunctionDecl {
-            name: "__invoke".to_owned(),
+            name: "invoke".to_owned(),
             params,
             return_type,
             body,

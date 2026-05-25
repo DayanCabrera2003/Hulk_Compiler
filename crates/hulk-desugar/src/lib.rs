@@ -151,7 +151,7 @@ impl<'a> Desugarer<'a> {
                     Expr::new(
                         ExprKind::MethodCall {
                             receiver: Box::new(callee_expr),
-                            method: "__invoke".to_owned(),
+                            method: "invoke".to_owned(),
                             args: lowered_args,
                         },
                         span,
