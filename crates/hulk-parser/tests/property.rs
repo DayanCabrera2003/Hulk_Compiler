@@ -13,7 +13,7 @@ use hulk_ast::ExprKind;
 use hulk_diagnostics::DiagnosticBag;
 use hulk_lexer::lex;
 use hulk_parser::parse;
-use hulk_tokens::SourceFile;
+use hulk_tokens::{keyword_token, SourceFile};
 use proptest::prelude::*;
 
 // ---------------------------------------------------------------------------
@@ -154,10 +154,14 @@ proptest! {
     fn identifier_program_always_parses(
         name in "[a-zA-Z][a-zA-Z0-9]{0,10}"
     ) {
+        // Skip generated names that collide with HULK keywords; those are not
+        // valid identifiers and parse as the corresponding keyword token, which
+        // breaks the single-identifier expression assumption.
+        prop_assume!(keyword_token(&name).is_none());
+
         let src = format!("{name};");
         let (program, bag) = lex_and_parse(&src);
         prop_assert!(bag.is_empty(), "bag no vacío para {src:?}");
-        // El body puede ser Ident o un keyword reconocido (ej si se generó `if`).
         let _ = &program.body;
     }
 }
