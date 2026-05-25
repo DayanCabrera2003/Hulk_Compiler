@@ -83,6 +83,18 @@ pub(crate) fn merge_diagnostics(target: &mut DiagnosticBag, source: &DiagnosticB
 }
 
 pub(crate) fn infer_program(program: &Program, inferer: &mut TypeInferer<'_>) {
+    // Pre-register every user-defined type and protocol in the TypeEnv so
+    // that infer_new and infer_type_ann can resolve names to real TypeIds.
+    // Without this they all collapse to Object and downstream consumers (the
+    // for-loop strategy chooser, field-kind inference, etc.) lose track of
+    // the actual type shape.
+    for type_decl in &program.types {
+        inferer.register_user_type(&type_decl.name);
+    }
+    for protocol in &program.protocols {
+        inferer.register_protocol(&protocol.name);
+    }
+
     for function in &program.functions {
         inferer.register_function_params_by_name(&function.name);
         inferer.infer_expr(&function.body);

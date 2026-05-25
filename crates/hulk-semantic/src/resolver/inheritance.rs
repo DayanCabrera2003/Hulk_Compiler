@@ -72,6 +72,17 @@ impl Resolver {
         }
     }
 
+    /// Returns true if the type named `type_name` (or any of its ancestors)
+    /// declares a method called `method_name`. Convenience wrapper around
+    /// `type_has_method` for callers that only know the type name string.
+    #[must_use]
+    pub fn type_with_name_has_method(&self, type_name: &str, method_name: &str) -> bool {
+        let Some(symbol_id) = self.lookup(type_name) else {
+            return false;
+        };
+        self.type_has_method(symbol_id, method_name)
+    }
+
     pub(crate) fn type_has_method(&self, type_id: SymbolId, method_name: &str) -> bool {
         if self
             .type_methods

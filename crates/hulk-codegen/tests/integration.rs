@@ -549,6 +549,28 @@ function apply_lambda(x: Number, p: (Number) -> Number): Number => p(x);
 }
 
 #[test]
+fn test_for_over_user_type_with_iter() {
+    // Regression: per Hulk.md §1130, a user type with an iter() method that
+    // returns an Iterable should drive the Enumerable path of the for loop.
+    // Previously the inferer left the iterable's symbol type as Object so
+    // the desugarer fell back to the Iterable path, called next() on the
+    // user type itself (which has no next), and segfaulted via a null vtable
+    // slot. The inferer now registers user types and protocols up-front,
+    // infer_new returns the real TypeId, and the for-loop strategy chooser
+    // additionally consults the receiver's symbol type and a "has iter()"
+    // heuristic so the protocol-extension case is detected.
+    let src = r#"
+type MyList(n: Number) {
+    n: Number = n;
+    iter(): Iterable => new Range(0, self.n);
+}
+let m = new MyList(4) in for (x in m) print(x);
+"#;
+    let out = run_source("for_user_iter", src).expect("for_user_iter");
+    assert_eq!(out.trim_end(), "0\n1\n2\n3");
+}
+
+#[test]
 fn test_vector_size_method() {
     // Regression: Hulk.md §1072 says vectors expose a `size(): Number`
     // method, but the runtime had no `__vec_size` symbol so any `v.size()`

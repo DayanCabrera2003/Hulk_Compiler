@@ -20,6 +20,20 @@ pub(crate) fn is_enumerable_kind(kind: &TypeKind) -> bool {
     }
 }
 
+/// Heuristically classify a user-defined type as Enumerable when it owns
+/// an `iter()` method (per Hulk.md §1130), regardless of whether it
+/// explicitly extends the Enumerable protocol.
+pub(crate) fn user_type_is_enumerable(kind: &TypeKind, desugarer: &Desugarer<'_>) -> bool {
+    if let TypeKind::UserDefined { name, .. } = kind {
+        if desugarer.resolver.type_with_name_has_method(name, "iter")
+            && !desugarer.resolver.type_with_name_has_method(name, "next")
+        {
+            return true;
+        }
+    }
+    false
+}
+
 impl<'a> Desugarer<'a> {
     /// Lowers `for (binding in iterable) body` into the explicit `let` +
     /// `while` shape dictated by the iteration protocol.
@@ -86,20 +100,27 @@ impl<'a> Desugarer<'a> {
 
     /// Picks the appropriate [`ForStrategy`] for an iterable expression,
     /// falling back to [`ForStrategy::Iterable`] when type information is
-    /// unavailable.
+    /// unavailable. Considers both the inferer's reported type AND, when
+    /// the iterable is an Ident, the symbol's declared/inferred type — so
+    /// `let m = new MyList(...) in for (x in m)` correctly classifies `m`
+    /// as Enumerable even when `expr_type(ident_id)` is absent.
     pub(crate) fn for_strategy(&self, iterable_node: NodeId) -> ForStrategy {
-        let Some(ty) = self.types.expr_type(iterable_node) else {
-            return ForStrategy::Iterable;
-        };
-
-        let Some(kind) = self.types.type_kind(ty) else {
-            return ForStrategy::Iterable;
-        };
-
-        if is_enumerable_kind(kind) {
-            ForStrategy::Enumerable
-        } else {
-            ForStrategy::Iterable
+        if let Some(ty) = self.types.expr_type(iterable_node) {
+            if let Some(kind) = self.types.type_kind(ty) {
+                if is_enumerable_kind(kind) || user_type_is_enumerable(kind, self) {
+                    return ForStrategy::Enumerable;
+                }
+            }
         }
+        if let Some(symbol_id) = self.resolver.expr_symbol(iterable_node) {
+            if let Some(symbol_ty) = self.types.symbol_type(symbol_id) {
+                if let Some(kind) = self.types.type_kind(symbol_ty) {
+                    if is_enumerable_kind(kind) || user_type_is_enumerable(kind, self) {
+                        return ForStrategy::Enumerable;
+                    }
+                }
+            }
+        }
+        ForStrategy::Iterable
     }
 }

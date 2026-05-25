@@ -30,6 +30,22 @@ impl<'a> TypeInferer<'a> {
         self.register_function_params(fn_id);
     }
 
+    /// Register a user-defined type by name (idempotent). No-op when the
+    /// type is already in the env so the driver can call this freely on
+    /// every program type.
+    pub fn register_user_type(&mut self, name: &str) {
+        if self.env.type_id_by_name(name).is_none() {
+            self.env.register_type(name.to_owned(), None);
+        }
+    }
+
+    /// Register a protocol type by name (idempotent).
+    pub fn register_protocol(&mut self, name: &str) {
+        if self.env.type_id_by_name(name).is_none() {
+            self.env.register_protocol(name.to_owned());
+        }
+    }
+
     /// Same as [`register_function_params_by_name`] but takes a SymbolId.
     pub fn register_function_params(&mut self, function_id: SymbolId) {
         let syms = self
@@ -390,8 +406,12 @@ impl<'a> TypeInferer<'a> {
             .unwrap_or(TypeId::OBJECT)
     }
 
-    fn infer_new(&mut self, _expr: &Expr, _type_ann: &hulk_ast::TypeAnn) -> TypeId {
-        // For now, return Object; in 7.3, resolve the type annotation
+    fn infer_new(&mut self, _expr: &Expr, type_ann: &hulk_ast::TypeAnn) -> TypeId {
+        if let hulk_ast::TypeAnn::Named(name) = type_ann {
+            if let Some(id) = self.env.type_id_by_name(name) {
+                return id;
+            }
+        }
         TypeId::OBJECT
     }
 

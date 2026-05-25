@@ -156,6 +156,15 @@ fn run_middleend(hir: Hir, bag: &mut DiagnosticBag) -> Result<Hir, Vec<Diagnosti
 
 /// Runs the type inferer over all declarations and the program body.
 fn infer_all(program: &Program, inferer: &mut TypeInferer<'_>) {
+    // Pre-register user-defined types and protocols so infer_new can
+    // resolve names to real TypeIds rather than collapsing to Object.
+    for type_decl in &program.types {
+        inferer.register_user_type(&type_decl.name);
+    }
+    for protocol in &program.protocols {
+        inferer.register_protocol(&protocol.name);
+    }
+
     for function in &program.functions {
         // Register the function's param types from the declared annotations
         // so the body's Ident lookups see Number/String/Boolean instead of

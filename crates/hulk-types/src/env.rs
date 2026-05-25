@@ -41,6 +41,36 @@ impl TypeEnv {
         self.types.push(TypeKind::Builtin(BuiltinType::Boolean));
     }
 
+    /// Look up the `TypeId` of a registered type (user-defined or protocol)
+    /// by name. Returns `None` when no entry matches.
+    #[must_use]
+    pub fn type_id_by_name(&self, name: &str) -> Option<TypeId> {
+        // Iterate the explicit type table.
+        for (idx, kind) in self.types.iter().enumerate() {
+            match kind {
+                TypeKind::UserDefined { name: n, .. } | TypeKind::Protocol { name: n }
+                    if n == name =>
+                {
+                    return Some(TypeId(idx as u32));
+                }
+                TypeKind::Builtin(BuiltinType::Number) if name == "Number" => {
+                    return Some(TypeId(idx as u32));
+                }
+                TypeKind::Builtin(BuiltinType::String) if name == "String" => {
+                    return Some(TypeId(idx as u32));
+                }
+                TypeKind::Builtin(BuiltinType::Boolean) if name == "Boolean" => {
+                    return Some(TypeId(idx as u32));
+                }
+                TypeKind::Builtin(BuiltinType::Object) if name == "Object" => {
+                    return Some(TypeId(idx as u32));
+                }
+                _ => {}
+            }
+        }
+        None
+    }
+
     /// Register a new user-defined type in the environment.
     pub fn register_type(&mut self, name: String, parent: Option<TypeId>) -> TypeId {
         let id = TypeId(self.types.len() as u32);
