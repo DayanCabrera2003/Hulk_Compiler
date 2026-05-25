@@ -244,9 +244,9 @@ impl<'ctx> Codegen<'ctx> {
     ) -> CodegenResult<BasicMetadataValueEnum<'ctx>> {
         match val {
             LlvmVal::Float(f) => {
-                let call = self
-                    .builder
-                    .build_call(self.rt.hulk_number_to_string, &[f.into()], "ntos")?;
+                let call =
+                    self.builder
+                        .build_call(self.rt.hulk_number_to_string, &[f.into()], "ntos")?;
                 let ptr = call
                     .try_as_basic_value()
                     .left()
@@ -261,9 +261,9 @@ impl<'ctx> Codegen<'ctx> {
                 let f = self
                     .builder
                     .build_unsigned_int_to_float(i, self.ctx.f64_type(), "btof")?;
-                let call = self
-                    .builder
-                    .build_call(self.rt.hulk_number_to_string, &[f.into()], "ntos")?;
+                let call =
+                    self.builder
+                        .build_call(self.rt.hulk_number_to_string, &[f.into()], "ntos")?;
                 let ptr = call
                     .try_as_basic_value()
                     .left()

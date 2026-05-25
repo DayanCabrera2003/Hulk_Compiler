@@ -78,14 +78,18 @@ impl Resolver {
     /// or None if the function symbol is unknown.
     #[must_use]
     pub fn function_param_symbols(&self, function: SymbolId) -> Option<&[SymbolId]> {
-        self.function_param_symbols.get(&function).map(|v| v.as_slice())
+        self.function_param_symbols
+            .get(&function)
+            .map(|v| v.as_slice())
     }
 
     /// Returns the param annotations of a function (in declaration order),
     /// or None if the function symbol is unknown.
     #[must_use]
     pub fn function_param_annotations(&self, function: SymbolId) -> Option<&[Option<TypeAnn>]> {
-        self.function_param_annotations.get(&function).map(|v| v.as_slice())
+        self.function_param_annotations
+            .get(&function)
+            .map(|v| v.as_slice())
     }
 
     /// Returns true when an expression node has an associated symbol.

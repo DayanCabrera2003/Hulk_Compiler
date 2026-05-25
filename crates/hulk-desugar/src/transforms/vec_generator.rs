@@ -28,11 +28,7 @@ impl<'a> Desugarer<'a> {
 
         // __vec_new(0): initial capacity 0 — the runtime grows the buffer as
         // __vec_push appends elements.
-        let zero = Expr::new(
-            ExprKind::Number(0.0),
-            span.clone(),
-            self.node_ids.next_id(),
-        );
+        let zero = Expr::new(ExprKind::Number(0.0), span.clone(), self.node_ids.next_id());
         let vec_new = Expr::new(
             ExprKind::Call {
                 callee: Box::new(self.ident("__vec_new", &span)),
