@@ -1,0 +1,28 @@
+// allocs_many.hulk — GC stress: allocate 10000 short-lived Box objects in a
+// loop and only keep references to a few. Verifies that the mark-and-sweep
+// collector reclaims dead heap memory under sustained allocation pressure
+// without aborting or corrupting the survivors.
+
+type Box(value: Number) {
+    value: Number = value;
+    get(): Number => self.value;
+}
+
+{
+    print("=== begin allocs_many ===");
+
+    // Two survivor references — must remain reachable across the whole loop.
+    let survivor_first = new Box(100), survivor_last = new Box(0), i = 0 in {
+        while (i < 10000) {
+            let temp = new Box(i) in {
+                // Ensure `temp` is touched so the optimiser cannot elide it.
+                if (i == 5000) survivor_last := temp;
+            };
+            i := i + 1;
+        };
+        print(survivor_first.get());
+        print(survivor_last.get());
+    };
+
+    print("=== end allocs_many ===");
+}

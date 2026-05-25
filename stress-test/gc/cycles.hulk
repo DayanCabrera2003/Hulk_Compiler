@@ -1,0 +1,50 @@
+// cycles.hulk — GC stress: build many short-lived two-node cycles, drop the
+// external roots, then keep allocating. A naive refcount collector would leak
+// the cycles; mark-and-sweep must reclaim them after each iteration's roots
+// die. The program merely needs to finish without aborting or OOMing.
+
+// Nodes start pointing at themselves (`other` is initialised to a fresh
+// solitary Node) and are wired into a cycle via `pair_with` after both ends
+// exist. Attribute initialisers cannot reference `self`, so this two-step
+// construction is the idiomatic way to bootstrap a cyclic graph.
+
+type Solitary {
+    label_of(): Number => 0 - 1;
+}
+
+type Node(label: Number) inherits Solitary {
+    label: Number = label;
+    other: Solitary = new Solitary();
+    pair_with(n: Solitary): Number => {
+        self.other := n;
+        self.label;
+    };
+    label_of(): Number => self.label;
+    other_label(): Number => self.other.label_of();
+}
+
+{
+    print("=== begin cycles ===");
+
+    let i = 0 in {
+        while (i < 5000) {
+            // Build a cycle: a ↔ b. Both go out of scope at iteration end.
+            let a = new Node(i), b = new Node(i + 1) in {
+                a.pair_with(b);
+                b.pair_with(a);
+            };
+            i := i + 1;
+        };
+    };
+
+    // Final check: a fresh cycle still works after thousands of dead cycles.
+    let a = new Node(42), b = new Node(7) in {
+        a.pair_with(b);
+        b.pair_with(a);
+        print(a.label_of());      // 42
+        print(a.other_label());   // 7
+        print(b.other_label());   // 42
+    };
+
+    print("=== end cycles ===");
+}

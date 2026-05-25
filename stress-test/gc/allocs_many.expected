@@ -1,0 +1,4 @@
+=== begin allocs_many ===
+100
+5000
+=== end allocs_many ===

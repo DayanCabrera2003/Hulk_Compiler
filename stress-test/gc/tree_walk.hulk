@@ -1,0 +1,57 @@
+// tree_walk.hulk — GC stress: build a balanced binary tree, then run many
+// transient allocations alongside it. Verifies that the mark phase walks
+// every reference in the tree (left, right, payload boxes) so the structure
+// survives intervening collections triggered by the transient work.
+
+type Box(v: Number) {
+    v: Number = v;
+    get(): Number => self.v;
+}
+
+type Leaf {
+    sum(): Number => 0;
+    depth(): Number => 0;
+}
+
+type Branch(payload: Box, left: Leaf, right: Leaf) inherits Leaf {
+    payload: Box = payload;
+    left: Leaf = left;
+    right: Leaf = right;
+    sum(): Number => self.payload.get() + self.left.sum() + self.right.sum();
+    depth(): Number =>
+        let dl = self.left.depth(), dr = self.right.depth() in
+            1 + (if (dl > dr) dl else dr);
+}
+
+function make_tree(depth: Number, seed: Number): Leaf =>
+    if (depth == 0) new Leaf()
+    else new Branch(new Box(seed),
+                    make_tree(depth - 1, seed * 2),
+                    make_tree(depth - 1, seed * 2 + 1));
+
+function noise(rounds: Number, per_round: Number): Number =>
+    let total = 0 in {
+        for (r in range(0, rounds)) {
+            for (i in range(0, per_round)) {
+                let b = new Box(i) in total := total + b.get();
+            };
+        };
+        total;
+    };
+
+{
+    print("=== begin tree_walk ===");
+
+    let tree = make_tree(6, 1) in {
+        // Depth 6 → 63 Branches plus 64 Leaves = 127 nodes the GC must keep.
+        print(tree.depth());
+        let sum_before = tree.sum() in {
+            // ~50k transient Box allocations should trigger multiple GC cycles.
+            noise(500, 100);
+            // Tree must still be intact: same sum after the noise.
+            print(sum_before == tree.sum());
+        };
+    };
+
+    print("=== end tree_walk ===");
+}
