@@ -5,11 +5,15 @@
 
 /* Describes a managed type: name, number of pointer-typed fields, and their
    byte offsets from the start of the object payload. The GC reads this to
-   trace references during the mark phase. */
+   trace references during the mark phase.
+
+   `parent` points at the TypeTag for the direct base type (NULL for the
+   root). `__hulk_is` walks this chain to answer "is X a subtype of Y?". */
 typedef struct TypeTag {
-    const char* name;
-    size_t      num_pointers;
-    size_t*     pointer_offsets;
+    const char*       name;
+    size_t            num_pointers;
+    size_t*           pointer_offsets;
+    struct TypeTag*   parent;
 } TypeTag;
 
 /* Prepended to every heap-allocated object. Threads all allocations through

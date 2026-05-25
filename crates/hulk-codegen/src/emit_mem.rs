@@ -257,9 +257,17 @@ impl<'ctx> Codegen<'ctx> {
 impl<'ctx> Codegen<'ctx> {
     /// Build a `TypeTag` global constant for `type_name`.
     ///
-    /// Layout (matches C's `TypeTag` struct): `{ ptr name, i64 num_ptrs, ptr offsets }`.
-    /// The `pointer_map` slice determines which fields hold GC-traced references.
-    pub fn build_type_tag(&mut self, type_name: &str, pointer_map: &[bool]) {
+    /// Layout (matches C's `TypeTag` struct):
+    /// `{ ptr name, i64 num_ptrs, ptr offsets, ptr parent }`.
+    /// `pointer_map` determines which fields hold GC-traced references.
+    /// `parent_type` is the name of the direct base type (None for root),
+    /// used at runtime by `__hulk_is`/`__hulk_as` for subtype checks.
+    pub fn build_type_tag(
+        &mut self,
+        type_name: &str,
+        pointer_map: &[bool],
+        parent_type: Option<&str>,
+    ) {
         // String constant for the type name.
         let tag_name_global = self.intern_str(type_name);
         let name_ptr = tag_name_global.as_pointer_value();
@@ -300,10 +308,20 @@ impl<'ctx> Codegen<'ctx> {
             arr_global.as_pointer_value()
         };
 
-        // Build the TypeTag struct global: { ptr, i64, ptr }
-        let tag_struct_ty = self
-            .ctx
-            .struct_type(&[ptr_t.into(), i64_t.into(), ptr_t.into()], false);
+        // Resolve the parent TypeTag global pointer (null if no parent).
+        let parent_ptr = match parent_type {
+            Some(parent) => match self.vtable_globals.get(&format!("{parent}_tag")) {
+                Some(g) => g.as_pointer_value(),
+                None => ptr_t.const_null(),
+            },
+            None => ptr_t.const_null(),
+        };
+
+        // Build the TypeTag struct global: { ptr name, i64 num_ptrs, ptr offsets, ptr parent }
+        let tag_struct_ty = self.ctx.struct_type(
+            &[ptr_t.into(), i64_t.into(), ptr_t.into(), ptr_t.into()],
+            false,
+        );
         let tag_global = self.module.add_global(
             tag_struct_ty,
             Some(AddressSpace::default()),
@@ -313,6 +331,7 @@ impl<'ctx> Codegen<'ctx> {
             name_ptr.into(),
             i64_t.const_int(num_ptrs, false).into(),
             offsets_ptr.into(),
+            parent_ptr.into(),
         ]);
         tag_global.set_initializer(&tag_init);
         tag_global.set_constant(true);

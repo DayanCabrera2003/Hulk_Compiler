@@ -12,7 +12,7 @@ typedef struct HulkRange {
     double step;
 } HulkRange;
 
-TypeTag hulk_range_tag = { "Range", 0, NULL };
+TypeTag hulk_range_tag = { "Range", 0, NULL, NULL };
 
 void hulk_print(void* obj) {
     if (obj == NULL) {
@@ -89,7 +89,7 @@ typedef struct HulkVec {
     double* data;   /* C-heap double array; not GC-traced */
 } HulkVec;
 
-TypeTag hulk_vec_tag = { "Vector", 0, NULL };
+TypeTag hulk_vec_tag = { "Vector", 0, NULL, NULL };
 
 void* __vec_new(double initial_cap) {
     size_t cap = (size_t)(initial_cap > 0 ? initial_cap : 4);
@@ -127,4 +127,30 @@ int __vec_next(void* vec) {
 double __vec_current(void* vec) {
     HulkVec* v = (HulkVec*)vec;
     return v->data[v->pos];
+}
+
+/* Runtime type test: walk the TypeTag.parent chain looking for `target`. */
+int __hulk_is(void* obj, TypeTag* target) {
+    if (obj == NULL || target == NULL) {
+        return 0;
+    }
+    TypeTag* current = HULK_HEADER(obj)->tag;
+    while (current != NULL) {
+        if (current == target) {
+            return 1;
+        }
+        current = current->parent;
+    }
+    return 0;
+}
+
+/* Runtime checked downcast; aborts on failure. */
+void* __hulk_as(void* obj, TypeTag* target) {
+    if (__hulk_is(obj, target)) {
+        return obj;
+    }
+    const char* actual = (obj != NULL) ? HULK_HEADER(obj)->tag->name : "null";
+    const char* expected = (target != NULL) ? target->name : "<null>";
+    fprintf(stderr, "hulk runtime error: cannot downcast %s to %s\n", actual, expected);
+    exit(1);
 }

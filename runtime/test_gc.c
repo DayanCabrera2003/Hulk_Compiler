@@ -3,11 +3,11 @@
 #include <stdio.h>
 
 /* Type with no pointer fields (behaves like a Number wrapper). */
-static TypeTag s_num_tag = { "TestNumber", 0, NULL };
+static TypeTag s_num_tag = { "TestNumber", 0, NULL, NULL };
 
 /* Type with one pointer field at offset 0. */
 static size_t s_one_offset[] = { 0 };
-static TypeTag s_node_tag = { "TestNode", 1, s_one_offset };
+static TypeTag s_node_tag = { "TestNode", 1, s_one_offset, NULL };
 
 static int s_run = 0, s_pass = 0;
 

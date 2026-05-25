@@ -2,7 +2,7 @@
 #include <string.h>
 #include <stdio.h>
 
-TypeTag hulk_string_tag = { "String", 0, NULL };
+TypeTag hulk_string_tag = { "String", 0, NULL, NULL };
 
 void* hulk_string_new(const char* s) {
     size_t   len = strlen(s);

@@ -37,6 +37,9 @@ pub struct RuntimeFunctions<'ctx> {
     pub vec_get: FunctionValue<'ctx>,
     pub vec_next: FunctionValue<'ctx>,
     pub vec_current: FunctionValue<'ctx>,
+    // Runtime type test / downcast
+    pub hulk_is: FunctionValue<'ctx>,
+    pub hulk_as: FunctionValue<'ctx>,
 }
 
 impl<'ctx> RuntimeFunctions<'ctx> {
@@ -172,6 +175,23 @@ impl<'ctx> RuntimeFunctions<'ctx> {
         let vec_current =
             module.add_function("__vec_current", f64_t.fn_type(&[ptr_t.into()], false), None);
 
+        // __hulk_is(void* obj, TypeTag* target) -> i1.
+        // The C function returns int, but the System V x86_64 ABI puts the
+        // result in eax/rax so reading only the low bit is correct, and i1
+        // matches the alloca kind that the BANNER temp is declared with.
+        let hulk_is = module.add_function(
+            "__hulk_is",
+            bool_t.fn_type(&[ptr_t.into(), ptr_t.into()], false),
+            None,
+        );
+
+        // __hulk_as(void* obj, TypeTag* target) -> void*
+        let hulk_as = module.add_function(
+            "__hulk_as",
+            ptr_t.fn_type(&[ptr_t.into(), ptr_t.into()], false),
+            None,
+        );
+
         let _ = bool_t;
 
         Self {
@@ -199,6 +219,8 @@ impl<'ctx> RuntimeFunctions<'ctx> {
             vec_get,
             vec_next,
             vec_current,
+            hulk_is,
+            hulk_as,
         }
     }
 
@@ -222,6 +244,8 @@ impl<'ctx> RuntimeFunctions<'ctx> {
             "__vec_new" => Some(self.vec_new),
             "__vec_push" => Some(self.vec_push),
             "__vec_get" => Some(self.vec_get),
+            "__hulk_is" => Some(self.hulk_is),
+            "__hulk_as" => Some(self.hulk_as),
             _ => None,
         }
     }

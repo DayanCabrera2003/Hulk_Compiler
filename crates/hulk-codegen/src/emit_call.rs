@@ -38,12 +38,18 @@ impl<'ctx> Codegen<'ctx> {
         // to avoid colliding with user-defined types of the same name.
         if let Value::Global(name) = callee {
             let type_hint = match name.as_str() {
-                "range" => Some("$range"),
-                "__vec_new" => Some("$vector"),
-                _ => self.fn_return_struct.get(name).map(String::as_str),
+                "range" => Some("$range".to_string()),
+                "__vec_new" => Some("$vector".to_string()),
+                // `__hulk_as` returns a value of the requested target type,
+                // which is the second argument (a Global naming that type).
+                "__hulk_as" => match args.get(1) {
+                    Some(Value::Global(target)) => Some(target.clone()),
+                    _ => None,
+                },
+                _ => self.fn_return_struct.get(name).cloned(),
             };
             if let Some(hint) = type_hint {
-                self.temp_type_names.insert(dst, hint.to_string());
+                self.temp_type_names.insert(dst, hint);
             }
         }
         self.store_temp(dst, val)

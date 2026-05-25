@@ -27,9 +27,29 @@ impl<'ctx> Codegen<'ctx> {
             self.build_struct_type(name);
         }
 
-        // Build TypeTag globals for every user-defined type.
+        // Build TypeTag globals for every user-defined type. Walk parents
+        // first so a child's TypeTag can reference its already-built parent.
+        let by_name: HashMap<&str, &hulk_banner::TypeDescriptor> =
+            program.types.iter().map(|t| (t.name.as_str(), t)).collect();
+        let mut ordered: Vec<&hulk_banner::TypeDescriptor> = Vec::new();
+        let mut emitted: std::collections::HashSet<&str> = std::collections::HashSet::new();
         for td in &program.types {
-            self.build_type_tag(&td.name, &td.pointer_map);
+            let mut chain: Vec<&hulk_banner::TypeDescriptor> = Vec::new();
+            let mut current = Some(td);
+            while let Some(t) = current {
+                if emitted.contains(t.name.as_str()) {
+                    break;
+                }
+                chain.push(t);
+                current = t.parent.as_deref().and_then(|p| by_name.get(p).copied());
+            }
+            for t in chain.into_iter().rev() {
+                ordered.push(t);
+                emitted.insert(t.name.as_str());
+            }
+        }
+        for td in ordered {
+            self.build_type_tag(&td.name, &td.pointer_map, td.parent.as_deref());
         }
 
         // Build vtable constant globals (references user-defined functions by name).
@@ -415,6 +435,11 @@ impl<'ctx> Codegen<'ctx> {
                 } else if let Some(fv) = self.rt.resolve_builtin(name) {
                     let ptr = fv.as_global_value().as_pointer_value();
                     Ok(LlvmVal::Ptr(ptr))
+                } else if let Some(global) =
+                    self.vtable_globals.get(&format!("{name}_tag")).copied()
+                {
+                    // Type-tag global used as an argument to __hulk_is/__hulk_as.
+                    Ok(LlvmVal::Ptr(global.as_pointer_value()))
                 } else {
                     Err(CodegenError::Llvm(format!("unresolved global '{name}'")))
                 }
@@ -595,8 +620,18 @@ pub(crate) fn infer_temp_kinds(
                 Instr::Call {
                     dst,
                     callee: Value::Global(name),
-                    ..
-                } => fn_return_struct.get(name).cloned().map(|ty| (*dst, ty)),
+                    args,
+                } => {
+                    if name == "__hulk_as" {
+                        // The target type is the second argument (a Global).
+                        match args.get(1) {
+                            Some(Value::Global(target)) => Some((*dst, target.clone())),
+                            _ => None,
+                        }
+                    } else {
+                        fn_return_struct.get(name).cloned().map(|ty| (*dst, ty))
+                    }
+                }
                 Instr::StaticCall {
                     dst,
                     type_name,
@@ -665,6 +700,7 @@ pub(crate) fn infer_temp_kinds(
                 Instr::Call { dst, callee, .. } => {
                     let k = match callee {
                         Value::Global(name) if is_math_builtin(name) => TempKind::F64,
+                        Value::Global(name) if name == "__hulk_is" => TempKind::I1,
                         Value::Global(name) => fn_return_kinds
                             .get(name.as_str())
                             .copied()

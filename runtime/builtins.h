@@ -52,4 +52,13 @@ double __vec_current(void* vec);
 
 extern TypeTag hulk_vec_tag;
 
+/* Runtime type test: returns 1 if `obj`'s TypeTag equals `target` or any of
+   its ancestors (walking the `parent` chain). Returns 0 if `obj` is NULL or
+   no ancestor matches. */
+int __hulk_is(void* obj, TypeTag* target);
+
+/* Runtime checked downcast: returns `obj` unchanged if `__hulk_is(obj,target)`
+   is true, otherwise prints a diagnostic to stderr and aborts the program. */
+void* __hulk_as(void* obj, TypeTag* target);
+
 #endif /* HULK_BUILTINS_H */

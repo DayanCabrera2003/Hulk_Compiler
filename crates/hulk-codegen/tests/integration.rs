@@ -437,6 +437,35 @@ print(new SumMany().run());
 }
 
 #[test]
+fn test_is_and_as_runtime_type_checks() {
+    // Regression: `is` and `as` lowered to Calls of `__hulk_is`/`__hulk_as`
+    // that had no runtime implementation (link-time "unresolved callee"
+    // errors), so any program using either operator failed to build. The
+    // runtime now provides both by walking the TypeTag.parent chain, and
+    // the codegen passes the target type tag as a pointer global.
+    let src = r#"
+type Animal {
+    name(): String => "animal";
+}
+type Dog inherits Animal {
+    name(): String => "dog";
+}
+{
+    let a = new Dog() in {
+        print(a is Dog);
+        print(a is Animal);
+    };
+    let a = new Dog() in {
+        let d = a as Dog in print(d.name());
+    };
+    let a = new Animal() in print(a is Dog);
+}
+"#;
+    let out = run_source("is_and_as", src).expect("is_and_as");
+    assert_eq!(out.trim_end(), "true\ntrue\ndog\nfalse");
+}
+
+#[test]
 fn test_field_access_on_function_call_result() {
     // Regression: resolve_field looked only at temp_type_names, which was
     // populated solely by `New` results. Field access on the return value
