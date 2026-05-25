@@ -231,7 +231,17 @@ impl Parser {
     }
 
     fn parse_call_postfix(&mut self, callee: Expr) -> Expr {
-        let args = self.parse_paren_args();
+        let mut args = self.parse_paren_args();
+        // Trailing-block macro sugar from Hulk.md §1353:
+        //     repeat(10) { print("hi"); }
+        // is shorthand for passing the brace block as a final body argument:
+        //     repeat(10, { print("hi"); })
+        // The block is parsed here so the user doesn't need an explicit
+        // extra arg; macros with a `*expr` body parameter will see it.
+        if self.at(&Token::LBrace) {
+            let brace_tok = self.advance();
+            args.push(self.parse_block_expr(brace_tok.span));
+        }
         let span = callee.span.clone().merge(self.previous_span());
         let id = self.next_node_id();
         Expr::new(

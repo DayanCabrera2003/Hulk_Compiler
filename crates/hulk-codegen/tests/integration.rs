@@ -784,6 +784,28 @@ fn test_gc_tree_walk() {
 }
 
 #[test]
+fn test_trailing_block_macro_sugar() {
+    // Hulk.md §1353 sugar: `name(args) { body }` is shorthand for
+    // `name(args, { body })`. Until this fix the parser stopped at the
+    // closing paren of the arg list and treated the brace block as a
+    // separate top-level expression, which usually parsed as a syntax
+    // error or attached to the wrong context.
+    let src = r#"
+def repeat(n: Number, *expr: Object): Object =>
+    let total = n in
+        while (total > 0) {
+            total := total - 1;
+            expr;
+        };
+repeat(3) {
+    print("ping");
+};
+"#;
+    let out = run_source("trailing_block", src).expect("trailing_block");
+    assert_eq!(out.trim_end(), "ping\nping\nping");
+}
+
+#[test]
 fn test_string_size_char_at_substring() {
     // Hulk.md leaves the string-method surface unspecified; we expose
     // `.size()`, `.charAt(i)` and `.substring(start, len)` via runtime
