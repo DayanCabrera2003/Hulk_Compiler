@@ -99,6 +99,11 @@ pub struct Codegen<'ctx> {
     /// Field type map: (type_name, field_name) → TempKind, derived from TypeDescriptor.pointer_map.
     /// false in pointer_map → F64 (numeric), true → Ptr (reference).
     pub field_kind_map: HashMap<(String, String), TempKind>,
+    /// Maps function/method name (as it appears in BannerFunction.name) → name
+    /// of the struct type that function returns. Lets emit_call propagate
+    /// temp_type_names from a Call result so subsequent GetField/SetField on
+    /// `let p = mk() in p.field` can resolve the field's struct layout.
+    pub fn_return_struct: HashMap<String, String>,
 }
 
 impl<'ctx> Codegen<'ctx> {
@@ -127,6 +132,7 @@ impl<'ctx> Codegen<'ctx> {
             temp_type_names: HashMap::new(),
             fn_return_kinds: HashMap::new(),
             field_kind_map: HashMap::new(),
+            fn_return_struct: HashMap::new(),
         }
     }
 
@@ -250,6 +256,8 @@ impl<'ctx> Codegen<'ctx> {
     pub fn predeclare_all(&mut self, program: &BannerProgram) -> CodegenResult<()> {
         let field_kind_map = build_field_kind_map(program);
         self.field_kind_map = field_kind_map.clone();
+        self.fn_return_struct = infer_fn_return_structs(program);
+        let fn_return_struct = self.fn_return_struct.clone();
 
         // Iterative inference: 4 passes to handle mutual recursion.
         let mut fn_return_kinds: HashMap<String, TempKind> = HashMap::new();
@@ -270,6 +278,7 @@ impl<'ctx> Codegen<'ctx> {
                         &fn_return_kinds,
                         &field_kind_map,
                         &obj_hints,
+                        &fn_return_struct,
                     );
                     let ret_kind = infer_return_kind(&method.body, &kinds);
                     fn_return_kinds.insert(method.name.clone(), ret_kind);
@@ -296,6 +305,7 @@ impl<'ctx> Codegen<'ctx> {
                     &fn_return_kinds,
                     &field_kind_map,
                     &HashMap::new(),
+                    &fn_return_struct,
                 );
                 let ret_kind = infer_return_kind(&func.body, &kinds);
                 fn_return_kinds.insert(func.name.clone(), ret_kind);
@@ -322,6 +332,7 @@ impl<'ctx> Codegen<'ctx> {
                 &fn_return_kinds,
                 &field_kind_map,
                 &HashMap::new(),
+                &fn_return_struct,
             );
             let param_kinds: Vec<TempKind> = func
                 .params
@@ -370,6 +381,99 @@ pub(crate) fn build_field_kind_map(program: &BannerProgram) -> HashMap<(String, 
                 let kind = if is_ptr { TempKind::Ptr } else { TempKind::F64 };
                 map.insert((td.name.clone(), field_name.clone()), kind);
             }
+        }
+    }
+    map
+}
+
+/// Infer, for each user function and method, the name of the struct type it
+/// returns (when consistent across all return paths).
+///
+/// Runs as a fixed-point iteration so that `fn a() => b()` can pick up `b`'s
+/// return type after `b` has been classified. Only direct `New` results and
+/// values forwarded through `Copy` or `Call`/`MethodCall`/`StaticCall` are
+/// tracked; anything more involved (e.g. a branch returning two unrelated
+/// struct types) is left unclassified.
+pub(crate) fn infer_fn_return_structs(program: &BannerProgram) -> HashMap<String, String> {
+    use hulk_banner::{Instr, Value};
+
+    let mut map: HashMap<String, String> = HashMap::new();
+    let all_functions: Vec<&hulk_banner::BannerFunction> = program
+        .functions
+        .iter()
+        .chain(program.types.iter().flat_map(|t| t.methods.iter()))
+        .collect();
+
+    loop {
+        let prev = map.clone();
+        for func in &all_functions {
+            let mut temp_struct: HashMap<TempId, String> = HashMap::new();
+            for instr in &func.body {
+                match instr {
+                    Instr::New { dst, type_name, .. } => {
+                        temp_struct.insert(*dst, type_name.clone());
+                    }
+                    Instr::Copy {
+                        dst,
+                        src: Value::Temp(s),
+                    } => {
+                        if let Some(ty) = temp_struct.get(s).cloned() {
+                            temp_struct.insert(*dst, ty);
+                        }
+                    }
+                    Instr::Call {
+                        dst,
+                        callee: Value::Global(name),
+                        ..
+                    } => {
+                        if let Some(ty) = map.get(name).cloned() {
+                            temp_struct.insert(*dst, ty);
+                        }
+                    }
+                    Instr::StaticCall {
+                        dst,
+                        type_name,
+                        method,
+                        ..
+                    } => {
+                        let qualified = format!("{type_name}.{method}");
+                        if let Some(ty) = map.get(&qualified).cloned() {
+                            temp_struct.insert(*dst, ty);
+                        }
+                    }
+                    Instr::MethodCall { dst, method, .. } => {
+                        if let Some(ty) = map.get(method).cloned() {
+                            temp_struct.insert(*dst, ty);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+
+            // All Return temps must agree on the same struct type.
+            let mut result: Option<String> = None;
+            let mut inconsistent = false;
+            for instr in &func.body {
+                if let Instr::Return(Value::Temp(t)) = instr {
+                    match (result.as_ref(), temp_struct.get(t)) {
+                        (None, Some(s)) => result = Some(s.clone()),
+                        (Some(prev), Some(s)) if prev != s => {
+                            inconsistent = true;
+                            break;
+                        }
+                        _ => {}
+                    }
+                }
+            }
+
+            if let Some(s) = result {
+                if !inconsistent {
+                    map.insert(func.name.clone(), s);
+                }
+            }
+        }
+        if map == prev {
+            break;
         }
     }
     map

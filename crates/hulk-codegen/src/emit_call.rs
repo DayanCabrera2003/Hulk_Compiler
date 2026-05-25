@@ -40,7 +40,7 @@ impl<'ctx> Codegen<'ctx> {
             let type_hint = match name.as_str() {
                 "range" => Some("$range"),
                 "__vec_new" => Some("$vector"),
-                _ => None,
+                _ => self.fn_return_struct.get(name).map(String::as_str),
             };
             if let Some(hint) = type_hint {
                 self.temp_type_names.insert(dst, hint.to_string());
@@ -152,6 +152,9 @@ impl<'ctx> Codegen<'ctx> {
             self.builder
                 .build_indirect_call(fn_ty, method_fn_ptr, &llvm_args, "vcall")?;
         let result = extract_call_result(call_site);
+        if let Some(struct_name) = self.fn_return_struct.get(method).cloned() {
+            self.temp_type_names.insert(dst, struct_name);
+        }
         self.store_temp(dst, result)
     }
 
@@ -181,6 +184,9 @@ impl<'ctx> Codegen<'ctx> {
 
         let call_site = self.builder.build_call(fv, &llvm_args, "scall")?;
         let result = extract_call_result(call_site);
+        if let Some(struct_name) = self.fn_return_struct.get(&fn_name).cloned() {
+            self.temp_type_names.insert(dst, struct_name);
+        }
         self.store_temp(dst, result)
     }
 

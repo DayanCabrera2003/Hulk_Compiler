@@ -437,6 +437,33 @@ print(new SumMany().run());
 }
 
 #[test]
+fn test_field_access_on_function_call_result() {
+    // Regression: resolve_field looked only at temp_type_names, which was
+    // populated solely by `New` results. Field access on the return value
+    // of a function failed with "struct type not statically known" — both
+    // via `let p = mk() in p.field` and via the direct chain `mk().field`.
+    // Now Call/MethodCall/StaticCall results propagate the callee's known
+    // return struct into both temp_type_names (at emit) and the kind
+    // inference (so the field is loaded with the correct LLVM type).
+    let src = r#"
+type Pair(a: Number, b: Number) {
+    a: Number = a;
+    b: Number = b;
+}
+function mk(x: Number): Pair => new Pair(x, x * 2);
+{
+    let p = mk(7) in {
+        print(p.a);
+        print(p.b);
+    };
+    print(mk(5).a);
+}
+"#;
+    let out = run_source("field_on_call", src).expect("field_on_call");
+    assert_eq!(out.trim_end(), "7\n14\n5");
+}
+
+#[test]
 fn test_protocol_invoke_coexists_with_lambda() {
     // Regression: lambdas were lowered to a synthetic type with a method
     // literally named `invoke`. When a user protocol also declared

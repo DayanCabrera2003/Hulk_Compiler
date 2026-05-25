@@ -85,6 +85,7 @@ impl<'ctx> Codegen<'ctx> {
             &self.fn_return_kinds.clone(),
             &self.field_kind_map.clone(),
             &HashMap::new(),
+            &self.fn_return_struct.clone(),
         );
         self.temp_kinds.clone_from(&kinds);
         self.create_temp_allocas(&banner_fn.body, main_fv)?;
@@ -135,6 +136,7 @@ impl<'ctx> Codegen<'ctx> {
             &self.fn_return_kinds.clone(),
             &self.field_kind_map.clone(),
             &object_type_hints,
+            &self.fn_return_struct.clone(),
         );
         self.temp_kinds.clone_from(&kinds);
 
@@ -571,8 +573,54 @@ pub(crate) fn infer_temp_kinds(
     fn_return_kinds: &HashMap<String, TempKind>,
     field_kind: &HashMap<(String, String), TempKind>,
     object_type_hints: &HashMap<TempId, String>,
+    fn_return_struct: &HashMap<String, String>,
 ) -> HashMap<TempId, TempKind> {
     let mut kinds: HashMap<TempId, TempKind> = HashMap::new();
+
+    // Pre-compute a temp → struct-name map by tracking results of New and
+    // Call/MethodCall/StaticCall whose callees are known struct returners,
+    // plus Copy propagation. Lets GetField below know the struct layout when
+    // the receiver is a let-bound call result, not just the method's `self`.
+    let mut temp_structs: HashMap<TempId, String> = object_type_hints.clone();
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for instr in instrs {
+            let entry: Option<(TempId, String)> = match instr {
+                Instr::New { dst, type_name, .. } => Some((*dst, type_name.clone())),
+                Instr::Copy {
+                    dst,
+                    src: Value::Temp(s),
+                } => temp_structs.get(s).cloned().map(|ty| (*dst, ty)),
+                Instr::Call {
+                    dst,
+                    callee: Value::Global(name),
+                    ..
+                } => fn_return_struct.get(name).cloned().map(|ty| (*dst, ty)),
+                Instr::StaticCall {
+                    dst,
+                    type_name,
+                    method,
+                    ..
+                } => {
+                    let qualified = format!("{type_name}.{method}");
+                    fn_return_struct
+                        .get(&qualified)
+                        .cloned()
+                        .map(|ty| (*dst, ty))
+                }
+                Instr::MethodCall { dst, method, .. } => {
+                    fn_return_struct.get(method).cloned().map(|ty| (*dst, ty))
+                }
+                _ => None,
+            };
+            if let Some((dst, ty)) = entry {
+                if temp_structs.insert(dst, ty).is_none() {
+                    changed = true;
+                }
+            }
+        }
+    }
 
     let mut changed = true;
     while changed {
@@ -648,7 +696,7 @@ pub(crate) fn infer_temp_kinds(
                 }
                 Instr::GetField { dst, object, field } => {
                     let type_name = match object {
-                        Value::Temp(tid) => object_type_hints.get(tid).map(String::as_str),
+                        Value::Temp(tid) => temp_structs.get(tid).map(String::as_str),
                         _ => None,
                     };
                     let k = type_name
@@ -732,7 +780,7 @@ pub(crate) fn infer_temp_kinds(
                 value: Value::Temp(val_tid),
             } = instr
             {
-                if let Some(tname) = object_type_hints.get(obj_tid) {
+                if let Some(tname) = temp_structs.get(obj_tid) {
                     if let Some(&TempKind::F64) = field_kind.get(&(tname.clone(), field.clone())) {
                         if kinds.get(val_tid).copied() != Some(TempKind::F64) {
                             kinds.entry(*val_tid).or_insert(TempKind::F64);
