@@ -166,6 +166,21 @@ impl<'ctx> Codegen<'ctx> {
                 .insert(banner_fn.params[0], type_name.to_string());
         }
 
+        // Propagate the BANNER lowerer's runtime hints into temp_type_names
+        // so that, e.g., a `Number[]` parameter routes through the `$vector`
+        // builtin-method path when its body iterates or calls `.size()`.
+        // self's hint (None) deliberately doesn't override the type_name
+        // entry we just installed above.
+        for (&tid, hint) in banner_fn
+            .params
+            .iter()
+            .zip(banner_fn.param_runtime_hints.iter())
+        {
+            if let Some(name) = hint {
+                self.temp_type_names.insert(tid, name.clone());
+            }
+        }
+
         // Store each function parameter into its own alloca.
         let params_raw: Vec<_> = fv.get_params();
         for (i, &tid) in banner_fn.params.iter().enumerate() {

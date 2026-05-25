@@ -101,11 +101,16 @@ pub enum Instr {
 ///
 /// For type methods the name is `"TypeName.method"`. For the constructor it is
 /// `"TypeName.__init__"`. Standalone functions use their unqualified HULK name.
+///
+/// `param_runtime_hints` mirrors `params`; entries hold the runtime sentinel
+/// name ("$vector" for `Number[]` / `Number*`) that codegen propagates into
+/// `temp_type_names` at function entry, or `None` for plain values.
 #[derive(Debug, Clone, PartialEq)]
 pub struct BannerFunction {
     pub name: String,
     pub params: Vec<TempId>,
     pub param_names: Vec<String>,
+    pub param_runtime_hints: Vec<Option<String>>,
     pub body: Vec<Instr>,
 }
 

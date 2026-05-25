@@ -546,26 +546,25 @@ let squares = [n * n | n in range(1, 6)] in {
 
 #[test]
 fn vector_function_typed_iterable_and_indexed() {
-    // Vectors arriving via a typed parameter (`Number[]` / `Number*`)
-    // don't carry the runtime `$vector` hint so neither `for (x in xs)`
-    // nor `xs.size()` work on them today. Pass the size in explicitly
-    // and iterate by index.
+    // `Number[]` parameters now route through the `$vector` builtin path
+    // (the BANNER lowerer attaches a runtime hint that the codegen turns
+    // into the `$vector` sentinel at function entry) so both `for (x in xs)`
+    // and `xs.size()` work directly on typed vector params.
     let src = r#"
-function sum_vec(xs: Number[], n: Number): Number =>
-    let total = 0, i = 0 in {
-        while (i < n) {
-            total := total + xs[i];
-            i := i + 1;
-        };
+function sum_iter(xs: Number[]): Number =>
+    let total = 0 in {
+        for (x in xs) total := total + x;
         total;
     };
 function first(xs: Number[]): Number => xs[0];
+function len(xs: Number[]): Number => xs.size();
 {
-    print(sum_vec([1, 2, 3, 4, 5], 5));     // 15
-    print(first([99, 1, 2]));                // 99
+    print(sum_iter([1, 2, 3, 4, 5]));    // 15
+    print(first([99, 1, 2]));             // 99
+    print(len([10, 20, 30, 40]));         // 4
 }
 "#;
-    assert_eq!(lines(&run("vec_typed", src)), vec!["15", "99"]);
+    assert_eq!(lines(&run("vec_typed", src)), vec!["15", "99", "4"]);
 }
 
 // ─── 11. Functors and lambdas (Hulk.md §1145) ────────────────────────────────
@@ -967,26 +966,20 @@ function filter_count(xs: Number[], n: Number, p: Pred): Number =>
 
 #[test]
 fn mix_inheritance_lambda_capture_and_vector_generator() {
-    // Same limitation as `vector_function_typed_iterable_and_indexed`:
-    // iterate via .size() and index instead of `for (x in xs)` when the
-    // vector arrives through a typed parameter.
     let src = r#"
 type Multiplier(k: Number) {
     k: Number = k;
     apply(x: Number): Number => x * self.k;
 }
-function apply_each(m: Multiplier, xs: Number[], n: Number): Number =>
-    let total = 0, i = 0 in {
-        while (i < n) {
-            total := total + m.apply(xs[i]);
-            i := i + 1;
-        };
+function apply_each(m: Multiplier, xs: Number[]): Number =>
+    let total = 0 in {
+        for (x in xs) total := total + m.apply(x);
         total;
     };
 {
-    print(apply_each(new Multiplier(3), [1, 2, 3, 4, 5], 5));     // 3 * 15 = 45
+    print(apply_each(new Multiplier(3), [1, 2, 3, 4, 5]));   // 3 * 15 = 45
     let squares = [x * x | x in range(1, 6)] in
-        print(apply_each(new Multiplier(2), squares, 5));         // 2 * (1+4+9+16+25) = 110
+        print(apply_each(new Multiplier(2), squares));        // 2 * (1+4+9+16+25) = 110
 };
 "#;
     assert_eq!(lines(&run("mix_inh_lam_vec", src)), vec!["45", "110"]);

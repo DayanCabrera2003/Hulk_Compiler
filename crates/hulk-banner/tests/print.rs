@@ -8,6 +8,7 @@ fn simple_main(body: Vec<Instr>) -> BannerProgram {
             name: "__main__".to_string(),
             params: vec![],
             param_names: vec![],
+            param_runtime_hints: vec![],
             body,
         },
     }
@@ -72,6 +73,7 @@ fn print_type_descriptor() {
             name: "__main__".to_string(),
             params: vec![],
             param_names: vec![],
+            param_runtime_hints: vec![],
             body: vec![Instr::Return(Value::ConstNull)],
         },
     };

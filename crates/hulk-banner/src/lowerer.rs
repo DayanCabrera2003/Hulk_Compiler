@@ -221,6 +221,7 @@ impl<'h> Lowerer<'h> {
             name: "__main__".to_string(),
             params: vec![],
             param_names: vec![],
+            param_runtime_hints: vec![],
             body: std::mem::take(&mut self.instrs),
         };
 
@@ -232,6 +233,18 @@ impl<'h> Lowerer<'h> {
     }
 
     // -------- Per-function frame setup --------
+
+    /// Map a parameter's type annotation to the runtime sentinel the codegen
+    /// uses to dispatch builtin methods (next, current, size). Today only
+    /// `Number[]` (the explicit Vector form) is recognised — `Number*`
+    /// could legitimately receive a Range or user iterable so it's left
+    /// generic and resolved through the vtable at the call site.
+    fn param_runtime_hint(ann: Option<&TypeAnn>) -> Option<String> {
+        match ann? {
+            TypeAnn::Vector(_) => Some("$vector".to_owned()),
+            _ => None,
+        }
+    }
 
     fn reset_for_function(&mut self) {
         self.instrs.clear();
@@ -262,12 +275,18 @@ impl<'h> Lowerer<'h> {
     fn lower_function(&mut self, fd: &FunctionDecl) -> BannerFunction {
         self.reset_for_function();
         let (param_temps, param_names) = self.setup_params(&fd.params);
+        let param_runtime_hints: Vec<Option<String>> = fd
+            .params
+            .iter()
+            .map(|p| Self::param_runtime_hint(p.type_ann.as_ref()))
+            .collect();
         let body_val = self.emit_expr(&fd.body);
         self.emit(Instr::Return(body_val));
         BannerFunction {
             name: fd.name.clone(),
             params: param_temps,
             param_names,
+            param_runtime_hints,
             body: std::mem::take(&mut self.instrs),
         }
     }
@@ -345,11 +364,22 @@ impl<'h> Lowerer<'h> {
         params.append(&mut user_params);
         let mut names = vec!["self".to_string()];
         names.append(&mut param_names);
+        let mut hints: Vec<Option<String>> = vec![None]; // self
+        hints.extend(
+            type_params
+                .iter()
+                .map(|p| Self::param_runtime_hint(p.type_ann.as_ref())),
+        );
+        // Pad to the actual param count in case parent_params were used.
+        while hints.len() < params.len() {
+            hints.push(None);
+        }
 
         BannerFunction {
             name: format!("{type_name}.__init__"),
             params,
             param_names: names,
+            param_runtime_hints: hints,
             body: std::mem::take(&mut self.instrs),
         }
     }
@@ -376,11 +406,19 @@ impl<'h> Lowerer<'h> {
         params.append(&mut user_params);
         let mut names = vec!["self".to_string()];
         names.append(&mut param_names);
+        let mut hints: Vec<Option<String>> = vec![None]; // self
+        hints.extend(
+            method
+                .params
+                .iter()
+                .map(|p| Self::param_runtime_hint(p.type_ann.as_ref())),
+        );
 
         BannerFunction {
             name: format!("{type_name}.{}", method.name),
             params,
             param_names: names,
+            param_runtime_hints: hints,
             body: std::mem::take(&mut self.instrs),
         }
     }

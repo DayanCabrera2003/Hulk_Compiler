@@ -12,6 +12,7 @@ fn banner_program_holds_types_functions_main() {
         name: "__main__".to_string(),
         params: vec![],
         param_names: vec![],
+        param_runtime_hints: vec![],
         body: vec![Instr::Return(Value::ConstNull)],
     };
     let prog = BannerProgram {
