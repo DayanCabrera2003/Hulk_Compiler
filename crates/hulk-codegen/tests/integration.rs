@@ -411,6 +411,32 @@ type Child(v: Number) inherits Base(v) {
 }
 
 #[test]
+fn test_short_name_return_kind_prefers_concrete_over_ptr() {
+    // Regression: fn_return_kinds is keyed by both qualified and short method
+    // name. When a base type's method body inferred return-kind Ptr (e.g. it
+    // just returned a param without using it numerically) and a subtype's
+    // override actually returned Number, the short-name entry stayed Ptr
+    // because of an or_insert. Indirect calls through the vtable then
+    // reinterpreted the f64 return as a pointer, yielding garbage.
+    let src = r#"
+type Many {
+    combine(acc: Number, v: Number): Number => acc;
+    run(): Number =>
+        let acc = 0 in {
+            acc := self.combine(acc, 5);
+            acc;
+        };
+}
+type SumMany inherits Many {
+    combine(acc: Number, v: Number): Number => acc + v;
+}
+print(new SumMany().run());
+"#;
+    let out = run_source("short_name_kind", src).expect("short_name_kind");
+    assert_eq!(out.trim_end(), "5");
+}
+
+#[test]
 #[ignore = "debug-only: dumps IR/BANNER for manual inspection, run with `cargo test -- --ignored --nocapture`"]
 fn test_debug_ir_class_simple() {
     let src = r#"

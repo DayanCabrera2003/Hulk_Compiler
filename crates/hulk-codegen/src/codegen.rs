@@ -274,7 +274,20 @@ impl<'ctx> Codegen<'ctx> {
                     let ret_kind = infer_return_kind(&method.body, &kinds);
                     fn_return_kinds.insert(method.name.clone(), ret_kind);
                     let short = method.name.split('.').next_back().unwrap_or(&method.name);
-                    fn_return_kinds.entry(short.to_string()).or_insert(ret_kind);
+                    // Prefer a concrete F64/I1 over Ptr when the same method
+                    // name is declared on multiple types. The vtable call site
+                    // only has the short name to look up, so resolving to Ptr
+                    // when an override actually returns a number would reinterpret
+                    // the returned bits as a pointer and produce garbage.
+                    match fn_return_kinds.get(short) {
+                        None => {
+                            fn_return_kinds.insert(short.to_string(), ret_kind);
+                        }
+                        Some(&TempKind::Ptr) if ret_kind != TempKind::Ptr => {
+                            fn_return_kinds.insert(short.to_string(), ret_kind);
+                        }
+                        _ => {}
+                    }
                 }
             }
             for func in &program.functions {
