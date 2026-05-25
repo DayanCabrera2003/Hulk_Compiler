@@ -37,6 +37,7 @@ pub struct RuntimeFunctions<'ctx> {
     pub vec_get: FunctionValue<'ctx>,
     pub vec_next: FunctionValue<'ctx>,
     pub vec_current: FunctionValue<'ctx>,
+    pub vec_size: FunctionValue<'ctx>,
     // Runtime type test / downcast
     pub hulk_is: FunctionValue<'ctx>,
     pub hulk_as: FunctionValue<'ctx>,
@@ -175,6 +176,10 @@ impl<'ctx> RuntimeFunctions<'ctx> {
         let vec_current =
             module.add_function("__vec_current", f64_t.fn_type(&[ptr_t.into()], false), None);
 
+        // __vec_size(void* vec) -> double
+        let vec_size =
+            module.add_function("__vec_size", f64_t.fn_type(&[ptr_t.into()], false), None);
+
         // __hulk_is(void* obj, TypeTag* target) -> i1.
         // The C function returns int, but the System V x86_64 ABI puts the
         // result in eax/rax so reading only the low bit is correct, and i1
@@ -219,6 +224,7 @@ impl<'ctx> RuntimeFunctions<'ctx> {
             vec_get,
             vec_next,
             vec_current,
+            vec_size,
             hulk_is,
             hulk_as,
         }
@@ -244,6 +250,7 @@ impl<'ctx> RuntimeFunctions<'ctx> {
             "__vec_new" => Some(self.vec_new),
             "__vec_push" => Some(self.vec_push),
             "__vec_get" => Some(self.vec_get),
+            "__vec_size" => Some(self.vec_size),
             "__hulk_is" => Some(self.hulk_is),
             "__hulk_as" => Some(self.hulk_as),
             _ => None,

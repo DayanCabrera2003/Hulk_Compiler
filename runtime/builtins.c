@@ -154,3 +154,9 @@ void* __hulk_as(void* obj, TypeTag* target) {
     fprintf(stderr, "hulk runtime error: cannot downcast %s to %s\n", actual, expected);
     exit(1);
 }
+
+/* Return the number of elements stored in the vector. */
+double __vec_size(void* vec) {
+    HulkVec* v = (HulkVec*)vec;
+    return (double)v->len;
+}

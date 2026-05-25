@@ -85,6 +85,9 @@ impl<'ctx> Codegen<'ctx> {
                     ("$vector", "current") => {
                         return self.emit_builtin_method_f64(dst, receiver, self.rt.vec_current)
                     }
+                    ("$vector", "size") => {
+                        return self.emit_builtin_method_f64(dst, receiver, self.rt.vec_size)
+                    }
                     _ => {}
                 }
             }

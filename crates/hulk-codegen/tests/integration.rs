@@ -549,6 +549,24 @@ function apply_lambda(x: Number, p: (Number) -> Number): Number => p(x);
 }
 
 #[test]
+fn test_vector_size_method() {
+    // Regression: Hulk.md §1072 says vectors expose a `size(): Number`
+    // method, but the runtime had no `__vec_size` symbol so any `v.size()`
+    // call failed with "method 'size' not found in global method table".
+    // Add the runtime helper and route it through the same builtin-dispatch
+    // path used by `next`/`current`.
+    let src = r#"
+{
+    let v = [10, 20, 30, 40] in print(v.size());
+    let v = [1] in print(v.size());
+    let v = [1, 2, 3, 4, 5, 6, 7] in print(v.size());
+}
+"#;
+    let out = run_source("vec_size", src).expect("vec_size");
+    assert_eq!(out.trim_end(), "4\n1\n7");
+}
+
+#[test]
 fn test_type_inherits_protocol_compiles_and_runs() {
     // Regression: a type inheriting a protocol crashed the codegen with
     // "static call target 'Protocol.__init__' not declared", because the

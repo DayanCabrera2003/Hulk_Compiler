@@ -49,6 +49,7 @@ void*  __vec_push(void* vec, double elem);
 double __vec_get(void* vec, double idx);
 int    __vec_next(void* vec);
 double __vec_current(void* vec);
+double __vec_size(void* vec);
 
 extern TypeTag hulk_vec_tag;
 

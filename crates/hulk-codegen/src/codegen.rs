@@ -265,6 +265,7 @@ impl<'ctx> Codegen<'ctx> {
         // Range/Vector next() and current() return without a HULK definition.
         fn_return_kinds.insert("next".to_string(), TempKind::I1);
         fn_return_kinds.insert("current".to_string(), TempKind::F64);
+        fn_return_kinds.insert("size".to_string(), TempKind::F64);
         for _ in 0..4 {
             for td in &program.types {
                 for method in &td.methods {
