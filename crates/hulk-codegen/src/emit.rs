@@ -334,11 +334,16 @@ impl<'ctx> Codegen<'ctx> {
 impl<'ctx> Codegen<'ctx> {
     fn emit_copy(&mut self, dst: TempId, src: &Value) -> CodegenResult<()> {
         let val = self.load_val(src)?;
-        // Propagate type name (Range/Vector) from src temp to dst temp.
+        // Propagate type name (Range/Vector/String) from src temp to dst temp.
         if let Value::Temp(src_tid) = src {
             if let Some(tname) = self.temp_type_names.get(src_tid).cloned() {
                 self.temp_type_names.insert(dst, tname);
             }
+        }
+        // String literals materialise as HulkStr objects; tag the dst so
+        // `let s = "x" in s.size()` dispatches through the $string path.
+        if matches!(src, Value::ConstStr(_)) {
+            self.temp_type_names.insert(dst, "$string".to_owned());
         }
         self.store_temp(dst, val)
     }

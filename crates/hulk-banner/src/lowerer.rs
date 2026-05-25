@@ -235,13 +235,16 @@ impl<'h> Lowerer<'h> {
     // -------- Per-function frame setup --------
 
     /// Map a parameter's type annotation to the runtime sentinel the codegen
-    /// uses to dispatch builtin methods (next, current, size). Today only
-    /// `Number[]` (the explicit Vector form) is recognised — `Number*`
-    /// could legitimately receive a Range or user iterable so it's left
-    /// generic and resolved through the vtable at the call site.
+    /// uses to dispatch builtin methods. `Number[]` becomes `$vector` so
+    /// `xs.size()` / `for (x in xs)` route through the C runtime helpers;
+    /// `String` becomes `$string` so `s.size()` / `s.charAt(i)` /
+    /// `s.substring(start, len)` dispatch the same way. `Number*` could
+    /// legitimately receive a Range or user iterable so it's left generic
+    /// and resolved through the vtable at the call site.
     fn param_runtime_hint(ann: Option<&TypeAnn>) -> Option<String> {
         match ann? {
             TypeAnn::Vector(_) => Some("$vector".to_owned()),
+            TypeAnn::Named(n) if n == "String" => Some("$string".to_owned()),
             _ => None,
         }
     }

@@ -32,3 +32,35 @@ void* hulk_number_to_string(double n) {
     snprintf(buf, sizeof(buf), "%g", n);
     return hulk_string_new(buf);
 }
+
+/* ------------ String introspection ----------------------------------- */
+
+double __str_size(void* s) {
+    return s ? (double)((HulkStr*)s)->len : 0.0;
+}
+
+void* __str_char_at(void* s, double idx) {
+    if (s == NULL) return hulk_string_new("");
+    HulkStr* str = (HulkStr*)s;
+    size_t i = (size_t)idx;
+    if (idx < 0 || i >= str->len) return hulk_string_new("");
+    char buf[2] = { str->data[i], '\0' };
+    return hulk_string_new(buf);
+}
+
+void* __str_substring(void* s, double start, double len) {
+    if (s == NULL) return hulk_string_new("");
+    HulkStr* str = (HulkStr*)s;
+    if (start < 0) start = 0;
+    if (len < 0) len = 0;
+    size_t st = (size_t)start;
+    size_t ln = (size_t)len;
+    if (st >= str->len) return hulk_string_new("");
+    if (st + ln > str->len) ln = str->len - st;
+    HulkStr* result = (HulkStr*)hulk_alloc(&hulk_string_tag,
+                                           sizeof(size_t) + ln + 1);
+    result->len = ln;
+    for (size_t i = 0; i < ln; i++) result->data[i] = str->data[st + i];
+    result->data[ln] = '\0';
+    return (void*)result;
+}

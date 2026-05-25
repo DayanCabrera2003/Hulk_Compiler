@@ -784,6 +784,31 @@ fn test_gc_tree_walk() {
 }
 
 #[test]
+fn test_string_size_char_at_substring() {
+    // Hulk.md leaves the string-method surface unspecified; we expose
+    // `.size()`, `.charAt(i)` and `.substring(start, len)` via runtime
+    // helpers (__str_size, __str_char_at, __str_substring) wired in
+    // through the `$string` builtin-dispatch path.
+    let src = r#"
+function head(s: String, n: Number): String => s.substring(0, n);
+function tail(s: String, n: Number): String => s.substring(s.size() - n, n);
+{
+    let s = "hello world" in {
+        print(s.size());                   // 11
+        print(s.charAt(0));                // h
+        print(s.charAt(6));                // w
+        print(s.substring(0, 5));          // hello
+        print(s.substring(6, 5));          // world
+    };
+    print(head("foobar", 3));              // foo
+    print(tail("foobar", 3));              // bar
+}
+"#;
+    let out = run_source("string_ops", src).expect("string_ops");
+    assert_eq!(out.trim_end(), "11\nh\nw\nhello\nworld\nfoo\nbar");
+}
+
+#[test]
 fn test_vector_index_assignment() {
     // Was previously broken: parser accepted `v[i] := x` but the runtime had
     // no __vec_set helper, so the linker failed with 'undefined reference'.

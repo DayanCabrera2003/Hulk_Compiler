@@ -88,6 +88,27 @@ impl<'ctx> Codegen<'ctx> {
                     ("$vector", "size") => {
                         return self.emit_builtin_method_f64(dst, receiver, self.rt.vec_size)
                     }
+                    ("$string", "size") => {
+                        return self.emit_builtin_method_f64(dst, receiver, self.rt.str_size)
+                    }
+                    ("$string", "charAt") => {
+                        return self.emit_string_builtin_arg_ptr(
+                            dst,
+                            receiver,
+                            args,
+                            self.rt.str_char_at,
+                            1,
+                        );
+                    }
+                    ("$string", "substring") => {
+                        return self.emit_string_builtin_arg_ptr(
+                            dst,
+                            receiver,
+                            args,
+                            self.rt.str_substring,
+                            2,
+                        );
+                    }
                     _ => {}
                 }
             }
@@ -342,6 +363,42 @@ impl<'ctx> Codegen<'ctx> {
             .builder
             .build_int_truncate(i32_val, self.ctx.bool_type(), "bm_i1")?;
         self.store_temp(dst, LlvmVal::Int(i1_val))
+    }
+
+    /// Call a string-method runtime helper that takes `(ptr receiver, ...n
+    /// double args)` and returns a `ptr` (a fresh HulkStr). Coerces each
+    /// arg to `f64` and tags the result with `$string` so further chained
+    /// calls like `s.substring(0, 3).size()` dispatch correctly.
+    fn emit_string_builtin_arg_ptr(
+        &mut self,
+        dst: TempId,
+        receiver: &Value,
+        args: &[Value],
+        fv: inkwell::values::FunctionValue<'ctx>,
+        expected_args: usize,
+    ) -> CodegenResult<()> {
+        if args.len() != expected_args {
+            return Err(CodegenError::Llvm(format!(
+                "string builtin expected {expected_args} arg(s), got {}",
+                args.len()
+            )));
+        }
+        let recv_val = self.load_val(receiver)?;
+        let recv_ptr = self.coerce_to_ptr(recv_val)?;
+        let mut llvm_args: Vec<BasicMetadataValueEnum<'ctx>> = vec![recv_ptr.into()];
+        for arg in args {
+            let v = self.load_val(arg)?;
+            let f = self.coerce_to_f64(v)?;
+            llvm_args.push(f.into());
+        }
+        let call = self.builder.build_call(fv, &llvm_args, "str_bm")?;
+        let ptr = call
+            .try_as_basic_value()
+            .left()
+            .ok_or_else(|| CodegenError::Llvm("string builtin returned void".to_string()))?
+            .into_pointer_value();
+        self.temp_type_names.insert(dst, "$string".to_owned());
+        self.store_temp(dst, LlvmVal::Ptr(ptr))
     }
 
     /// Call a C function that takes `(ptr receiver)` and returns `double`.

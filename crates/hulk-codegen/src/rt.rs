@@ -41,6 +41,10 @@ pub struct RuntimeFunctions<'ctx> {
     // Runtime type test / downcast
     pub hulk_is: FunctionValue<'ctx>,
     pub hulk_as: FunctionValue<'ctx>,
+    // String introspection
+    pub str_size: FunctionValue<'ctx>,
+    pub str_char_at: FunctionValue<'ctx>,
+    pub str_substring: FunctionValue<'ctx>,
 }
 
 impl<'ctx> RuntimeFunctions<'ctx> {
@@ -197,6 +201,20 @@ impl<'ctx> RuntimeFunctions<'ctx> {
             None,
         );
 
+        // String introspection.
+        let str_size =
+            module.add_function("__str_size", f64_t.fn_type(&[ptr_t.into()], false), None);
+        let str_char_at = module.add_function(
+            "__str_char_at",
+            ptr_t.fn_type(&[ptr_t.into(), f64_t.into()], false),
+            None,
+        );
+        let str_substring = module.add_function(
+            "__str_substring",
+            ptr_t.fn_type(&[ptr_t.into(), f64_t.into(), f64_t.into()], false),
+            None,
+        );
+
         let _ = bool_t;
 
         Self {
@@ -227,6 +245,9 @@ impl<'ctx> RuntimeFunctions<'ctx> {
             vec_size,
             hulk_is,
             hulk_as,
+            str_size,
+            str_char_at,
+            str_substring,
         }
     }
 
@@ -253,6 +274,9 @@ impl<'ctx> RuntimeFunctions<'ctx> {
             "__vec_size" => Some(self.vec_size),
             "__hulk_is" => Some(self.hulk_is),
             "__hulk_as" => Some(self.hulk_as),
+            "__str_size" => Some(self.str_size),
+            "__str_char_at" => Some(self.str_char_at),
+            "__str_substring" => Some(self.str_substring),
             _ => None,
         }
     }
