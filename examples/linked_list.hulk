@@ -1,0 +1,81 @@
+// linked_list.hulk — recursive linked list of numbers, with virtual dispatch
+// for empty-vs-cons cases and a separate iterator that implements the
+// Iterable protocol from the prelude so the list can be consumed with `for`.
+
+type List(v: Number) {
+    v: Number = v;
+    is_empty(): Boolean => true;
+    head(): Number => self.v;
+    tail(): List => self;
+    length(): Number => 0;
+    sum(): Number => 0;
+    contains(target: Number): Boolean => false;
+}
+
+type Cons(v: Number, nxt: List) inherits List(v) {
+    nxt: List = nxt;
+    is_empty(): Boolean => false;
+    tail(): List => self.nxt;
+    length(): Number => 1 + self.nxt.length();
+    sum(): Number => self.v + self.nxt.sum();
+    contains(target: Number): Boolean =>
+        if (self.v == target) true else self.nxt.contains(target);
+}
+
+function empty_list(): List => new List(0);
+function cons(v: Number, tail: List): List => new Cons(v, tail);
+
+function from_range(lo: Number, hi: Number): List =>
+    if (lo >= hi) empty_list()
+    else cons(lo, from_range(lo + 1, hi));
+
+function append(xs: List, ys: List): List =>
+    if (xs.is_empty()) ys
+    else cons(xs.head(), append(xs.tail(), ys));
+
+function reverse_into(xs: List, acc: List): List =>
+    if (xs.is_empty()) acc
+    else reverse_into(xs.tail(), cons(xs.head(), acc));
+
+function reverse(xs: List): List => reverse_into(xs, empty_list());
+
+type ListIterator(list: List) {
+    cursor: List = list;
+    started: Boolean = false;
+    next(): Boolean => {
+        if (self.started) self.cursor := self.cursor.tail();
+        self.started := true;
+        !self.cursor.is_empty();
+    };
+    current(): Number => self.cursor.head();
+}
+
+{
+    let xs = from_range(1, 6) in {
+        print("=== from_range(1, 6) ===");
+        print(xs.length());
+        print(xs.sum());
+        print(xs.contains(3));
+        print(xs.contains(99));
+    };
+
+    let xs = cons(1, cons(2, cons(3, empty_list()))),
+        ys = cons(4, cons(5, empty_list())) in {
+        print("=== append + reverse ===");
+        print(append(xs, ys).length());
+        print(append(xs, ys).sum());
+        print(reverse(xs).head());
+        print(reverse(xs).tail().head());
+    };
+
+    print("=== for over ListIterator ===");
+    let xs = from_range(10, 15) in
+        for (x in new ListIterator(xs)) print(x);
+
+    print("=== empty list ===");
+    let empty = empty_list() in {
+        print(empty.is_empty());
+        print(empty.length());
+        print(empty.sum());
+    };
+}
