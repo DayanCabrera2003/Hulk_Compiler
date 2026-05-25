@@ -188,6 +188,23 @@ impl Resolver {
     pub(crate) fn define_params(&mut self, params: &[Param]) -> Vec<crate::symbols::SymbolId> {
         let mut ids = Vec::with_capacity(params.len());
         for param in params {
+            // Reject reserved keywords as parameter names. Without this the
+            // user gets a confusing 'base usado fuera de un método' or
+            // 'self usado fuera de un método' diagnostic emitted by the
+            // body resolver instead of being told the name itself is the
+            // problem.
+            if matches!(param.name.as_str(), "base" | "self") {
+                self.bag.push(
+                    Diagnostic::error(format!(
+                        "'{}' es palabra reservada y no puede ser nombre de parámetro",
+                        param.name
+                    ))
+                    .with_label(
+                        param.span.clone(),
+                        "renombra este parámetro",
+                    ),
+                );
+            }
             self.resolve_type_ann_option(&param.type_ann);
             let id = self.define(
                 param.name.clone(),
