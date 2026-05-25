@@ -332,13 +332,31 @@ impl<'ctx> Codegen<'ctx> {
 /// Build a map from (type_name, field_name) → TempKind using pointer_map.
 ///
 /// pointer_map[i] == false → numeric field (F64); true → reference field (Ptr).
+///
+/// Inherited fields are registered under the subtype's name too, so `self.v`
+/// inside an override resolves to the kind declared by the ancestor that owns
+/// the field. Mirrors the parent-chain walk in `layout::collect_fields`.
 pub(crate) fn build_field_kind_map(program: &BannerProgram) -> HashMap<(String, String), TempKind> {
+    let by_name: HashMap<&str, &hulk_banner::TypeDescriptor> =
+        program.types.iter().map(|t| (t.name.as_str(), t)).collect();
+
     let mut map = HashMap::new();
     for td in &program.types {
-        for (i, field_name) in td.fields.iter().enumerate() {
-            let is_ptr = td.pointer_map.get(i).copied().unwrap_or(true);
-            let kind = if is_ptr { TempKind::Ptr } else { TempKind::F64 };
-            map.insert((td.name.clone(), field_name.clone()), kind);
+        // Walk from the oldest ancestor down to `td` so a redeclared field
+        // (same name) in the subtype overwrites the inherited entry.
+        let mut chain: Vec<&hulk_banner::TypeDescriptor> = Vec::new();
+        let mut current = Some(td);
+        while let Some(t) = current {
+            chain.push(t);
+            current = t.parent.as_deref().and_then(|p| by_name.get(p).copied());
+        }
+        chain.reverse();
+        for ancestor in chain {
+            for (i, field_name) in ancestor.fields.iter().enumerate() {
+                let is_ptr = ancestor.pointer_map.get(i).copied().unwrap_or(true);
+                let kind = if is_ptr { TempKind::Ptr } else { TempKind::F64 };
+                map.insert((td.name.clone(), field_name.clone()), kind);
+            }
         }
     }
     map

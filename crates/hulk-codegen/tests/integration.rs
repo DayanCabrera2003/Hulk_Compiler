@@ -372,6 +372,28 @@ let k = new Knight("Phil", "Collins") in print(k.name());
 }
 
 #[test]
+fn test_override_accesses_inherited_numeric_field() {
+    // Regression: when a subtype overrode a method that read an inherited
+    // Number field via `self.v`, the codegen used to type `self.v` as Ptr
+    // because build_field_kind_map only registered each type's own fields.
+    let src = r#"
+type Base(v: Number) {
+    v: Number = v;
+    show(): Boolean => false;
+}
+type Child(v: Number) inherits Base(v) {
+    show(): Boolean => if (self.v == 5) true else false;
+}
+{
+    print(new Child(5).show());
+    print(new Child(3).show());
+}
+"#;
+    let out = run_source("override_inherits_num_field", src).expect("override_inherits_num_field");
+    assert_eq!(out.trim_end(), "true\nfalse");
+}
+
+#[test]
 #[ignore = "debug-only: dumps IR/BANNER for manual inspection, run with `cargo test -- --ignored --nocapture`"]
 fn test_debug_ir_class_simple() {
     let src = r#"
