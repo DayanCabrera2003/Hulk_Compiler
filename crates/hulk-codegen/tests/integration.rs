@@ -372,7 +372,7 @@ let k = new Knight("Phil", "Collins") in print(k.name());
 }
 
 #[test]
-#[ignore]
+#[ignore = "debug-only: dumps IR/BANNER for manual inspection, run with `cargo test -- --ignored --nocapture`"]
 fn test_debug_ir_class_simple() {
     let src = r#"
 type Counter(start: Number) {
@@ -395,7 +395,7 @@ let c = new Counter(0) in {
 }
 
 #[test]
-#[ignore]
+#[ignore = "debug-only: dumps IR/BANNER for manual inspection, run with `cargo test -- --ignored --nocapture`"]
 fn test_debug_banner_class_simple() {
     let src = r#"
 type Counter(start: Number) {
@@ -429,7 +429,7 @@ let c = new Counter(0) in {
 }
 
 #[test]
-#[ignore]
+#[ignore = "debug-only: dumps IR/BANNER for manual inspection, run with `cargo test -- --ignored --nocapture`"]
 fn test_debug_banner_base_dispatch() {
     let src = r#"
 type Person(firstname: String, lastname: String) {
@@ -462,7 +462,7 @@ let k = new Knight("Phil", "Collins") in print(k.name());
 }
 
 #[test]
-#[ignore]
+#[ignore = "debug-only: dumps IR/BANNER for manual inspection, run with `cargo test -- --ignored --nocapture`"]
 fn test_debug_banner_strings() {
     let src = r#"
 {
@@ -482,7 +482,7 @@ fn test_debug_banner_strings() {
 }
 
 #[test]
-#[ignore]
+#[ignore = "debug-only: dumps IR/BANNER for manual inspection, run with `cargo test -- --ignored --nocapture`"]
 fn test_debug_banner_for_range() {
     let src = "for (x in range(0, 5)) print(x);";
     let source = hulk_hir::SourceFile::new("for_range_banner", src);
@@ -504,7 +504,7 @@ fn test_debug_banner_for_range() {
 }
 
 #[test]
-#[ignore]
+#[ignore = "debug-only: dumps IR/BANNER for manual inspection, run with `cargo test -- --ignored --nocapture`"]
 fn test_debug_banner_vectors() {
     let src = r#"
 let v = [10, 20, 30] in {
@@ -524,7 +524,7 @@ let v = [10, 20, 30] in {
 }
 
 #[test]
-#[ignore]
+#[ignore = "debug-only: dumps IR/BANNER for manual inspection, run with `cargo test -- --ignored --nocapture`"]
 fn test_debug_banner_for_vec() {
     let src = "for (x in [1, 2, 3]) print(x);";
     let source = hulk_hir::SourceFile::new("for_vec_banner", src);
