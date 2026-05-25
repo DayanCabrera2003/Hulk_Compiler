@@ -199,6 +199,10 @@ impl<'ctx> Codegen<'ctx> {
     }
 
     /// Emit a `SetIndex { target, index, value }` instruction.
+    ///
+    /// Lowers `v[i] := x` to a runtime `__vec_set(vec, idx, value)` call.
+    /// `value` is coerced to f64; the runtime only stores numeric vectors
+    /// (matching __vec_push/__vec_get).
     pub(crate) fn emit_set_index(
         &mut self,
         target: &Value,
@@ -213,12 +217,12 @@ impl<'ctx> Codegen<'ctx> {
             LlvmVal::Float(f) => f,
             _ => return Err(CodegenError::Llvm("vector index must be f64".to_string())),
         };
-        let val_ptr = self.coerce_to_ptr(vv)?;
+        let val_float = self.coerce_to_f64(vv)?;
 
         let vec_set = self.get_or_declare_vec_set();
         self.builder.build_call(
             vec_set,
-            &[vec_ptr.into(), idx_float.into(), val_ptr.into()],
+            &[vec_ptr.into(), idx_float.into(), val_float.into()],
             "vec_set",
         )?;
         Ok(())
@@ -428,7 +432,8 @@ impl<'ctx> Codegen<'ctx> {
         let f64_t = self.ctx.f64_type();
         let ptr_t = self.ptr_type();
         let void_t = self.ctx.void_type();
-        let fn_ty = void_t.fn_type(&[ptr_t.into(), f64_t.into(), ptr_t.into()], false);
+        // Signature mirrors __vec_push: vector pointer, index, double value.
+        let fn_ty = void_t.fn_type(&[ptr_t.into(), f64_t.into(), f64_t.into()], false);
         let fv = self.module.add_function(name, fn_ty, None);
         self.functions.insert(name.to_string(), fv);
         fv

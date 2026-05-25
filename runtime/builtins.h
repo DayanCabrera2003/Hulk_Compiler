@@ -47,6 +47,7 @@ void* __hulk_concat(void* a, void* b);
 void*  __vec_new(double initial_cap);
 void*  __vec_push(void* vec, double elem);
 double __vec_get(void* vec, double idx);
+void   __vec_set(void* vec, double idx, double value);
 int    __vec_next(void* vec);
 double __vec_current(void* vec);
 double __vec_size(void* vec);

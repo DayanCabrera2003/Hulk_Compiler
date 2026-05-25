@@ -199,10 +199,7 @@ impl Resolver {
                         "'{}' es palabra reservada y no puede ser nombre de parámetro",
                         param.name
                     ))
-                    .with_label(
-                        param.span.clone(),
-                        "renombra este parámetro",
-                    ),
+                    .with_label(param.span.clone(), "renombra este parámetro"),
                 );
             }
             self.resolve_type_ann_option(&param.type_ann);

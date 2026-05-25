@@ -784,6 +784,22 @@ fn test_gc_tree_walk() {
 }
 
 #[test]
+fn test_vector_index_assignment() {
+    // Was previously broken: parser accepted `v[i] := x` but the runtime had
+    // no __vec_set helper, so the linker failed with 'undefined reference'.
+    let src = r#"
+let v = [0, 0, 0, 0, 0] in {
+    v[0] := 10;
+    v[2] := 99;
+    v[4] := 42;
+    for (i in range(0, 5)) print(v[i]);
+};
+"#;
+    let out = run_source("vec_set", src).expect("vec_set");
+    assert_eq!(out.trim_end(), "10\n0\n99\n0\n42");
+}
+
+#[test]
 fn test_torture_sorting() {
     assert_program_matches_expected("stress-test/torture/sorting.hulk", "torture_sorting");
 }

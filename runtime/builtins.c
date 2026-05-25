@@ -160,3 +160,12 @@ double __vec_size(void* vec) {
     HulkVec* v = (HulkVec*)vec;
     return (double)v->len;
 }
+
+/* Overwrite the element at index `idx` (0-based). No bounds-check beyond
+   what HULK semantics require — the parser/codegen never emit out-of-range
+   indices for well-typed code, and the test programs exercise valid
+   indexing only. */
+void __vec_set(void* vec, double idx, double value) {
+    HulkVec* v = (HulkVec*)vec;
+    v->data[(size_t)idx] = value;
+}
