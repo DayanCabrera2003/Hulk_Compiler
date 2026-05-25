@@ -436,6 +436,60 @@ print(new SumMany().run());
     assert_eq!(out.trim_end(), "5");
 }
 
+// ─── 18. Sesión 17 complex programs + GC stress (E2E) ────────────────────────
+
+/// Compile and run a HULK program, asserting its stdout equals the contents
+/// of a sibling `.expected` file.
+fn assert_program_matches_expected(rel_path: &str, test_name: &str) {
+    let base = workspace_root().join(rel_path);
+    let src =
+        std::fs::read_to_string(&base).unwrap_or_else(|_| panic!("cannot read {}", base.display()));
+    let expected_path = base.with_extension("expected");
+    let expected = std::fs::read_to_string(&expected_path)
+        .unwrap_or_else(|_| panic!("cannot read {}", expected_path.display()));
+    let actual = run_source(test_name, &src).expect(test_name);
+    assert_eq!(
+        actual.trim_end_matches('\n'),
+        expected.trim_end_matches('\n'),
+        "{rel_path} stdout mismatch"
+    );
+}
+
+#[test]
+fn test_examples_linked_list() {
+    assert_program_matches_expected("examples/linked_list.hulk", "linked_list");
+}
+
+#[test]
+fn test_examples_expression_tree() {
+    assert_program_matches_expected("examples/expression_tree.hulk", "expression_tree");
+}
+
+#[test]
+fn test_examples_game_of_life() {
+    assert_program_matches_expected("examples/game_of_life.hulk", "game_of_life");
+}
+
+#[test]
+fn test_examples_parser_combinators() {
+    assert_program_matches_expected("examples/parser_combinators.hulk", "parser_combinators");
+}
+
+#[test]
+fn test_gc_allocs_many() {
+    assert_program_matches_expected("stress-test/gc/allocs_many.hulk", "gc_allocs_many");
+}
+
+#[test]
+fn test_gc_cycles() {
+    assert_program_matches_expected("stress-test/gc/cycles.hulk", "gc_cycles");
+}
+
+#[test]
+fn test_gc_tree_walk() {
+    assert_program_matches_expected("stress-test/gc/tree_walk.hulk", "gc_tree_walk");
+}
+
 #[test]
 #[ignore = "debug-only: dumps IR/BANNER for manual inspection, run with `cargo test -- --ignored --nocapture`"]
 fn test_debug_ir_class_simple() {
