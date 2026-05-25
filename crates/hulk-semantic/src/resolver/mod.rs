@@ -74,6 +74,13 @@ impl Resolver {
         self.expr_symbols.get(&node_id).copied()
     }
 
+    /// Register an expression node → symbol binding. Used by later passes
+    /// (like the desugarer's closure capture) that synthesise new Ident
+    /// nodes which still need to resolve to a pre-existing symbol.
+    pub fn bind_expr_symbol(&mut self, node_id: NodeId, symbol: SymbolId) {
+        self.expr_symbols.insert(node_id, symbol);
+    }
+
     /// Returns the param symbol ids of a function (in declaration order),
     /// or None if the function symbol is unknown.
     #[must_use]

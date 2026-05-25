@@ -615,6 +615,9 @@ impl<'h> Lowerer<'h> {
             if let Some(&t) = self.locals_by_name.get(name) {
                 return Value::Temp(t);
             }
+            if let Some(&t) = self.param_temps.get(name) {
+                return Value::Temp(t);
+            }
             // Treat as a global function/builtin name.
             Value::Global(name.clone())
         }

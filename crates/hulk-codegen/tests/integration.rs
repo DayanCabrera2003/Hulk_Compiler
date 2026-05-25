@@ -437,6 +437,34 @@ print(new SumMany().run());
 }
 
 #[test]
+fn test_lambda_captures_outer_variable() {
+    // Regression: lambdas referenced enclosing-scope variables but the lambda
+    // lowering produced a synthetic type whose method had no way to access
+    // them, panicking with "param not in param_temps" inside the banner
+    // lowerer. Free variables are now lifted into constructor parameters and
+    // stored as fields on the synthetic functor type; the body sees them via
+    // self.<name>.
+    let src = r#"
+function add_n(n: Number): (Number) -> Number => (x: Number): Number => x + n;
+function compose(f: (Number) -> Number, g: (Number) -> Number): (Number) -> Number =>
+    (x: Number): Number => f(g(x));
+function mul_n(n: Number): (Number) -> Number => (x: Number): Number => x * n;
+{
+    let inc = add_n(1), plus5 = add_n(5) in {
+        print(inc(0));
+        print(plus5(100));
+    };
+    let f = compose(mul_n(2), add_n(3)) in {
+        print(f(5));
+        print(f(10));
+    };
+};
+"#;
+    let out = run_source("closure_capture", src).expect("closure_capture");
+    assert_eq!(out.trim_end(), "1\n105\n16\n26");
+}
+
+#[test]
 fn test_is_and_as_runtime_type_checks() {
     // Regression: `is` and `as` lowered to Calls of `__hulk_is`/`__hulk_as`
     // that had no runtime implementation (link-time "unresolved callee"
