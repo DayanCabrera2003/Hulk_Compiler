@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use std::process::Command;
 
 use hulk_diagnostics::DiagnosticBag;
-use hulk_driver::build_pipeline;
+use hulk_driver::{build_pipeline, PRELUDE};
 use hulk_hir::SourceFile;
 
 use hulk_codegen::pipeline::{compile, CompileOptions};
@@ -23,8 +23,13 @@ fn out_dir() -> Option<PathBuf> {
 }
 
 /// Compile a HULK source string and return `(stdout, stderr, exit_code)`.
+///
+/// Prepends the standard prelude so test sources can rely on Iterable,
+/// Enumerable and Range without re-declaring them — matching what
+/// `hulkc compile` does in production.
 fn run_source(test_name: &str, src: &str) -> Result<String, String> {
-    let source = SourceFile::new(test_name, src);
+    let combined = format!("{PRELUDE}\n{src}");
+    let source = SourceFile::new(test_name, combined);
     let mut bag = DiagnosticBag::new();
     let hir = build_pipeline(source, &mut bag).ok_or_else(|| {
         format!(
