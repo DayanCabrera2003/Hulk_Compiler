@@ -1,0 +1,145 @@
+// parser_combinators.hulk — a tiny parser combinator library over Number[]
+// token streams. Each parser is a functor (implements the `Parser` protocol
+// via a `parse` method); combinators are types holding other parsers as
+// fields and composing their invocations.
+// The method is named `parse` rather than `invoke` because lambdas synthesise
+// an `invoke` slot in the global vtable and the two would conflict at codegen
+// time. Lambdas-as-arguments are showcased via the top-level `count_if`
+// helper, the same pattern used in examples/functors.hulk.
+
+protocol Parser {
+    parse(tokens: Number[], pos: Number): ParseResult;
+}
+
+type ParseResult(success: Boolean, value: Number, position: Number) {
+    success: Boolean = success;
+    value: Number = value;
+    position: Number = position;
+
+    is_ok(): Boolean => self.success;
+    get_value(): Number => self.value;
+    get_pos(): Number => self.position;
+}
+
+function ok(v: Number, pos: Number): ParseResult => new ParseResult(true, v, pos);
+function fail(): ParseResult => new ParseResult(false, 0, 0);
+
+// ─── primitive parsers ──────────────────────────────────────────────────────
+
+type Lit(want: Number) {
+    want: Number = want;
+    parse(tokens: Number[], pos: Number): ParseResult =>
+        if (tokens[pos] == self.want) ok(self.want, pos + 1) else fail();
+}
+
+type Between(lo: Number, hi: Number) {
+    lo: Number = lo;
+    hi: Number = hi;
+    parse(tokens: Number[], pos: Number): ParseResult =>
+        let t = tokens[pos] in
+            if (t >= self.lo & t <= self.hi) ok(t, pos + 1) else fail();
+}
+
+// ─── composing combinators ──────────────────────────────────────────────────
+
+type Seq(a: Parser, b: Parser) {
+    a: Parser = a;
+    b: Parser = b;
+    parse(tokens: Number[], pos: Number): ParseResult =>
+        let r1 = self.a.parse(tokens, pos) in
+            if (!r1.is_ok()) fail()
+            else let r2 = self.b.parse(tokens, r1.get_pos()) in
+                if (!r2.is_ok()) fail()
+                else ok(r1.get_value() + r2.get_value(), r2.get_pos());
+}
+
+type Alt(a: Parser, b: Parser) {
+    a: Parser = a;
+    b: Parser = b;
+    parse(tokens: Number[], pos: Number): ParseResult =>
+        let r1 = self.a.parse(tokens, pos) in
+            if (r1.is_ok()) r1 else self.b.parse(tokens, pos);
+}
+
+// Repeat `inner` zero or more times, summing the parsed values.
+type SumMany(inner: Parser) {
+    inner: Parser = inner;
+    parse(tokens: Number[], pos: Number): ParseResult =>
+        let acc = 0, cur = pos, alive = true in {
+            while (alive) {
+                let r = self.inner.parse(tokens, cur) in
+                    if (r.is_ok()) {
+                        acc := acc + r.get_value();
+                        cur := r.get_pos();
+                    } else alive := false;
+            };
+            ok(acc, cur);
+        };
+}
+
+// Repeat `inner` zero or more times, returning the maximum parsed value.
+type MaxMany(inner: Parser) {
+    inner: Parser = inner;
+    parse(tokens: Number[], pos: Number): ParseResult =>
+        let acc = 0, cur = pos, alive = true in {
+            while (alive) {
+                let r = self.inner.parse(tokens, cur) in
+                    if (r.is_ok()) {
+                        if (r.get_value() > acc) acc := r.get_value();
+                        cur := r.get_pos();
+                    } else alive := false;
+            };
+            ok(acc, cur);
+        };
+}
+
+// ─── driver + lambda-style helper ───────────────────────────────────────────
+
+function run(p: Parser, tokens: Number[]): Number =>
+    let r = p.parse(tokens, 0) in
+        if (r.is_ok()) r.get_value() else 0 - 1;
+
+function count_if(tokens: Number[], n: Number, predicate: (Number) -> Boolean): Number =>
+    let total = 0 in {
+        for (i in range(0, n))
+            if (predicate(tokens[i])) total := total + 1;
+        total;
+    };
+
+{
+    print("=== Lit ===");
+    print(run(new Lit(7), [7, 0, 0]));
+    print(run(new Lit(7), [42, 0, 0]));
+
+    print("=== Seq ===");
+    print(run(new Seq(new Lit(1), new Lit(2)), [1, 2, 99]));
+    print(run(new Seq(new Lit(1), new Lit(2)), [1, 5, 99]));
+
+    print("=== Alt ===");
+    let parser = new Alt(new Lit(9), new Lit(10)) in {
+        print(run(parser, [9, 0, 0]));
+        print(run(parser, [10, 0, 0]));
+        print(run(parser, [1, 0, 0]));
+    };
+
+    print("=== Between ===");
+    let digit = new Between(0, 9) in {
+        print(run(digit, [5, 0, 0]));
+        print(run(digit, [15, 0, 0]));
+    };
+
+    print("=== SumMany ===");
+    let digits_sum = new SumMany(new Between(0, 9)) in {
+        print(run(digits_sum, [1, 2, 3, 99]));
+        print(run(digits_sum, [5, 5, 5, 5, 100]));
+        print(run(digits_sum, [50, 0, 0]));
+    };
+
+    print("=== MaxMany ===");
+    let digits_max = new MaxMany(new Between(0, 9)) in
+        print(run(digits_max, [3, 7, 1, 4, 100]));
+
+    print("=== count_if (lambda) ===");
+    print(count_if([1, 5, 7, 2, 8, 9, 3], 7, (x: Number): Boolean => x >= 5));
+    print(count_if([10, 20, 30, 40, 50], 5, (x) => x % 20 == 0));
+}
