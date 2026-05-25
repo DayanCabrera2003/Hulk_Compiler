@@ -1,0 +1,76 @@
+// game_of_life.hulk — Conway's Game of Life on a fixed-size grid.
+// The grid is a Number[] flattened row-major; mutation is avoided by
+// regenerating the next state via list comprehension. Demonstrates
+// vector literals, comprehensions, nested loops and formatted printing.
+
+function row_of(i: Number, cols: Number): Number => (i - (i % cols)) / cols;
+function col_of(i: Number, cols: Number): Number => i % cols;
+
+function is_alive(g: Number[], r: Number, c: Number, rows: Number, cols: Number): Number =>
+    if (r < 0 | r >= rows | c < 0 | c >= cols) 0
+    else g[r * cols + c];
+
+function neighbours(g: Number[], r: Number, c: Number, rows: Number, cols: Number): Number =>
+    is_alive(g, r - 1, c - 1, rows, cols)
+    + is_alive(g, r - 1, c,     rows, cols)
+    + is_alive(g, r - 1, c + 1, rows, cols)
+    + is_alive(g, r,     c - 1, rows, cols)
+    + is_alive(g, r,     c + 1, rows, cols)
+    + is_alive(g, r + 1, c - 1, rows, cols)
+    + is_alive(g, r + 1, c,     rows, cols)
+    + is_alive(g, r + 1, c + 1, rows, cols);
+
+function next_cell(g: Number[], i: Number, rows: Number, cols: Number): Number =>
+    let r = row_of(i, cols),
+        c = col_of(i, cols),
+        n = neighbours(g, r, c, rows, cols),
+        alive = g[i] == 1 in
+        if (alive & (n == 2 | n == 3)) 1
+        elif (!alive & n == 3) 1
+        else 0;
+
+function step(g: Number[], rows: Number, cols: Number): Number[] =>
+    [next_cell(g, i, rows, cols) | i in range(0, rows * cols)];
+
+function print_grid(g: Number[], rows: Number, cols: Number) {
+    for (r in range(0, rows)) {
+        let line = "" in {
+            for (c in range(0, cols))
+                line := line @ (if (g[r * cols + c] == 1) "#" else ".");
+            print(line);
+        };
+    };
+}
+
+function simulate(label: String, g: Number[], rows: Number, cols: Number, generations: Number) {
+    print(label);
+    let current = g, gen = 0 in {
+        while (gen <= generations) {
+            print("--- gen " @ gen @ " ---");
+            print_grid(current, rows, cols);
+            current := step(current, rows, cols);
+            gen := gen + 1;
+        };
+    };
+}
+
+{
+    // Blinker oscillator (period 2) on a 5x5 grid.
+    let blinker = [
+        0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0,
+        0, 1, 1, 1, 0,
+        0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0
+    ] in simulate("BLINKER", blinker, 5, 5, 2);
+
+    // Glider on a 6x6 grid.
+    let glider = [
+        0, 1, 0, 0, 0, 0,
+        0, 0, 1, 0, 0, 0,
+        1, 1, 1, 0, 0, 0,
+        0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0
+    ] in simulate("GLIDER", glider, 6, 6, 3);
+}
