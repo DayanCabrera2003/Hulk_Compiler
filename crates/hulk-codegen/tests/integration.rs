@@ -784,6 +784,33 @@ fn test_gc_tree_walk() {
 }
 
 #[test]
+fn test_macro_body_can_assign_to_external_var() {
+    // Was previously a hard panic in the BANNER lowerer
+    // ("AssignTarget::Ident has no resolved symbol"): the macro expander's
+    // refresh_node_ids step rewrote every NodeId in the substituted body
+    // but didn't propagate the resolver's expr_symbols entries, so the
+    // body's `count := count + 1` AssignTarget ended up unresolved. The
+    // refresh now keeps the resolver in sync so the captured external
+    // variable resolves correctly through the expansion.
+    let src = r#"
+def repeat(n: Number, *expr: Object): Object =>
+    let total = n in
+        while (total > 0) {
+            total := total - 1;
+            expr;
+        };
+let count = 0 in {
+    repeat(5) {
+        count := count + 1;
+    };
+    print(count);
+};
+"#;
+    let out = run_source("macro_assign_external", src).expect("macro_assign_external");
+    assert_eq!(out.trim_end(), "5");
+}
+
+#[test]
 fn test_trailing_block_macro_sugar() {
     // Hulk.md §1353 sugar: `name(args) { body }` is shorthand for
     // `name(args, { body })`. Until this fix the parser stopped at the

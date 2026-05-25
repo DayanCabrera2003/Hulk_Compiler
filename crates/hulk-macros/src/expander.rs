@@ -7,7 +7,7 @@ use hulk_hir::{
     SymbolKind, TypeEnv, VisitorMut,
 };
 
-use crate::node_ids::{max_node_id_in_program, refresh_node_ids};
+use crate::node_ids::{max_node_id_in_program, refresh_node_ids_with_resolver};
 use crate::pattern::{match_pattern, parse_match_case, simplify_algebraic, MatchCase};
 use crate::sanitize::sanitize_locals;
 use crate::substitution::{map_type_ann_to_type_id, substitute_params, Substitution};
@@ -168,7 +168,11 @@ impl<'a> MacroExpander<'a> {
                         let mut result = body;
                         substitute_params(&mut result, &bindings, self.bag);
                         self.expand_expr(&mut result);
-                        refresh_node_ids(&mut result, &mut self.node_ids);
+                        refresh_node_ids_with_resolver(
+                            &mut result,
+                            &mut self.node_ids,
+                            self.symbols,
+                        );
                         result.span = expr.span.clone();
                         return Some(result);
                     }
@@ -179,7 +183,7 @@ impl<'a> MacroExpander<'a> {
         if let Some(mut default_expr) = default_case {
             self.expand_expr(&mut default_expr);
             simplify_algebraic(&mut default_expr);
-            refresh_node_ids(&mut default_expr, &mut self.node_ids);
+            refresh_node_ids_with_resolver(&mut default_expr, &mut self.node_ids, self.symbols);
             default_expr.span = expr.span.clone();
             return Some(default_expr);
         }
@@ -247,7 +251,7 @@ impl<'a> MacroExpander<'a> {
         sanitize_locals(&mut expanded, macro_name, expansion_id);
         substitute_params(&mut expanded, &substitutions, self.bag);
         self.expand_expr(&mut expanded);
-        refresh_node_ids(&mut expanded, &mut self.node_ids);
+        refresh_node_ids_with_resolver(&mut expanded, &mut self.node_ids, self.symbols);
         self.record_placeholder_bindings(&expanded, &placeholder_bindings);
         expanded.span = call_span;
         expanded
