@@ -89,7 +89,7 @@ Se transforma a un cuerpo equivalente donde:
 
 ### Representacion interna usada
 
-Debido a que el parser actual aun no construye nodos AST para la sintaxis `match/case` de Hulk.md, esta subsesion usa una representacion interna temporal en el cuerpo de macros:
+Debido a que el parser actual aun no construye nodos AST para la sintaxis `match/case` de hulk-docs.pdf, esta subsesion usa una representacion interna temporal en el cuerpo de macros:
 
 - `__hulk_match(subject, case..., default)`
 - `__hulk_case_lit(pattern_literal, body)`
@@ -117,7 +117,7 @@ El pipeline pide "evaluacion de `match(expr) { case ... }` en tiempo de compilac
   - Para no adelantar trabajo de 10.2 fuera de alcance, el motor usa una codificacion interna con llamadas especiales `__hulk_match` y `__hulk_case_*`.
 
 - El matching soporta literales, variables tipadas y binops de la forma usada por `simplify`.
-  - Se priorizo cubrir el ejemplo canónico de Hulk.md antes que modelar todas las formas posibles de patrones.
+  - Se priorizo cubrir el ejemplo canónico de hulk-docs.pdf antes que modelar todas las formas posibles de patrones.
 
 - La simplificacion aritmetica neutra se aplico como post-proceso local.
   - Esto permite que `simplify((42+0)*1)` termine en `42` aun cuando el primer caso de suma genere una expresion equivalente pero no final.

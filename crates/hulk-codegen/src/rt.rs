@@ -123,7 +123,7 @@ impl<'ctx> RuntimeFunctions<'ctx> {
         let hulk_sin = module.add_function("hulk_sin", math_sig, None);
         let hulk_cos = module.add_function("hulk_cos", math_sig, None);
         let hulk_exp = module.add_function("hulk_exp", math_sig, None);
-        // hulk_log(base, value): HULK's log takes two arguments per Hulk.md §6.
+        // hulk_log(base, value): HULK's log takes two arguments per hulk-docs.pdf A.6.
         let log_sig = f64_t.fn_type(&[f64_t.into(), f64_t.into()], false);
         let hulk_log = module.add_function("hulk_log", log_sig, None);
 

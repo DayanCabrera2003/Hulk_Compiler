@@ -15,7 +15,7 @@ use crate::options::{CompileOptions, EmitKind};
 
 /// Prelude source code prepended to every user program before parsing.
 ///
-/// Defines `Iterable`, `Enumerable`, and `Range` (see Hulk.md §15).
+/// Defines `Iterable`, `Enumerable`, and `Range` (see hulk-docs.pdf A.15).
 pub const PRELUDE: &str = include_str!("../../../prelude/prelude.hulk");
 
 /// Compiles a HULK source file according to `options`.

@@ -44,7 +44,7 @@ Los 4 pasaron a tests de regresión en `tests/declarations.rs`.
 
 ### Limitación conocida (no bug)
 
-- `MacroDecl` no tiene campo `return_type`, pero la sintaxis `def foo(...): Type => ...` de Hulk.md sí permite anotación. El parser acepta y **descarta** el `: Type` después de `)` en macros, con un comentario `// TODO` en `parse_macro_decl` apuntando al fix futuro. Cuando se añada `return_type: Option<TypeAnn>` a `MacroDecl`, reemplazar el `let _discarded = ...` por un store.
+- `MacroDecl` no tiene campo `return_type`, pero la sintaxis `def foo(...): Type => ...` de hulk-docs.pdf sí permite anotación. El parser acepta y **descarta** el `: Type` después de `)` en macros, con un comentario `// TODO` en `parse_macro_decl` apuntando al fix futuro. Cuando se añada `return_type: Option<TypeAnn>` a `MacroDecl`, reemplazar el `let _discarded = ...` por un store.
 
 ---
 
@@ -129,7 +129,7 @@ Esto garantiza que el driver pueda pedir cualquier fase posterior aun con errore
 
 ### 7. Return types en macros: parse-and-discard
 
-La sintaxis `def foo(params): RetType => ...` aparece en ejemplos de Hulk.md, pero `MacroDecl` no tiene campo `return_type`. En lugar de bloquear la subsesión modificando el AST de nuevo o rechazar la sintaxis, el parser consume y descarta el `: Type` tras `)`. Se dejó un TODO claro para añadir el campo cuando se trabaje macros (sesión 10).
+La sintaxis `def foo(params): RetType => ...` aparece en ejemplos de hulk-docs.pdf, pero `MacroDecl` no tiene campo `return_type`. En lugar de bloquear la subsesión modificando el AST de nuevo o rechazar la sintaxis, el parser consume y descarta el `: Type` tras `)`. Se dejó un TODO claro para añadir el campo cuando se trabaje macros (sesión 10).
 
 ---
 
@@ -179,9 +179,9 @@ La sintaxis `def foo(params): RetType => ...` aparece en ejemplos de Hulk.md, pe
 | Edge cases | 7 | Source vacío, solo `;`, 50 calls anidadas, `let...in let...in`, `base.foo()`, `for` sobre vector, `new` con vector arg |
 | NodeId uniqueness | 1 | Todos los NodeIds en un programa grande son únicos |
 | Errores esperados | 3 | `type Point 0;`, `let x = 1 x;`, solo decl sin body |
-| Ejemplos Hulk.md | 14 | Hello world, aritmética, let mult bindings, let redef, `:=`, elif, gcd while, `for` range, Point methods, Knight inherits + base, Iterable protocol, vector generator, lambda, is/as, macro repeat |
+| Ejemplos hulk-docs.pdf | 14 | Hello world, aritmética, let mult bindings, let redef, `:=`, elif, gcd while, `for` range, Point methods, Knight inherits + base, Iterable protocol, vector generator, lambda, is/as, macro repeat |
 
-**Ejemplos literales de Hulk.md** parseados correctamente: el bloque "Ejemplos Hulk.md" toma snippets directamente de la spec y verifica que el parser no emite errores sobre ellos.
+**Ejemplos literales de hulk-docs.pdf** parseados correctamente: el bloque "Ejemplos hulk-docs.pdf" toma snippets directamente de la spec y verifica que el parser no emite errores sobre ellos.
 
 **Validación final**:
 - `cargo test -p hulk-parser` → 92/92 passed

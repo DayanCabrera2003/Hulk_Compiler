@@ -82,7 +82,7 @@ pub struct Member {
 /// Kind of member inside a type declaration.
 ///
 /// HULK requires every attribute to be given an initialization expression
-/// (see Hulk.md, section "Types"), so `value` is always present.
+/// (see hulk-docs.pdf, section "Types"), so `value` is always present.
 #[derive(Debug, Clone, PartialEq)]
 pub enum MemberKind {
     Attribute {
@@ -113,7 +113,7 @@ pub struct MethodSig {
 /// Macro parameter forms supported by HULK.
 ///
 /// Each kind carries its type annotation, as HULK requires fully typed
-/// macro parameters (see Hulk.md, section "Macros"):
+/// macro parameters (see hulk-docs.pdf, section "Macros"):
 /// - `Regular`: `n: Number`
 /// - `Body`: `*expr: Object` — receives the block following the invocation.
 /// - `Symbolic`: `@a: Object` — receives a symbol from the caller context.
@@ -169,7 +169,7 @@ impl MacroParam {
 /// Binding form used by `let` expressions.
 ///
 /// `type_ann` is optional because HULK allows both `let x = 42 in ...`
-/// and `let x: Number = 42 in ...` (see Hulk.md, section "Type checking").
+/// and `let x: Number = 42 in ...` (see hulk-docs.pdf, section "Type checking").
 #[derive(Debug, Clone, PartialEq)]
 pub struct LetBinding {
     pub name: String,

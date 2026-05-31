@@ -32,7 +32,7 @@ Esta sesión de testing exhaustivo descubrió y corrigió **11 bugs** en el comp
 
 1. **`hulkc` no encuentra `libhulkruntime.a` fuera de cargo** — fallback a `env!("OUT_DIR")` baked at build time.
 2. **`emit_pow` redeclara `llvm.pow.f64` cada vez** — usar `get_function` antes de `add_function`.
-3. **`hulk_log` declarado con 1 arg pero llamado con 2** — Hulk.md especifica `log(base, value)`; runtime corregido.
+3. **`hulk_log` declarado con 1 arg pero llamado con 2** — hulk-docs.pdf especifica `log(base, value)`; runtime corregido.
 4. **Multi-binding `let n=42, t="abc" in print(t @ n)` segfaultea** — el inferer no registraba el tipo de la binding's symbol; ahora sí.
 5. **`for x in new Range(...)` no produce salida** — colisión entre el tipo `Range` del prelude y la sentinel del builtin `range()`; sentinel renombrado a `$range`.
 6. **`__vec_new()` llamado con 0 args pero declarado con 1** — desugar de comprensiones ahora pasa `0` como capacidad inicial.

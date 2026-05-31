@@ -21,7 +21,7 @@ pub(crate) fn is_enumerable_kind(kind: &TypeKind) -> bool {
 }
 
 /// Heuristically classify a user-defined type as Enumerable when it owns
-/// an `iter()` method (per Hulk.md §1130), regardless of whether it
+/// an `iter()` method (per hulk-docs.pdf A.1130), regardless of whether it
 /// explicitly extends the Enumerable protocol.
 pub(crate) fn user_type_is_enumerable(kind: &TypeKind, desugarer: &Desugarer<'_>) -> bool {
     if let TypeKind::UserDefined { name, .. } = kind {

@@ -77,7 +77,7 @@ fn type_decl_supports_inheritance_and_mixed_members() {
 #[test]
 fn attribute_value_is_required_not_optional() {
     // This test encodes the fact that attributes MUST have an initializer
-    // (per Hulk.md "Types" section). If someone tries to make `value`
+    // (per hulk-docs.pdf "Types" section). If someone tries to make `value`
     // optional again, the type of the field will change and this test
     // will fail at compile time.
     let attr = MemberKind::Attribute {

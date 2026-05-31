@@ -50,11 +50,11 @@ La suite codegen ejecuta 17 programas inline + las 4 referencias a archivo:
 | `test_examples_parser_combinators`    | `examples/parser_combinators.hulk` | functors + protocol + lambdas |
 
 Decisión de scope: el PIPELINE original pedía "extraer **todos** los snippets
-de `Hulk.md` como tests". `Hulk.md` mezcla código ejecutable con pseudocódigo
+de `hulk-docs.pdf` como tests". `hulk-docs.pdf` mezcla código ejecutable con pseudocódigo
 parcial y secciones de spec abstracta; una extracción mecánica generaría
 muchos archivos rotos. La opción adoptada es cubrir las features de manera
 representativa a través de los programas de `examples/` y los 4 complejos
-nuevos, dejando los snippets puntuales de `Hulk.md` que no encajan como
+nuevos, dejando los snippets puntuales de `hulk-docs.pdf` que no encajan como
 demostradores fuera de la suite automatizada.
 
 ## Subsección 17.2 — GC y memoria
@@ -155,7 +155,7 @@ para sesiones futuras:
    `invoke`.
 
 9. **`match`/`case`** — no soportado por el parser (la sintaxis está descrita
-   en `Hulk.md §10` pero quedó fuera de la sesión 10 del PIPELINE). La
+   en `hulk-docs.pdf` pero quedó fuera de la sesión 10 del PIPELINE). La
    simplificación algebraica de `expression_tree.hulk` se realiza con
    métodos virtuales en lugar de pattern matching.
 

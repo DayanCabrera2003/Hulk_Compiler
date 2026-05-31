@@ -1,6 +1,6 @@
 //! Integration tests for subsession 4.2: declarations and complex constructs.
 //!
-//! Each test exercises a specific syntactic form from Hulk.md and verifies the
+//! Each test exercises a specific syntactic form from hulk-docs.pdf and verifies the
 //! resulting AST structurally. The tests do NOT assert on spans (spans are
 //! tested separately) and they always check that the parser produces no
 //! diagnostics on well-formed input.

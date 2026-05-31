@@ -6,7 +6,7 @@
 
 **Archivo**: `prelude/prelude.hulk`
 
-El prelude es un fragmento de código HULK que se prepende automáticamente al fuente del usuario antes de cualquier fase de compilación. Define los protocolos y tipos fundamentales descritos en Hulk.md §15:
+El prelude es un fragmento de código HULK que se prepende automáticamente al fuente del usuario antes de cualquier fase de compilación. Define los protocolos y tipos fundamentales descritos en hulk-docs.pdf:
 
 - `protocol Iterable`: interfaz mínima para iterables con `next(): Boolean` y `current(): Object`.
 - `protocol Enumerable`: extiende la idea de colecciones que producen un iterador vía `iter(): Iterable`.

@@ -313,7 +313,7 @@ impl<'ctx> Codegen<'ctx> {
         }
 
         // Hierarchy unification: HULK's spec requires covariant return types
-        // (Hulk.md §919), so every override of a method declared on a base
+        // (hulk-docs.pdf A.919), so every override of a method declared on a base
         // type returns the same (or descendant) value. If body inference
         // produced Ptr for one type's method but F64/I1 for an ancestor's or
         // descendant's same-named method, propagate the concrete kind through

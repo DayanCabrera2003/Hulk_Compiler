@@ -232,7 +232,7 @@ impl Parser {
 
     fn parse_call_postfix(&mut self, callee: Expr) -> Expr {
         let mut args = self.parse_paren_args();
-        // Trailing-block macro sugar from Hulk.md §1353:
+        // Trailing-block macro sugar from hulk-docs.pdf A.1353:
         //     repeat(10) { print("hi"); }
         // is shorthand for passing the brace block as a final body argument:
         //     repeat(10, { print("hi"); })

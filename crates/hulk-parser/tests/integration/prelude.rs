@@ -1,6 +1,6 @@
 //! Parser tests for prelude/prelude.hulk.
 //!
-//! The prelude defines Iterable, Enumerable, and Range (Hulk.md §15).
+//! The prelude defines Iterable, Enumerable, and Range (hulk-docs.pdf A.15).
 //! Every user program has the prelude prepended before parsing, so these
 //! declarations are always in scope.
 

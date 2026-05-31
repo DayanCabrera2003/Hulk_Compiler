@@ -9,7 +9,7 @@ cubren HULK. Se divide en tres subsesiones.
 
 - **`examples/` en la raíz del repo** (nuevo): 13 programas `.hulk` canónicos,
   uno por categoría listada en `PIPELINE.md § 5.1`. Cada archivo lleva un
-  comentario de cabecera con la sección de `Hulk.md` de donde se tomó el
+  comentario de cabecera con la sección de `hulk-docs.pdf` de donde se tomó el
   snippet; cuando el snippet original era un *fragmento* (declaración sin
   expresión global final) se añadió la expresión mínima de cierre (`0;` o
   una invocación del símbolo declarado) para que forme un programa HULK
@@ -39,7 +39,7 @@ cubren HULK. Se divide en tres subsesiones.
 
 ### Programas cubiertos
 
-| Archivo `.hulk`       | Features ejercitadas                                                                   | Origen en `Hulk.md`         |
+| Archivo `.hulk`       | Features ejercitadas                                                                   | Origen en `hulk-docs.pdf`         |
 |-----------------------|-----------------------------------------------------------------------------------------|-----------------------------|
 | `hello.hulk`          | `print`, literal de string                                                              | línea 82                    |
 | `arithmetic.hulk`     | precedencia, potencia (`^`), `%`, unarios, builtins `sin`/`cos`/`log`/`PI`              | 72, 115                     |
@@ -82,7 +82,7 @@ Total tests de 5.1: **98 tests de integración** (`cargo test -p hulk-parser
   N elementos, `FunctionDecl` con cierto nombre, `TypeAnn::Functor { … }`,
   etc.). Nunca se hace `assert!(result.is_ok())` genérico (prohibido por
   `rules.md § 12`).
-- **Copia literal de `Hulk.md` con *envoltura mínima*** cuando la spec ofrece
+- **Copia literal de `hulk-docs.pdf` con *envoltura mínima*** cuando la spec ofrece
   un fragmento: el cuerpo del fragmento se mantiene textual; solo se añade la
   expresión global final imprescindible (p. ej. `operate(10, 5);` tras la
   declaración de `operate`). La envoltura se documenta con un comentario de

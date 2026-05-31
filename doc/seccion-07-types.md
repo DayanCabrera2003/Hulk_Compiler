@@ -39,7 +39,7 @@ Se eligió `TypeId(u32)` como índice directo en un `Vec<TypeKind>` porque:
 
 `parent: Option<TypeId>` en `UserDefined` es una sola cadena padre:Object → Animal → Dog.
 
-La spec (Hulk.md) define `inherits` sin mención a múltiple. Simplicidad: no requiere búsqueda en grafo, solo traversal lineal.
+La spec (hulk-docs.pdf) define `inherits` sin mención a múltiple. Simplicidad: no requiere búsqueda en grafo, solo traversal lineal.
 
 #### 3. **conforms() y lca() antes de unificación**
 
