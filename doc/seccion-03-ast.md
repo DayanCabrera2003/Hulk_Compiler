@@ -62,7 +62,7 @@
 
 ## Gotchas
 
-- Hulk.md menciona division con barra invertida en texto, pero los ejemplos usan /. El AST modela division como Div, alineado con ejemplos y con PIPELINE.md.
+- El operador de división en HULK es `/` (verificado en hulk-docs.pdf Apéndice A §A.2.1 y todos sus ejemplos de código). El AST lo modela como `BinOpKind::Div`.
 - El operador % no aparece en la lista inicial de arithmetic operators del texto, pero si aparece en ejemplos de conditionals. Se incluyo como Mod.
 - El operador @@ se incluye como binario separado (ConcatSpaced) para conservar intencion semantica en AST antes de desugaring.
 - Las anotaciones de tipo se modelan con `TypeAnn` en lugar de strings crudos para que parser y fases semanticas compartan una representacion estructural unica.

@@ -1,7 +1,7 @@
 # Sesión 02 — Análisis léxico
 
 > Crates: `hulk-tokens`, `hulk-lexer`.
-> Estado: completada (testing exhaustivo pendiente en sesión 5).
+> Estado: completada. Testing exhaustivo cubierto en sesión 5.
 
 Esta sesión convierte el texto fuente HULK en una secuencia plana de tokens con ubicación. Es la primera fase real del compilador y produce el input del parser.
 
@@ -172,7 +172,7 @@ bag.emit_stderr().unwrap();
 
 ## Cobertura de tokens vs spec HULK
 
-Tabla de verificación: por cada elemento léxico que aparece en los ejemplos de `Hulk.md`, qué token lo representa.
+Tabla de verificación: por cada elemento léxico que aparece en los ejemplos de `hulk-docs.pdf`, qué token lo representa.
 
 | Construcción HULK | Ejemplo | Token |
 |---|---|---|
