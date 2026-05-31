@@ -101,7 +101,7 @@ fn hulk_md_hello_world() {
 
 #[test]
 fn hulk_md_arithmetic_example() {
-    parse_ok("print((((1 + 2) ^ 3) * 4) / 5);");
+    parse_ok("print((((1 + 2) ^ 3) * 4) \\ 5);");
 }
 
 #[test]
