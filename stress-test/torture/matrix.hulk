@@ -14,9 +14,9 @@ function multiply(
     b: Number[], bn: Number
 ): Number[] =>
     [
-        let r = idx / bn, c = idx % bn,
+        let r = idx \ bn, c = idx % bn,
             sum = 0, k = 0 in {
-            r := (idx - c) / bn;
+            r := (idx - c) \ bn;
             while (k < am) {
                 sum := sum + get(a, am, r, k) * get(b, bn, k, c);
                 k := k + 1;

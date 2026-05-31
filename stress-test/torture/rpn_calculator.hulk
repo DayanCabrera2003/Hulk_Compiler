@@ -40,7 +40,7 @@ function apply_op(op: Number, a: Number, b: Number): Number =>
     if (op == 1) a + b
     elif (op == 2) a - b
     elif (op == 3) a * b
-    else a / b;
+    else a \ b;
 
 // Mini stack: store up to MAX entries in a Number[]. push/pop return new
 // stack states encoded as (data, size). Because we can't mutate vectors in
@@ -100,7 +100,7 @@ function evaluate(program: Number[], n: Number): Number =>
     // 10 6 - = 4
     print(evaluate([10, 6, 0 - 2], 3));
 
-    // 8 4 / = 2
+    // 8 4 \ = 2
     print(evaluate([8, 4, 0 - 4], 3));
 
     // ((2 + 3) * 4 - 1) = 19

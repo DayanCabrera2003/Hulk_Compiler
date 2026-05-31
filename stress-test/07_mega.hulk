@@ -31,7 +31,7 @@ type Stack(capacity: Number) {
         self.sum := self.sum + x;
         self.size := self.size + 1;
     };
-    avg(): Number => if (self.size == 0) 0 else self.sum / self.size;
+    avg(): Number => if (self.size == 0) 0 else self.sum \ self.size;
     getSize(): Number => self.size;
     getSum(): Number => self.sum;
 }
@@ -121,7 +121,7 @@ function makeReport(name: String, value: Number, ok: Boolean): String =>
     print(makeReport("uptime%", 99, true));
 
     print("--- Math identities ===");
-    let r = sin(PI / 6) in print("sin(30°) ~= " @ r);
+    let r = sin(PI \ 6) in print("sin(30°) ~= " @ r);
     let r = cos(0) in print("cos(0) = " @ r);
     let r = log(2, 1024) in print("log2(1024) = " @ r);
     let r = sqrt(144) in print("sqrt(144) = " @ r);

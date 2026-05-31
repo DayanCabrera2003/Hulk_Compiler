@@ -27,7 +27,7 @@ function sumRange(a: Number, b: Number): Number =>
 
 function pow(b: Number, n: Number): Number =>
     if (n == 0) 1
-    elif (n % 2 == 0) let h = pow(b, n / 2) in h * h
+    elif (n % 2 == 0) let h = pow(b, n \ 2) in h * h
     else b * pow(b, n - 1);
 
 function gcd(a: Number, b: Number): Number =>
