@@ -60,16 +60,9 @@ impl<'a> Lexer<'a> {
                     if self.peek_next_char() == Some('/') {
                         self.consume_comment();
                     } else {
-                        // El operador de división en HULK es `\`, no `/`.
-                        self.advance_char();
-                        self.report_error(
-                            start,
-                            self.cursor,
-                            "caracter inesperado `/`; el operador de división en HULK es `\\`",
-                        );
+                        self.single_char(Token::Slash);
                     }
                 }
-                '\\' => self.single_char(Token::Slash),
                 '"' => self.lex_string(),
                 '0'..='9' => self.lex_number(),
                 'a'..='z' | 'A'..='Z' => self.lex_identifier(),
@@ -167,7 +160,7 @@ mod tests {
     #[test]
     fn lexes_operators_family() {
         let (tokens, diagnostics) =
-            lex_tokens("== = := : <= < >= > != ! @@ @ => -> + - * \\ ^ % & | .");
+            lex_tokens("== = := : <= < >= > != ! @@ @ => -> + - * / ^ % & | .");
 
         assert_eq!(
             tokens,

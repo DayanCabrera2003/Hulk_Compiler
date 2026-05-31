@@ -150,7 +150,7 @@ fn parse_binop_name(op_name: &str) -> Option<hulk_hir::BinOpKind> {
         "+" => Some(hulk_hir::BinOpKind::Add),
         "-" => Some(hulk_hir::BinOpKind::Sub),
         "*" => Some(hulk_hir::BinOpKind::Mul),
-        "\\" => Some(hulk_hir::BinOpKind::Div),
+        "/" => Some(hulk_hir::BinOpKind::Div),
         "==" => Some(hulk_hir::BinOpKind::Eq),
         "!=" => Some(hulk_hir::BinOpKind::Ne),
         "<" => Some(hulk_hir::BinOpKind::Lt),

@@ -1,7 +1,7 @@
 //! Parsers for complex expression forms that begin with a keyword or a
 //! bracket group: `let`, `if/elif/else`, `while`, `for`, `new`, lambdas,
 //! vector literals, generators, and `match` (structural pattern matching
-//! for macros, per Hulk.md §1472).
+//! for macros, per hulk-docs.pdf A.1472).
 
 use hulk_ast::{Expr, ExprKind, LetBinding, Param};
 use hulk_tokens::{Span, Token};
@@ -338,7 +338,7 @@ impl Parser {
     /// `match (subject) { case <pattern> => <body>; ... default => <body>; }`
     ///
     /// Patterns are limited to the forms the spec demonstrates inside macros
-    /// (Hulk.md §1472–1490):
+    /// (hulk-docs.pdf A.1472–1490):
     /// - a literal (Number, String, Boolean) — matches that exact value;
     /// - a typed binding `name:Type` — captures the subject if its type
     ///   conforms to `Type`;
@@ -613,7 +613,7 @@ fn binop_token_to_str(tok: &Token) -> Option<String> {
         Token::Plus => Some("+".to_owned()),
         Token::Minus => Some("-".to_owned()),
         Token::Star => Some("*".to_owned()),
-        Token::Slash => Some("\\".to_owned()),
+        Token::Slash => Some("/".to_owned()),
         Token::EqualEqual => Some("==".to_owned()),
         Token::BangEqual => Some("!=".to_owned()),
         Token::Less => Some("<".to_owned()),
