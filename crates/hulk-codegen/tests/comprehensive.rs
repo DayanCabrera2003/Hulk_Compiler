@@ -77,7 +77,7 @@ fn arithmetic_precedence_unary_and_power() {
     print(2 ^ 3);                      // 8
     print(2 ^ 3 ^ 2);                  // 512 (right-assoc)
     print(-2 ^ 2);                     // 4   (unary tighter than ^)
-    print(10 / 4);                     // 2.5
+    print(10 \ 4);                     // 2.5
     print(10 % 3);                     // 1
     print(-7 % 3);                     // -1
     print(5 - 2 - 1);                  // 2   (left-assoc)
@@ -94,7 +94,7 @@ fn arithmetic_floating_extremes() {
     let src = r#"
 {
     print(0.1 + 0.2);                  // 0.3 (or close — print rounds)
-    print(1 / 0.5);                    // 2
+    print(1 \ 0.5);                    // 2
     print(1000000 * 1000000);          // 1e+12
 }
 "#;
@@ -285,7 +285,7 @@ fn while_collatz_sequence_length() {
 function collatz_len(n: Number): Number =>
     let len = 0 in {
         while (n > 1) {
-            if (n % 2 == 0) n := n / 2 else n := 3 * n + 1;
+            if (n % 2 == 0) n := n \ 2 else n := 3 * n + 1;
             len := len + 1;
         };
         len;
@@ -747,7 +747,7 @@ fn algorithm_gcd_and_lcm() {
     let src = r#"
 function gcd(a: Number, b: Number): Number =>
     if (b == 0) a else gcd(b, a % b);
-function lcm(a: Number, b: Number): Number => (a * b) / gcd(a, b);
+function lcm(a: Number, b: Number): Number => (a * b) \ gcd(a, b);
 {
     print(gcd(48, 36));                // 12
     print(gcd(101, 103));              // 1
