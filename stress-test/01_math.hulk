@@ -13,7 +13,7 @@ function fact(n: Number): Number =>
 function gcd(a: Number, b: Number): Number =>
     if (b == 0) a else gcd(b, a % b);
 
-function lcm(a: Number, b: Number): Number => a * b \ gcd(a, b);
+function lcm(a: Number, b: Number): Number => a * b / gcd(a, b);
 
 function nearly_eq(a: Number, b: Number): Boolean =>
     let d = a - b in (if (d < 0) 0 - d else d) < 0.0001;
@@ -24,7 +24,7 @@ function nearly_eq(a: Number, b: Number): Boolean =>
     print((2 + 3) * 4);
     print(2 ^ 10);
     print(2 ^ 3 ^ 2);
-    print(20 \ 6);
+    print(20 / 6);
     print(20 % 6);
     print(0 - 5 + 3);
     print(0 - (5 + 3));
@@ -37,7 +37,7 @@ function nearly_eq(a: Number, b: Number): Boolean =>
     print(log(10, 1000));
     print(nearly_eq(sin(0), 0));
     print(nearly_eq(cos(0), 1));
-    print(nearly_eq(sin(PI \ 2), 1));
+    print(nearly_eq(sin(PI / 2), 1));
     print(nearly_eq(sin(PI) * cos(PI), 0));
 
     print("=== Constants ===");

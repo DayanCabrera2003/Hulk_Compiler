@@ -1,6 +1,6 @@
 // sorting.hulk — Bubble sort + selection sort over an immutable linked list.
 // Exercises: recursive types with virtual dispatch, polymorphic Sortable
-// protocol, recursive list constructors \ pretty-printing, multiple inheritance
+// protocol, recursive list constructors / pretty-printing, multiple inheritance
 // chains, string concatenation, comparisons.
 //
 // Because HULK currently has no in-place vector mutation, the "sort" returns

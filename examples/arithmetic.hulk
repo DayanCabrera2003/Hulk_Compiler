@@ -3,8 +3,8 @@
 // El cuerpo del programa es un bloque que agrupa varias expresiones
 // de prueba; ningún fragmento por sí mismo es declarativo.
 {
-    print((((1 + 2) ^ 3) * 4) \ 5);
-    print(sin(2 * PI) ^ 2 + cos(3 * PI \ log(4, 64)));
+    print((((1 + 2) ^ 3) * 4) / 5);
+    print(sin(2 * PI) ^ 2 + cos(3 * PI / log(4, 64)));
     print(2 ^ 3 ^ 2);
     print(10 % 3);
     print(-5 + 3);

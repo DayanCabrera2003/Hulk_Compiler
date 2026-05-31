@@ -3,7 +3,7 @@
 // regenerating the next state via list comprehension. Demonstrates
 // vector literals, comprehensions, nested loops and formatted printing.
 
-function row_of(i: Number, cols: Number): Number => (i - (i % cols)) \ cols;
+function row_of(i: Number, cols: Number): Number => (i - (i % cols)) / cols;
 function col_of(i: Number, cols: Number): Number => i % cols;
 
 function is_alive(g: Number[], r: Number, c: Number, rows: Number, cols: Number): Number =>
