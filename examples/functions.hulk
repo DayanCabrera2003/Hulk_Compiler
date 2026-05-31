@@ -1,8 +1,8 @@
 // functions.hulk — inline (=>), full-form ({}), recursión, mutuas.
 // `cot`/`tan` aparecen en Hulk.md:159-162; `operate` en Hulk.md:174.
 // `fib` es el ejemplo clásico de recursión referenciado en Hulk.md.
-function cot(x) => 1 / tan(x);
-function tan(x) => sin(x) / cos(x);
+function cot(x) => 1 \ tan(x);
+function tan(x) => sin(x) \ cos(x);
 
 function fib(n) =>
     if (n <= 1) n
@@ -12,7 +12,7 @@ function operate(x, y) {
     print(x + y);
     print(x - y);
     print(x * y);
-    print(x / y);
+    print(x \ y);
 }
 
 {

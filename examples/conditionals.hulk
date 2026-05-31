@@ -1,4 +1,4 @@
-// conditionals.hulk — if / elif / else con ramas múltiples y bloques.
+// conditionals.hulk — if \ elif \ else con ramas múltiples y bloques.
 // Snippets literales de Hulk.md:362, 383, 396.
 {
     let a = 42 in if (a % 2 == 0) print("Even") else print("Odd");
