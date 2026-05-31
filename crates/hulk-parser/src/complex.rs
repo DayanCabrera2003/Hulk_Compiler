@@ -613,7 +613,7 @@ fn binop_token_to_str(tok: &Token) -> Option<String> {
         Token::Plus => Some("+".to_owned()),
         Token::Minus => Some("-".to_owned()),
         Token::Star => Some("*".to_owned()),
-        Token::Slash => Some("/".to_owned()),
+        Token::Slash => Some("\\".to_owned()),
         Token::EqualEqual => Some("==".to_owned()),
         Token::BangEqual => Some("!=".to_owned()),
         Token::Less => Some("<".to_owned()),
