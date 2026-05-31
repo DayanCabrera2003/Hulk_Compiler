@@ -85,7 +85,7 @@ fn mutual_recursion_is_allowed_even_when_declared_before_callee_inline() {
     // cot llama a tan y tan se declara DESPUÉS de cot.
     let program = parse_ok(
         "mutual.hulk",
-        "function cot(x) => 1 \\ tan(x); function tan(x) => 1 \\ cot(x); 0;",
+        "function cot(x) => 1 / tan(x); function tan(x) => 1 / cot(x); 0;",
     );
     assert_eq!(program.functions.len(), 2);
 }

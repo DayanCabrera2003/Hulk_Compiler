@@ -89,7 +89,7 @@ fn test_arithmetic() {
     print(1 + 2);
     print(10 - 3);
     print(4 * 5);
-    print(10 \ 4);
+    print(10 / 4);
     print(10 % 3);
     print(-5 + 3);
 }
@@ -555,7 +555,7 @@ function apply_lambda(x: Number, p: (Number) -> Number): Number => p(x);
 
 #[test]
 fn test_match_case_structural_pattern_matching_in_macros() {
-    // Hulk.md §1472–1490: macros support structural pattern matching over
+    // hulk-docs.pdf A.1472–1490: macros support structural pattern matching over
     // their argument AST. The parser had no handling for `match (x) { case
     // ... => ...; default => ...; }`, so the spec example simply didn't
     // compile. The parser now lowers each arm to the existing __hulk_case_*
@@ -597,7 +597,7 @@ def label(n: Number): String =>
 
 #[test]
 fn test_for_over_user_type_with_iter() {
-    // Regression: per Hulk.md §1130, a user type with an iter() method that
+    // Regression: per hulk-docs.pdf A.1130, a user type with an iter() method that
     // returns an Iterable should drive the Enumerable path of the for loop.
     // Previously the inferer left the iterable's symbol type as Object so
     // the desugarer fell back to the Iterable path, called next() on the
@@ -619,7 +619,7 @@ let m = new MyList(4) in for (x in m) print(x);
 
 #[test]
 fn test_vector_size_method() {
-    // Regression: Hulk.md §1072 says vectors expose a `size(): Number`
+    // Regression: hulk-docs.pdf A.1072 says vectors expose a `size(): Number`
     // method, but the runtime had no `__vec_size` symbol so any `v.size()`
     // call failed with "method 'size' not found in global method table".
     // Add the runtime helper and route it through the same builtin-dispatch
@@ -812,7 +812,7 @@ let count = 0 in {
 
 #[test]
 fn test_trailing_block_macro_sugar() {
-    // Hulk.md §1353 sugar: `name(args) { body }` is shorthand for
+    // hulk-docs.pdf A.1353 sugar: `name(args) { body }` is shorthand for
     // `name(args, { body })`. Until this fix the parser stopped at the
     // closing paren of the arg list and treated the brace block as a
     // separate top-level expression, which usually parsed as a syntax
@@ -834,7 +834,7 @@ repeat(3) {
 
 #[test]
 fn test_string_size_char_at_substring() {
-    // Hulk.md leaves the string-method surface unspecified; we expose
+    // hulk-docs.pdf leaves the string-method surface unspecified; we expose
     // `.size()`, `.charAt(i)` and `.substring(start, len)` via runtime
     // helpers (__str_size, __str_char_at, __str_substring) wired in
     // through the `$string` builtin-dispatch path.

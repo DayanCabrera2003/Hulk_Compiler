@@ -71,7 +71,7 @@ fn arith_multiplication() {
 
 #[test]
 fn arith_division() {
-    ok("arith_div", "10 \\ 4;");
+    ok("arith_div", "10 / 4;");
 }
 
 #[test]
@@ -92,7 +92,7 @@ fn arith_unary_minus() {
 #[test]
 fn arith_precedence_respected() {
     // ((1+2)^3)*4/5 — same as arithmetic.hulk excerpt
-    ok("arith_prec", "((1 + 2) ^ 3 * 4) \\ 5;");
+    ok("arith_prec", "((1 + 2) ^ 3 * 4) / 5;");
 }
 
 #[test]

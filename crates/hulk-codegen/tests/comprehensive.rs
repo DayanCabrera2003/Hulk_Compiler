@@ -1,6 +1,6 @@
 //! Comprehensive brutal-test battery: one focused HULK program per feature
-//! combination from Hulk.md, all the way through compile + run + stdout
-//! match. Sections mirror the Hulk.md table of contents so any future spec
+//! combination from hulk-docs.pdf, all the way through compile + run + stdout
+//! match. Sections mirror the hulk-docs.pdf table of contents so any future spec
 //! drift is easy to map.
 //!
 //! Each test is self-contained — no shared state, no shared programs — so a
@@ -64,7 +64,7 @@ fn lines(out: &str) -> Vec<&str> {
     out.trim_end_matches('\n').split('\n').collect()
 }
 
-// ─── 1. Arithmetic precedence and edge cases (Hulk.md §62) ───────────────────
+// ─── 1. Arithmetic precedence and edge cases (hulk-docs.pdf A.62) ───────────────────
 
 #[test]
 fn arithmetic_precedence_unary_and_power() {
@@ -77,7 +77,7 @@ fn arithmetic_precedence_unary_and_power() {
     print(2 ^ 3);                      // 8
     print(2 ^ 3 ^ 2);                  // 512 (right-assoc)
     print(-2 ^ 2);                     // 4   (unary tighter than ^)
-    print(10 \ 4);                     // 2.5
+    print(10 / 4);                     // 2.5
     print(10 % 3);                     // 1
     print(-7 % 3);                     // -1
     print(5 - 2 - 1);                  // 2   (left-assoc)
@@ -94,7 +94,7 @@ fn arithmetic_floating_extremes() {
     let src = r#"
 {
     print(0.1 + 0.2);                  // 0.3 (or close — print rounds)
-    print(1 \ 0.5);                    // 2
+    print(1 / 0.5);                    // 2
     print(1000000 * 1000000);          // 1e+12
 }
 "#;
@@ -107,7 +107,7 @@ fn arithmetic_floating_extremes() {
     assert!(ls[0].starts_with("0.3"), "0.1+0.2 = {}", ls[0]);
 }
 
-// ─── 2. String concatenation and escapes (Hulk.md §77) ───────────────────────
+// ─── 2. String concatenation and escapes (hulk-docs.pdf A.77) ───────────────────────
 
 #[test]
 fn string_concat_simple_and_spaced() {
@@ -144,7 +144,7 @@ fn string_escape_sequences() {
     assert!(out.contains("backslash: \\"), "got: {out:?}");
 }
 
-// ─── 3. Booleans and short-circuit (Hulk.md §139, §358) ──────────────────────
+// ─── 3. Booleans and short-circuit (hulk-docs.pdf A.139, §358) ──────────────────────
 
 #[test]
 fn boolean_logical_combinations() {
@@ -185,7 +185,7 @@ fn boolean_comparison_chains_are_left_assoc() {
     );
 }
 
-// ─── 4. Conditionals and expression blocks (Hulk.md §358, §120) ──────────────
+// ─── 4. Conditionals and expression blocks (hulk-docs.pdf A.358, §120) ──────────────
 
 #[test]
 fn nested_conditionals_with_elif() {
@@ -231,7 +231,7 @@ let v = { print("side"); 42; } in print(v);
     assert_eq!(lines(&run("block_val", src)), vec!["side", "42"]);
 }
 
-// ─── 5. Let scoping, shadowing, multi-binding, assignment (Hulk.md §194) ─────
+// ─── 5. Let scoping, shadowing, multi-binding, assignment (hulk-docs.pdf A.194) ─────
 
 #[test]
 fn let_shadowing_levels() {
@@ -277,7 +277,7 @@ let n = 0 in {
     assert_eq!(lines(&run("let_assign", src)), vec!["10"]);
 }
 
-// ─── 6. While + for loops (Hulk.md §406) ─────────────────────────────────────
+// ─── 6. While + for loops (hulk-docs.pdf A.406) ─────────────────────────────────────
 
 #[test]
 fn while_collatz_sequence_length() {
@@ -285,7 +285,7 @@ fn while_collatz_sequence_length() {
 function collatz_len(n: Number): Number =>
     let len = 0 in {
         while (n > 1) {
-            if (n % 2 == 0) n := n \ 2 else n := 3 * n + 1;
+            if (n % 2 == 0) n := n / 2 else n := 3 * n + 1;
             len := len + 1;
         };
         len;
@@ -340,7 +340,7 @@ let total = 0 in {
     assert_eq!(lines(&run("for_user_iter", src)), vec!["10"]);
 }
 
-// ─── 7. Functions: recursion and mutual recursion (Hulk.md §138) ─────────────
+// ─── 7. Functions: recursion and mutual recursion (hulk-docs.pdf A.138) ─────────────
 
 #[test]
 fn function_recursion_factorial_fib() {
@@ -394,7 +394,7 @@ print(twice(inc, 10));                 // 12
     assert_eq!(lines(&run("fn_infer", src)), vec!["12"]);
 }
 
-// ─── 8. Types: inheritance + polymorphism + base() chains (Hulk.md §455) ─────
+// ─── 8. Types: inheritance + polymorphism + base() chains (hulk-docs.pdf A.455) ─────
 
 #[test]
 fn deep_inheritance_with_virtual_dispatch_and_base() {
@@ -469,7 +469,7 @@ type Dog inherits Animal {
     );
 }
 
-// ─── 9. Protocols + conformance (Hulk.md §882, §919) ─────────────────────────
+// ─── 9. Protocols + conformance (hulk-docs.pdf A.882, §919) ─────────────────────────
 
 #[test]
 fn protocol_implicit_conformance_via_methods() {
@@ -515,7 +515,7 @@ let p: Equatable = new Pair(3, 4) in print(p.show());
     assert_eq!(lines(&run("proto_extends", src)), vec!["(3,4)"]);
 }
 
-// ─── 10. Vectors: explicit, generator, indexing, size (Hulk.md §1056) ────────
+// ─── 10. Vectors: explicit, generator, indexing, size (hulk-docs.pdf A.1056) ────────
 
 #[test]
 fn vector_literal_indexing_and_size() {
@@ -567,7 +567,7 @@ function len(xs: Number[]): Number => xs.size();
     assert_eq!(lines(&run("vec_typed", src)), vec!["15", "99", "4"]);
 }
 
-// ─── 11. Functors and lambdas (Hulk.md §1145) ────────────────────────────────
+// ─── 11. Functors and lambdas (hulk-docs.pdf A.1145) ────────────────────────────────
 
 #[test]
 fn lambda_passed_as_function_argument() {
@@ -622,7 +622,7 @@ print(count_if(5, new IsPos()));       // 4 (1,2,3,4)
     assert_eq!(lines(&run("functor_user", src)), vec!["4"]);
 }
 
-// ─── 12. Macros: sigils * @ $ (Hulk.md §1337) ────────────────────────────────
+// ─── 12. Macros: sigils * @ $ (hulk-docs.pdf A.1337) ────────────────────────────────
 
 #[test]
 fn macro_star_arg_repeat_expansion() {
@@ -667,7 +667,7 @@ def simplify(expr: Number): Number =>
     assert_eq!(lines(&run("macro_match", src)), vec!["100", "42", "7"]);
 }
 
-// ─── 13. Math builtins and constants (Hulk.md §99) ───────────────────────────
+// ─── 13. Math builtins and constants (hulk-docs.pdf A.99) ───────────────────────────
 
 #[test]
 fn math_builtin_constants_and_functions() {
@@ -701,7 +701,7 @@ fn math_sin_cos_identity() {
     assert_eq!(lines(&run("math_trig", src)), vec!["0", "1"]);
 }
 
-// ─── 14. Runtime type checks: is / as (Hulk.md §681) ─────────────────────────
+// ─── 14. Runtime type checks: is / as (hulk-docs.pdf A.681) ─────────────────────────
 
 #[test]
 fn is_walks_inheritance_chain() {
@@ -747,7 +747,7 @@ fn algorithm_gcd_and_lcm() {
     let src = r#"
 function gcd(a: Number, b: Number): Number =>
     if (b == 0) a else gcd(b, a % b);
-function lcm(a: Number, b: Number): Number => (a * b) \ gcd(a, b);
+function lcm(a: Number, b: Number): Number => (a * b) / gcd(a, b);
 {
     print(gcd(48, 36));                // 12
     print(gcd(101, 103));              // 1
