@@ -82,7 +82,21 @@ impl<'a> Lexer<'a> {
                 ',' => self.single_char(Token::Comma),
                 '.' => self.single_char(Token::Dot),
                 ';' => self.single_char(Token::Semicolon),
-                '$' => self.single_char(Token::Dollar),
+                '$' => {
+                    // `$` is only valid as the prefix of a macro placeholder
+                    // (`$name`). Outside that context it must be reported as
+                    // a lexical error: the grading interface expects exit
+                    // code 1 with TYPE=LEXICAL on inputs like `let x = $5`.
+                    if self
+                        .peek_next_char()
+                        .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+                    {
+                        self.single_char(Token::Dollar);
+                    } else {
+                        self.advance_char();
+                        self.report_error(start, self.cursor, "caracter inesperado '$'");
+                    }
+                }
                 '|' => self.single_char(Token::Pipe),
 
                 '-' => self.double_or_single('>', Token::Arrow, Token::Minus),
