@@ -1,4 +1,4 @@
-use hulk_ast::{FunctionDecl, MacroDecl, MemberKind, Param, Program, Span, TypeDecl};
+use hulk_ast::{FunctionDecl, MacroDecl, MemberKind, Param, Program, Span, TypeAnn, TypeDecl};
 use hulk_diagnostics::Diagnostic;
 
 use crate::resolver::param_span;
@@ -102,13 +102,28 @@ impl Resolver {
         self.current_type = self.lookup(&type_decl.name);
 
         self.push_scope();
+        let mut ctor_param_ids = Vec::with_capacity(type_decl.params.len());
         for param in &type_decl.params {
             self.resolve_type_ann_option(&param.type_ann);
-            self.define(
+            let pid = self.define(
                 param.name.clone(),
                 SymbolKind::Parameter,
                 param.span.clone(),
             );
+            ctor_param_ids.push(pid);
+        }
+        // Record the constructor's param symbols + annotations keyed by the
+        // type's own symbol so the type inferer can register their declared
+        // types before walking attribute initialisers (which may reference
+        // these params, e.g. `val = start` with `start: Number`).
+        if let Some(type_id) = self.current_type {
+            let anns: Vec<Option<TypeAnn>> = type_decl
+                .params
+                .iter()
+                .map(|p| p.type_ann.clone())
+                .collect();
+            self.function_param_annotations.insert(type_id, anns);
+            self.function_param_symbols.insert(type_id, ctor_param_ids);
         }
 
         self.push_scope();
@@ -164,7 +179,22 @@ impl Resolver {
         let previous_method_name = self.current_method_name.clone();
         self.current_method = Some(self_symbol);
         self.current_method_name = Some(method.name.clone());
-        self.define_params(&method.params);
+        let method_param_ids = self.define_params(&method.params);
+        // Mirror what we do for free functions: link the method's params to
+        // its own symbol so the type inferer can pre-register their declared
+        // types before walking the body.
+        if let Some(method_id) = self
+            .current_type
+            .and_then(|t| self.type_methods.get(&t))
+            .and_then(|methods| methods.get(&method.name))
+            .copied()
+        {
+            let anns: Vec<Option<TypeAnn>> =
+                method.params.iter().map(|p| p.type_ann.clone()).collect();
+            self.function_param_annotations.insert(method_id, anns);
+            self.function_param_symbols
+                .insert(method_id, method_param_ids);
+        }
         self.resolve_expr(&method.body);
         self.current_method = previous_method;
         self.current_method_name = previous_method_name;

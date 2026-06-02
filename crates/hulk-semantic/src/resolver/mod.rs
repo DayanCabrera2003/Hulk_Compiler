@@ -99,6 +99,18 @@ impl Resolver {
             .map(|v| v.as_slice())
     }
 
+    /// Returns the symbol id of a method `name` declared inside `type_id`,
+    /// or `None` when the type has no such method.
+    ///
+    /// Exposed so the type inferer can pre-register a method's declared
+    /// parameter types before walking its body — without this, references
+    /// to method params inside the body collapse to `Object` and downstream
+    /// codegen produces type-incorrect IR.
+    #[must_use]
+    pub fn method_symbol(&self, type_id: SymbolId, name: &str) -> Option<SymbolId> {
+        self.type_methods.get(&type_id)?.get(name).copied()
+    }
+
     /// Returns true when an expression node has an associated symbol.
     #[must_use]
     pub fn has_expr_symbol(&self, node_id: NodeId) -> bool {
