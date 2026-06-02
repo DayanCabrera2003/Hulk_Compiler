@@ -13,8 +13,8 @@
 mod compile;
 mod options;
 
-pub use compile::{check, compile, PRELUDE};
-pub use hulk_diagnostics::Diagnostic;
+pub use compile::{check, compile, prelude_line_offset, PRELUDE};
+pub use hulk_diagnostics::{Diagnostic, DiagnosticKind};
 pub use options::{CompileOptions, EmitKind};
 
 // Keep the low-level `build_hir` and `build_pipeline` helpers public so that
@@ -49,7 +49,7 @@ pub fn build_hir(source: SourceFile, bag: &mut DiagnosticBag) -> Option<Hir> {
 
     let mut types = TypeEnv::new();
     {
-        let mut inferer = TypeInferer::new(&mut types, &symbols, &*bag);
+        let mut inferer = TypeInferer::new(&mut types, &symbols, bag);
         infer_program(&program, &mut inferer);
     }
 
@@ -101,6 +101,8 @@ pub(crate) fn infer_program(program: &Program, inferer: &mut TypeInferer<'_>) {
     }
 
     for type_decl in &program.types {
+        inferer.register_function_params_by_name(&type_decl.name);
+
         if let Some(parent) = &type_decl.parent {
             for arg in &parent.args {
                 inferer.infer_expr(arg);
@@ -113,6 +115,7 @@ pub(crate) fn infer_program(program: &Program, inferer: &mut TypeInferer<'_>) {
                     inferer.infer_expr(value);
                 }
                 MemberKind::Method(method) => {
+                    inferer.register_method_params(&type_decl.name, &method.name);
                     inferer.infer_expr(&method.body);
                 }
             }

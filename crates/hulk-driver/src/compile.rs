@@ -4,7 +4,7 @@ use hulk_banner::lower_program as banner_lower;
 use hulk_codegen::emit_ir_string;
 use hulk_codegen::pipeline::{compile as codegen_compile, CompileOptions as CodegenOptions};
 use hulk_desugar::desugar;
-use hulk_diagnostics::{Diagnostic, DiagnosticBag};
+use hulk_diagnostics::{Diagnostic, DiagnosticBag, DiagnosticKind};
 use hulk_hir::{Hir, MemberKind, Program, Resolver, SourceFile, TypeEnv, TypedAst};
 use hulk_lexer::lex;
 use hulk_macros::expand_macros;
@@ -17,6 +17,18 @@ use crate::options::{CompileOptions, EmitKind};
 ///
 /// Defines `Iterable`, `Enumerable`, and `Range` (see hulk-docs.pdf A.15).
 pub const PRELUDE: &str = include_str!("../../../prelude/prelude.hulk");
+
+/// Number of source lines occupied by [`PRELUDE`] plus the `\n` separator
+/// the driver inserts between prelude and user source.
+///
+/// Used by the CLI to translate `(line, col)` positions reported against
+/// the combined buffer back to positions in the user's original file.
+#[must_use]
+pub fn prelude_line_offset() -> usize {
+    // bytes_count_newlines + 1: every `\n` opens a new line, plus the
+    // extra separator `\n` the driver inserts after the prelude.
+    PRELUDE.bytes().filter(|b| *b == b'\n').count() + 1
+}
 
 /// Compiles a HULK source file according to `options`.
 ///
@@ -40,7 +52,13 @@ pub fn compile(source_path: &Path, options: &CompileOptions) -> Result<PathBuf, 
     let mut bag = DiagnosticBag::new();
 
     // Phase 1: lexing
-    let tokens = lex(&source_file, &mut bag);
+    // Use a dedicated bag so we can tag the whole phase's output as Lexical
+    // before merging into the global bag (the CLI needs the kind to pick
+    // the right exit code).
+    let mut lex_bag = DiagnosticBag::new();
+    let tokens = lex(&source_file, &mut lex_bag);
+    lex_bag.set_kind_all(DiagnosticKind::Lexical);
+    merge(&mut bag, &lex_bag);
 
     if options.emit == EmitKind::Tokens {
         let text = format!("{tokens:#?}");
@@ -49,7 +67,8 @@ pub fn compile(source_path: &Path, options: &CompileOptions) -> Result<PathBuf, 
     }
 
     // Phase 2: parsing
-    let (program, parser_bag) = parse(tokens, &source_file);
+    let (program, mut parser_bag) = parse(tokens, &source_file);
+    parser_bag.set_kind_all(DiagnosticKind::Syntactic);
     merge(&mut bag, &parser_bag);
 
     if options.emit == EmitKind::Ast {
@@ -112,8 +131,14 @@ pub fn check(source_path: &Path) -> Result<(), Vec<Diagnostic>> {
     let source_file = SourceFile::new(name.as_ref(), combined);
 
     let mut bag = DiagnosticBag::new();
-    let tokens = lex(&source_file, &mut bag);
-    let (program, parser_bag) = parse(tokens, &source_file);
+
+    let mut lex_bag = DiagnosticBag::new();
+    let tokens = lex(&source_file, &mut lex_bag);
+    lex_bag.set_kind_all(DiagnosticKind::Lexical);
+    merge(&mut bag, &lex_bag);
+
+    let (program, mut parser_bag) = parse(tokens, &source_file);
+    parser_bag.set_kind_all(DiagnosticKind::Syntactic);
     merge(&mut bag, &parser_bag);
 
     // Name resolution and type inference only — no code generation.
@@ -174,6 +199,11 @@ fn infer_all(program: &Program, inferer: &mut TypeInferer<'_>) {
     }
 
     for type_decl in &program.types {
+        // Register the constructor's params (stored under the type's symbol)
+        // so attribute initialisers like `val = start` resolve `start` to
+        // Number instead of defaulting to Object.
+        inferer.register_function_params_by_name(&type_decl.name);
+
         if let Some(parent) = &type_decl.parent {
             for arg in &parent.args {
                 inferer.infer_expr(arg);
@@ -186,6 +216,9 @@ fn infer_all(program: &Program, inferer: &mut TypeInferer<'_>) {
                     inferer.infer_expr(value);
                 }
                 MemberKind::Method(method) => {
+                    // Register the method's own params (keyed by the
+                    // method's symbol id) before walking its body.
+                    inferer.register_method_params(&type_decl.name, &method.name);
                     inferer.infer_expr(&method.body);
                 }
             }
