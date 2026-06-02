@@ -1,5 +1,5 @@
 use hulk_ast::{BinOpKind, Expr, ExprKind, TypeAnn, UnaryOpKind};
-use hulk_diagnostics::DiagnosticBag;
+use hulk_diagnostics::{Diagnostic, DiagnosticBag, DiagnosticKind};
 use hulk_semantic::{Resolver, SymbolId};
 
 use crate::env::TypeEnv;
@@ -9,13 +9,12 @@ use crate::type_id::{TypeId, TypeKind};
 pub struct TypeInferer<'a> {
     env: &'a mut TypeEnv,
     resolver: &'a Resolver,
-    #[allow(dead_code)]
-    bag: &'a DiagnosticBag,
+    bag: &'a mut DiagnosticBag,
 }
 
 impl<'a> TypeInferer<'a> {
     /// Create a new type inferer.
-    pub fn new(env: &'a mut TypeEnv, resolver: &'a Resolver, bag: &'a DiagnosticBag) -> Self {
+    pub fn new(env: &'a mut TypeEnv, resolver: &'a Resolver, bag: &'a mut DiagnosticBag) -> Self {
         Self { env, resolver, bag }
     }
 
@@ -44,6 +43,22 @@ impl<'a> TypeInferer<'a> {
         if self.env.type_id_by_name(name).is_none() {
             self.env.register_protocol(name.to_owned());
         }
+    }
+
+    /// Register the declared param types of a method `method_name` defined
+    /// inside type `type_name`. Looks the method up through the resolver's
+    /// `method_symbol` table — without this, references to method params
+    /// inside the body collapse to `Object` and codegen produces type-
+    /// incorrect IR (e.g. `(self.val + n)` storing into a Number field
+    /// when `n: Number` was unknown to the inferer).
+    pub fn register_method_params(&mut self, type_name: &str, method_name: &str) {
+        let Some(type_id) = self.resolver.lookup(type_name) else {
+            return;
+        };
+        let Some(method_id) = self.resolver.method_symbol(type_id, method_name) else {
+            return;
+        };
+        self.register_function_params(method_id);
     }
 
     /// Same as [`register_function_params_by_name`] but takes a SymbolId.
@@ -259,16 +274,112 @@ impl<'a> TypeInferer<'a> {
         }
     }
 
-    fn infer_call(&mut self, _expr: &Expr, callee: &Expr, args: &[Expr]) -> TypeId {
-        // Infer all argument types first
-        for arg in args {
-            self.infer_expr(arg);
+    fn infer_call(&mut self, expr: &Expr, callee: &Expr, args: &[Expr]) -> TypeId {
+        // Infer all argument types first so the bag also receives diagnostics
+        // for malformed sub-expressions, regardless of arity/type errors below.
+        let arg_types: Vec<TypeId> = args.iter().map(|a| self.infer_expr(a)).collect();
+
+        // When the callee is a plain identifier we can look the symbol up in
+        // the resolver and validate the call against the declared signature.
+        if let ExprKind::Ident(name) = &callee.kind {
+            if let Some(fn_id) = self.resolver.lookup(name) {
+                self.check_call_arity_and_types(expr, name, fn_id, args, &arg_types);
+            }
+        } else {
+            // Higher-order calls: just walk the callee for its side effects.
+            let _ = self.infer_expr(callee);
         }
 
-        // For now, assume function call returns Object
-        // In 7.3, we'll resolve the function and use its return type
-        let _callee_type = self.infer_expr(callee);
         TypeId::OBJECT
+    }
+
+    /// Verifies that a call to `name` matches the declared arity and that
+    /// every argument's inferred type is compatible with the parameter's
+    /// declared annotation. Records diagnostics on the bag — does not abort.
+    fn check_call_arity_and_types(
+        &mut self,
+        call_expr: &Expr,
+        name: &str,
+        fn_id: SymbolId,
+        args: &[Expr],
+        arg_types: &[TypeId],
+    ) {
+        let Some(anns) = self
+            .resolver
+            .function_param_annotations(fn_id)
+            .map(<[Option<TypeAnn>]>::to_vec)
+        else {
+            return;
+        };
+
+        if args.len() != anns.len() {
+            self.bag.push(
+                Diagnostic::error(format!(
+                    "numero incorrecto de argumentos para '{name}': esperaba {}, recibio {}",
+                    anns.len(),
+                    args.len()
+                ))
+                .with_kind(DiagnosticKind::Semantic)
+                .with_label(call_expr.span.clone(), "llamada con aridad incorrecta"),
+            );
+            return;
+        }
+
+        for ((arg, arg_ty), ann) in args.iter().zip(arg_types.iter().copied()).zip(anns.iter()) {
+            let Some(TypeAnn::Named(expected_name)) = ann else {
+                continue;
+            };
+            let expected = self.resolve_named_type(expected_name);
+            if expected == TypeId::OBJECT {
+                continue;
+            }
+            if !self.is_assignable(arg_ty, expected) {
+                let got = Self::display_type(self.env, arg_ty);
+                let want = Self::display_type(self.env, expected);
+                self.bag.push(
+                    Diagnostic::error(format!(
+                        "tipo incompatible en argumento de '{name}': esperaba {want}, recibio {got}"
+                    ))
+                    .with_kind(DiagnosticKind::Semantic)
+                    .with_label(arg.span.clone(), "tipo incorrecto en argumento"),
+                );
+            }
+        }
+    }
+
+    /// Returns true when `actual` can be passed where `expected` is required.
+    /// For now we treat OBJECT as a wildcard (anything is assignable to/from
+    /// OBJECT) and otherwise require an exact match on the TypeId.
+    fn is_assignable(&self, actual: TypeId, expected: TypeId) -> bool {
+        if actual == expected {
+            return true;
+        }
+        if actual == TypeId::OBJECT || expected == TypeId::OBJECT {
+            return true;
+        }
+        false
+    }
+
+    /// Best-effort human-readable name for a [`TypeId`] used in diagnostics.
+    fn display_type(env: &TypeEnv, id: TypeId) -> String {
+        if id == TypeId::NUMBER {
+            return "Number".to_owned();
+        }
+        if id == TypeId::STRING {
+            return "String".to_owned();
+        }
+        if id == TypeId::BOOLEAN {
+            return "Boolean".to_owned();
+        }
+        if id == TypeId::OBJECT {
+            return "Object".to_owned();
+        }
+        match env.type_kind(id) {
+            Some(TypeKind::UserDefined { name, .. }) | Some(TypeKind::Protocol { name }) => {
+                name.clone()
+            }
+            _ => format!("<type {}>", id.as_u32()),
+        }
     }
 
     fn infer_method_call(

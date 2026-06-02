@@ -45,7 +45,7 @@ fn build_source(name: &str, source: &str) -> (Option<Hir>, DiagnosticBag) {
 
     let mut types = TypeEnv::new();
     {
-        let mut inferer = TypeInferer::new(&mut types, &symbols, &bag);
+        let mut inferer = TypeInferer::new(&mut types, &symbols, &mut bag);
         infer_program(&program, &mut inferer);
     }
 

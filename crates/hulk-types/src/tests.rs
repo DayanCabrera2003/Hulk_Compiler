@@ -111,8 +111,8 @@ fn symbol_and_expr_types() {
 fn infer_literals() {
     let mut env = TypeEnv::new();
     let resolver = Resolver::new();
-    let bag = DiagnosticBag::new();
-    let mut inferer = TypeInferer::new(&mut env, &resolver, &bag);
+    let mut bag = DiagnosticBag::new();
+    let mut inferer = TypeInferer::new(&mut env, &resolver, &mut bag);
 
     let number_expr = test_expr(ExprKind::Number(1.0), 1);
     let string_expr = test_expr(ExprKind::StringLit("hello".to_string()), 2);
@@ -127,8 +127,8 @@ fn infer_literals() {
 fn infer_binop_arithmetic() {
     let mut env = TypeEnv::new();
     let resolver = Resolver::new();
-    let bag = DiagnosticBag::new();
-    let mut inferer = TypeInferer::new(&mut env, &resolver, &bag);
+    let mut bag = DiagnosticBag::new();
+    let mut inferer = TypeInferer::new(&mut env, &resolver, &mut bag);
 
     let expr = test_expr(
         ExprKind::BinOp {
@@ -146,8 +146,8 @@ fn infer_binop_arithmetic() {
 fn infer_binop_boolean() {
     let mut env = TypeEnv::new();
     let resolver = Resolver::new();
-    let bag = DiagnosticBag::new();
-    let mut inferer = TypeInferer::new(&mut env, &resolver, &bag);
+    let mut bag = DiagnosticBag::new();
+    let mut inferer = TypeInferer::new(&mut env, &resolver, &mut bag);
 
     let expr = test_expr(
         ExprKind::BinOp {
@@ -165,7 +165,7 @@ fn infer_binop_boolean() {
 fn infer_vec_literal_registers_vector_type() {
     let mut env = TypeEnv::new();
     let resolver = Resolver::new();
-    let bag = DiagnosticBag::new();
+    let mut bag = DiagnosticBag::new();
 
     let expr = test_expr(
         ExprKind::VecLiteral(vec![
@@ -177,7 +177,7 @@ fn infer_vec_literal_registers_vector_type() {
 
     let before_len = env.types.len();
     let inferred = {
-        let mut inferer = TypeInferer::new(&mut env, &resolver, &bag);
+        let mut inferer = TypeInferer::new(&mut env, &resolver, &mut bag);
         inferer.infer_expr(&expr)
     };
 
@@ -192,7 +192,7 @@ fn infer_vec_literal_registers_vector_type() {
 fn infer_vec_generator_registers_vector_type() {
     let mut env = TypeEnv::new();
     let resolver = Resolver::new();
-    let bag = DiagnosticBag::new();
+    let mut bag = DiagnosticBag::new();
 
     let expr = test_expr(
         ExprKind::VecGenerator {
@@ -205,7 +205,7 @@ fn infer_vec_generator_registers_vector_type() {
 
     let before_len = env.types.len();
     let inferred = {
-        let mut inferer = TypeInferer::new(&mut env, &resolver, &bag);
+        let mut inferer = TypeInferer::new(&mut env, &resolver, &mut bag);
         inferer.infer_expr(&expr)
     };
 
