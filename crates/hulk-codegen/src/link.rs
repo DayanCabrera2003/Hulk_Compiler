@@ -30,7 +30,7 @@ pub fn compile_to_object(module: &Module<'_>, output: &Path) -> CodegenResult<()
             cpu.to_str().unwrap_or(""),
             features.to_str().unwrap_or(""),
             OptimizationLevel::Default,
-            RelocMode::Default,
+            RelocMode::PIC,
             CodeModel::Default,
         )
         .ok_or_else(|| CodegenError::Llvm("failed to create TargetMachine".to_string()))?;
