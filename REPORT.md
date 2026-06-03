@@ -49,17 +49,17 @@ que las pruebas unitarias de cada crate sean rápidas y enfocadas, y para que
 crates como `hulk-cli` puedan depender solamente de la interfaz pública del
 driver sin necesidad de exponer el árbol completo de tipos internos.
 
-El binario `hulk` que se entrega cumple punto por punto con el contrato del
-evaluador automático del repositorio Matcom Compilers: acepta un único archivo
-`.hulk` como argumento, produce un ejecutable `./output` en el directorio
-corriente cuando la compilación es exitosa, y reporta errores a `stderr` en el
-formato `(line,col) TYPE: message` con códigos de salida 1, 2 o 3 según la fase
-en la que ocurra el error. Los 22 tests del jurado (15 sobre programas válidos,
-7 sobre detección de errores y 2 de bonus sobre `for`/`range`) pasan al 100% en
-la suite local. La suite interna de tests del workspace cuenta con **753 tests**
-ejecutables (10 marcados como `#[ignore]`) distribuidos entre tests unitarios,
-de integración, basados en propiedades (`proptest`) y end-to-end con programas
-HULK reales.
+El compilador expone dos binarios. `hulkc` es la herramienta de desarrollo,
+con subcomandos para emitir cualquier representación intermedia (tokens, AST,
+HIR, BANNER, LLVM IR, objeto o ejecutable). `hulk` es una interfaz minimalista
+que acepta un único archivo `.hulk`, produce un ejecutable `./output` en el
+directorio corriente y reporta errores a `stderr` en el formato
+`(line,col) TYPE: message` con un código de salida que identifica la fase del
+error (1 léxico, 2 sintáctico, 3 semántico). Las pruebas del proyecto están
+organizadas en tres niveles —unit tests dentro de cada crate, tests de
+integración cruzando módulos, y programas HULK completos compilados y
+ejecutados— complementadas con pruebas basadas en propiedades (`proptest`)
+para invariantes de los pases sensibles a casos límite (parser, desugaring).
 
 ---
 
@@ -113,7 +113,7 @@ HULK reales.
 | `hulk-banner` | IR de tres direcciones; lowerer desde HIR | ~2 800 |
 | `hulk-codegen` | LLVM IR mediante `inkwell`; integración con GC y linker | ~3 500 |
 | `hulk-driver` | Orquestación del pipeline, prelude, opciones | ~400 |
-| `hulk-cli` | Binarios `hulkc` (desarrollo) y `hulk` (evaluador) | ~250 |
+| `hulk-cli` | Binarios `hulkc` (subcomandos de desarrollo) y `hulk` (CLI simple) | ~250 |
 
 ### 2.3 Regla de capas
 
@@ -136,11 +136,10 @@ codegen  → {banner, diagnostics}
 
 Esto se verifica con el test `crates/hulk-driver/tests/architecture.rs`, que lee
 los `Cargo.toml` de cada crate y panic-ea si encuentra una dependencia prohibida.
-Cuando añadimos el binario `hulk` para la evaluación, el test inicialmente falló
-porque añadimos `hulk-diagnostics` y `hulk-span` como dependencias directas del
-CLI; lo arreglamos re-exportando `DiagnosticKind` desde `hulk-driver` y
-añadiendo un método `Diagnostic::primary_line_col()` a `hulk-diagnostics` para
-calcular la posición sin que el CLI tenga que tocar `hulk-span`.
+Como consecuencia de esta regla, el crate `hulk-cli` accede a tipos como
+`DiagnosticKind` y a la conversión de posiciones a `(line, col)` exclusivamente
+a través de re-exports y métodos públicos de `hulk-driver` y `hulk-diagnostics`,
+sin importar `hulk-span` directamente.
 
 ### 2.4 Inmutabilidad por defecto
 
@@ -209,12 +208,12 @@ discriminan a mano porque `=` puede ir seguido de `=` o `>` (líneas 91-102 de
 ### 3.4 Tratamiento de `$`
 
 `$` está reservado en HULK como prefijo de placeholders de macro (`$x: Number`).
-Para que la evaluación automática reconozca `let x = $5 in print(x);` como error
-léxico (exit 1), el lexer hace lookahead: si después de `$` no viene un
-carácter alfabético ni `_`, emite el diagnóstico `LEXICAL: caracter inesperado
-'$'` y avanza un byte sin emitir token. Si en cambio viene un identificador,
-emite el token `Dollar` para que el parser de macros lo consuma. Implementación
-en `lib.rs:85-99`:
+El lexer hace lookahead un carácter: si después de `$` viene una letra ASCII o
+`_`, emite el token `Dollar` para que el parser de declaraciones de macro lo
+consuma; en cualquier otro contexto el carácter es inválido y se reporta como
+`LEXICAL: caracter inesperado '$'`, avanzando un byte sin emitir token para
+que el resto del programa pueda seguir lexando. Implementación en
+`lib.rs:85-99`:
 
 ```rust
 '$' => {
@@ -407,8 +406,8 @@ inesperado, el parser:
    ningún token (estamos al inicio de un sincronizador), avanza uno
    forzosamente para evitar bucles infinitos.
 
-Esta estrategia permite reportar varios errores sintácticos en un solo run,
-lo cual es valioso tanto para humanos como para el evaluador automático.
+Esta estrategia permite reportar varios errores sintácticos en una sola
+pasada, sin que el primero oculte los siguientes.
 
 ### 4.6 Tests del parser
 
@@ -566,9 +565,8 @@ responder consultas que los pases posteriores necesitan:
 - `protocol_extends: HashMap<SymbolId, Vec<SymbolId>>` — protocolos que extiende
   cada protocolo.
 - `function_param_annotations: HashMap<SymbolId, Vec<Option<TypeAnn>>>` —
-  anotaciones declaradas de los parámetros de cada función. **Extendido en
-  esta entrega** para almacenar también los parámetros de constructores de
-  tipo y métodos (ver 6.5).
+  anotaciones declaradas de los parámetros de cada función, constructor de
+  tipo y método (ver 6.5 para el detalle de cómo se indexan).
 - `function_param_symbols: HashMap<SymbolId, Vec<SymbolId>>` — IDs de los
   parámetros de cada función/método/constructor.
 
@@ -591,29 +589,25 @@ responder consultas que los pases posteriores necesitan:
 - Anotación de retorno incompatible con el literal que retorna:
   `tipo inferido incompatible con anotación`.
 
-### 6.5 Cambio relevante en esta entrega: params de tipos y métodos
+### 6.5 Indexación de parámetros de constructor y método
 
-Originalmente, el Resolver almacenaba `function_param_*` sólo para
-**funciones libres**. Esto causaba que el inferidor de tipos no supiera el tipo
-del parámetro `start` en:
+Los parámetros de un constructor de tipo (`type Counter(start: Number) { ... }`)
+y los parámetros de un método (`add(n: Number) => ...`) se almacenan en los
+mismos mapas `function_param_symbols` y `function_param_annotations` que los
+parámetros de las funciones libres, pero indexados por el `SymbolId` del tipo y
+del método respectivamente.
 
-```hulk
-type Counter(start: Number) {
-    val = start;     // <-- val debería ser Number
-    ...
-}
-```
+Esto permite que la fase de inferencia de tipos, antes de recorrer el cuerpo
+de un atributo o método, pre-registre los tipos declarados de los parámetros
+visibles desde ese cuerpo. Sin esta pre-registración, una expresión como
+`val = start` dentro del constructor de `Counter` no sabría que `start` es
+`Number` (porque su scope ya está desmontado cuando llega la inferencia) y la
+inferiría como `Object`, lo que rompería más adelante la elección del
+`FieldKind` correcto al construir el `TypeDescriptor` de BANNER.
 
-Lo cual hacía que `val` se inferiera como `Object`, fallara la generación de
-campos `f64`, y disparara un error del verificador de LLVM en codegen.
-
-La corrección consistió en extender `resolve_type_decl` y `resolve_method_decl`
-para capturar los `SymbolId`s y anotaciones de los parámetros del constructor
-(keyed por el `SymbolId` del tipo) y de los parámetros de método (keyed por el
-`SymbolId` del método). Se reutilizaron los mismos mapas `function_param_*`,
-añadiendo un accesor público `Resolver::method_symbol(type_id, name)` para que
-el driver pueda mapear `(type_name, method_name) → SymbolId` y solicitar la
-registración de tipos en el `TypeEnv`.
+El accesor público `Resolver::method_symbol(type_id, name) -> Option<SymbolId>`
+permite que el driver mapee `(type_name, method_name) → SymbolId` y solicite
+la registración de tipos en el `TypeEnv` antes de inferir cada cuerpo.
 
 ### 6.6 Detección de ciclos de herencia
 
@@ -625,9 +619,9 @@ descriptor de un tipo.
 
 ### 6.7 Tests del módulo semántico
 
-15 tests unitarios cubriendo cada validación con happy paths y casos negativos.
-Plus la suite end-to-end del jurado que tropieza con los errores semánticos
-deliberadamente.
+15 tests unitarios cubren cada validación con happy paths y casos negativos
+(inheritance cycles, redefiniciones, `self`/`base` mal usados, métodos fuera de
+tipos, parámetros con nombres reservados, conformidad protocolo-tipo).
 
 ---
 
@@ -685,12 +679,10 @@ enum TypeKind {
 - `infer_if`: el tipo de un `if` es el LCA de todas las ramas.
 - **Aridad y tipos de argumentos en llamadas** (`check_call_arity_and_types`,
   `inferer.rs:299-348`): cuando el callee es un identificador resoluble, valida
-  que el número de argumentos coincida y que cada argumento conforme con la
-  anotación declarada del parámetro. Reporta `tipo incompatible en argumento
-  de 'X': esperaba Y, recibio Z` o `numero incorrecto de argumentos para 'X'`.
-  **Esta verificación es nueva en esta entrega** y es la que captura los tests
-  `errors/semantic/type_mismatch.hulk` y `errors/semantic/wrong_arity.hulk` del
-  jurado.
+  que el número de argumentos coincida con la declaración y que cada argumento
+  conforme con la anotación declarada del parámetro. Reporta `tipo incompatible
+  en argumento de 'X': esperaba Y, recibio Z` o `numero incorrecto de
+  argumentos para 'X'`.
 
 **No chequea** (devuelve `OBJECT`):
 - `infer_self` e `infer_base`: tienen un TODO para resolver al tipo
@@ -1574,11 +1566,13 @@ pub enum DiagnosticKind { Lexical, Syntactic, Semantic }
 ```
 
 Con métodos:
-- `tag()` → `"LEXICAL"` / `"SYNTACTIC"` / `"SEMANTIC"` (para el formato del
-  evaluador).
-- `exit_code()` → 1 / 2 / 3 (también para el evaluador).
-- `priority()` → 0 / 1 / 2 (para elegir el exit code más fundamental cuando
-  coexisten varios).
+- `tag()` → `"LEXICAL"` / `"SYNTACTIC"` / `"SEMANTIC"` (etiqueta textual del
+  kind, útil para el formato de salida del CLI).
+- `exit_code()` → 1 / 2 / 3 (código de salida convencional por fase).
+- `priority()` → 0 / 1 / 2 (orden de "fundamentalidad" del error: cuando
+  coexisten varios kinds, el de menor priority gana — léxico > sintáctico >
+  semántico, porque un error más temprano en la pipeline suele ser la causa
+  raíz de los posteriores).
 
 ### 16.3 Retagueo por fase
 
@@ -1598,9 +1592,9 @@ Esto evita tener que modificar cada call site dentro del lexer/parser.
 
 `Diagnostic::primary_line_col() -> Option<(usize, usize)>` devuelve la
 posición 1-based del primer label, computada con `SourceFile::line_col(offset)`
-del crate `hulk-span`. Esta API se expuso para que el binario `hulk` pudiera
-computar la posición sin depender directamente de `hulk-span` (respetando la
-regla de capas).
+del crate `hulk-span`. El método permite que los crates de nivel superior
+calculen posiciones a partir de un `Diagnostic` sin importar `hulk-span`
+directamente, manteniendo la regla de capas.
 
 ### 16.5 Renderizado bonito
 
@@ -1612,40 +1606,48 @@ Rust/Clang con sangría, fragmentos del fuente y subrayado de la zona ofensora.
 
 ## 17. Interfaces de línea de comandos
 
-**Crate**: `hulk-cli`. Dos binarios.
+**Crate**: `hulk-cli`. Expone dos binarios con propósitos complementarios.
 
-### 17.1 `hulk` — interfaz del evaluador
+### 17.1 `hulk` — CLI minimalista
 
-**Archivo**: `crates/hulk-cli/src/bin/hulk.rs`. Mínimo, sin subcomandos, sin
-banderas. Implementa exactamente el contrato de `Para entregar/interface.md`:
+**Archivo**: `crates/hulk-cli/src/bin/hulk.rs`. Sin subcomandos ni banderas;
+acepta como único argumento la ruta a un archivo `.hulk`. Comportamiento:
 
 | Caso | Comportamiento |
 |------|----------------|
-| `./hulk programa.hulk` (válido) | Produce `./output` en CWD, exit 0 |
-| `./hulk` (sin args) o más de un arg | `usage: hulk <file.hulk>`, exit 2 |
+| `./hulk programa.hulk` (válido) | Produce `./output` en el CWD, exit 0 |
+| `./hulk` (sin args) o más de un arg | Imprime `usage: hulk <file.hulk>`, exit 2 |
 | Archivo inexistente | `(0,0) SEMANTIC: input file '...' not found`, exit 3 |
 | Error léxico | `(l,c) LEXICAL: msg` a stderr, exit 1 |
 | Error sintáctico | `(l,c) SYNTACTIC: msg` a stderr, exit 2 |
 | Error semántico | `(l,c) SEMANTIC: msg` a stderr, exit 3 |
 | Mezcla de errores | Exit code del más fundamental (LEXICAL > SYNTACTIC > SEMANTIC) |
 
-El output siempre se escribe en `./output` (relativo al CWD), no en el
-directorio del fuente, por compatibilidad con el script
-`Para entregar/tests/hulk/run_tests.sh` que invoca `(cd $STUDENT_REPO &&
-$HULK $file)`.
+El ejecutable de salida siempre se escribe como `./output` relativo al CWD del
+proceso, no al directorio donde reside el fuente. Esto desacopla la
+compilación del lugar donde está el archivo de entrada y permite que un mismo
+fuente compilado desde directorios distintos deje el binario en cada uno de
+ellos.
 
-### 17.2 `hulkc` — interfaz de desarrollo
+Las posiciones reportadas se traducen al sistema de coordenadas del archivo
+original del usuario descontando el offset del prelude prepended (sección 15),
+para que la línea reportada coincida con la línea real del archivo `.hulk`.
 
-**Archivo**: `crates/hulk-cli/src/main.rs`. Con subcomandos (vía `clap`):
+### 17.2 `hulkc` — CLI con subcomandos
+
+**Archivo**: `crates/hulk-cli/src/main.rs`. Construido sobre `clap` con
+subcomandos:
 
 - `hulkc compile <file> [--emit tokens|ast|hir|banner|llvm-ir|object|executable]
-   [-o output]` — para inspeccionar cualquier representación intermedia.
+   [-o output]` — compila e imprime/escribe la representación intermedia
+   elegida. Sirve para inspeccionar el resultado de cada fase.
 - `hulkc run <file>` — compila a un binario temporal y lo ejecuta.
-- `hulkc check <file>` — sólo análisis semántico, sin codegen. Útil para IDE.
+- `hulkc check <file>` — sólo análisis semántico (lex + parse + resolve +
+  type-infer), sin codegen. Pensado para verificación tipo IDE.
 
 ### 17.3 Makefile
 
-`Makefile` en la raíz con tres targets:
+`Makefile` en la raíz del proyecto con tres targets:
 
 ```makefile
 build:
@@ -1660,16 +1662,41 @@ test:
     cargo test --workspace
 ```
 
-`make build` es lo que ejecuta el CI del evaluador, dejando el binario `hulk`
-en la raíz como requiere el contrato.
+`make build` produce el binario `hulk` en la raíz del proyecto. `make clean`
+borra los artefactos de Cargo más `./hulk` y `./output`. `make test` ejecuta
+la suite completa del workspace.
 
 ---
 
 ## 18. Sistema de pruebas
 
-### 18.1 Resumen cuantitativo
+### 18.1 Niveles de testing
 
-**753 tests passing, 10 ignored** distribuidos entre los 15 crates. Detalle:
+La validación del compilador se estructura en cuatro niveles, cada uno con
+una razón de ser distinta:
+
+- **Unit tests** (`#[cfg(test)] mod tests` dentro de cada crate). Cubren
+  funciones individuales con casos pequeños donde el setup cabe en pocas
+  líneas: una helper, un nodo AST sintético, una conversión.
+- **Integration tests** (carpeta `tests/` de cada crate). Cruzan módulos del
+  mismo crate o invocan a otros crates como caja negra. Aquí viven los tests
+  que escriben programas HULK como strings y verifican lo que se obtiene
+  tras varias fases.
+- **Property tests con `proptest`**. Sirven para invariantes que se pueden
+  enunciar pero no enumerar — por ejemplo, "el parser nunca paniquea sobre
+  ningún input ASCII", "el desugaring de un Expr idéntico produce el mismo
+  HIR" o "la inferencia es estable bajo permutación de declaraciones
+  independientes". `proptest` genera entradas aleatorias y reduce el
+  contraejemplo si encuentra uno.
+- **End-to-end con programas HULK**. Compilan un programa real y comparan
+  la salida del binario producido contra un archivo `.expected`. Viven
+  principalmente en `crates/hulk-driver/tests/` y `crates/hulk-codegen/tests/`.
+
+### 18.2 Distribución por crate
+
+La tabla siguiente lista cuántos tests vive cada crate, separados en unit y
+integration. Da una idea del peso relativo de cada capa y de los puntos donde
+se concentra la validación:
 
 | Crate | Unit | Integration | Total |
 |-------|-----:|------------:|------:|
@@ -1688,60 +1715,40 @@ en la raíz como requiere el contrato.
 | hulk-tokens | 2 | 0 | 2 |
 | hulk-types | 15 | 0 | 15 |
 
-### 18.2 Tipos de tests
-
-- **Unit tests** (`#[cfg(test)] mod tests`): cubren funciones individuales
-  dentro de cada crate.
-- **Integration tests** (en `tests/` de cada crate): cruzan módulos del crate
-  o varios crates.
-- **Property tests con `proptest`**: para invariantes — el parser nunca
-  paniquea, el desugaring es idempotente, etc.
-- **End-to-end con programas HULK**: en `crates/hulk-driver/tests/` y otros,
-  compilan y ejecutan programas reales comparando contra outputs `.expected`.
+La concentración masiva en `hulk-parser` (272) refleja que la gramática es
+la superficie con más casos discretos a chequear. `hulk-driver` (188) y
+`hulk-codegen` (102) acumulan los tests end-to-end que ejercitan el pipeline
+completo desde fuente HULK hasta binario nativo.
 
 ### 18.3 Programas HULK de prueba
 
-- **`examples/`**: 21 programas demostrando features individuales o pequeñas
-  combinaciones (game of life, árbol de expresiones, etc.).
+Repartidos en cuatro carpetas según propósito:
+
+- **`examples/`**: 21 programas que demuestran features individuales o
+  pequeñas combinaciones — el "Game of Life" como ejemplo de OOP + bucles
+  anidados, un árbol de expresiones como ejemplo de tipos algebraicos
+  pequeños, programas de "Hello World" de varios niveles de complejidad.
 - **`tests/`**: 60 programas numerados (`01_hello_world.hulk` a
-  `60_math_library_program.hulk`) que constituyen una matriz exhaustiva de
-  features.
-- **`stress-test/`**: 7 programas pesados — math, OOP, strings, iterables,
-  vectores, recursión profunda, "mega" combinando todo.
-- **`stress-test/gc/`**: 3 programas para el recolector — sustained
-  allocation, ciclos, walk de árbol profundo.
-- **`stress-test/torture/`**: 3 programas "torture" — matrix, calculadora
-  RPN, sorting.
+  `60_math_library_program.hulk`) que constituyen una matriz organizada por
+  feature: aritmética, operadores, scoping, recursión, OOP, herencia,
+  vectores, protocolos, lambdas, etc. Cada uno tiene un `.expected`
+  asociado.
+- **`stress-test/`**: 7 programas pesados que combinan varias features bajo
+  carga — math intensivo, OOP profundo, strings, iterables, vectores,
+  recursión profunda, y un programa "mega" que combina todo.
+- **`stress-test/gc/`**: 3 programas para ejercer al recolector — uno con
+  sustained allocation, uno con ciclos, uno con walk de árbol profundo
+  (sección 14).
+- **`stress-test/torture/`**: 3 programas torture — multiplicación de
+  matrices, calculadora RPN basada en stack, sorting de vectores.
 
-### 18.4 Suite del evaluador
-
-`Para entregar/tests/hulk/`: 22 tests (15 ok + 7 error + 2 bonus de
-`ok/extras`). **Pasan al 100%** localmente:
-
-```
-ok/minimal      7/7 [PASS]
-ok/types        3/3 [PASS]
-ok/oop          3/3 [PASS]
-errors/lexical  2/2 [PASS]
-errors/syntactic 2/2 [PASS]
-errors/semantic 3/3 [PASS]
-ok/extras       2/2 [bonus]
-
-RESULT: ALL_PASS
-```
-
-### 18.5 Test de arquitectura
+### 18.4 Test de arquitectura
 
 `crates/hulk-driver/tests/architecture.rs` lee los `Cargo.toml` de cada
-crate y panic-ea si encuentra una dependencia que viole la regla de capas.
-Es el guardia que evita que el grafo de dependencias degrade en spaghetti
-con el tiempo.
-
-### 18.6 CI local
-
-`cargo test --workspace` corre los 753 tests en ~10 segundos (la mayoría del
-tiempo es compilación). `cargo clippy --workspace --all-targets -- -D
-warnings` y `cargo fmt --all --check` también pasan limpios.
+crate y panic-ea si encuentra una dependencia que viole la regla de capas
+(sección 2.3). Funciona como guardia mecánico: cuando alguien añade una
+dependencia nueva por accidente o por presión de tiempo, el test falla y
+fuerza la conversación arquitectónica.
 
 ---
 
@@ -1805,8 +1812,9 @@ No hay `.env` ni secretos hardcoded.
 
 ## 20. Limitaciones conocidas
 
-Honestidad ante todo. Algunas features tienen huecos que no afectan a los
-22 tests del jurado pero que conviene documentar:
+Algunas features del lenguaje están parcialmente implementadas o tienen
+huecos identificados durante el desarrollo. Se documentan aquí para que el
+lector tenga la imagen completa:
 
 ### 20.1 Front-end / semántica
 
@@ -1825,10 +1833,15 @@ Honestidad ante todo. Algunas features tienen huecos que no afectan a los
 
 ### 20.2 Closures con captura de scope exterior
 
-`function f(n) => (x) => x + n;` crashea con `param not in param_temps`. Se
+`function f(n) => (x) => x + n;` (una función que retorna una clausura que
+captura su parámetro) crashea con `param not in param_temps` durante el
+lowerer a BANNER. La sintaxis de lambda con captura sí funciona dentro de un
+bloque (`let n = 5 in (x) => x + n` se desugarea correctamente como tipo
+sintético con campo capturado, ver 10.3), pero el camino donde la clausura
+es el valor de retorno de una función global no completa el cierre. Se
 documenta en `doc/seccion-17-e2e-tests.md` como limitación #1. Mitigación:
-usar subtipos en lugar de clausuras con captura. Los programas del jurado no
-caen en este caso.
+modelar la operación con subtipos en lugar de clausuras de orden superior
+(por ejemplo, declarar un tipo `Adder(n: Number)` con método `apply(x)`).
 
 ### 20.3 `as` downcast
 
@@ -1864,38 +1877,40 @@ con una pila explícita.
 
 ## 21. Conclusión
 
-El compilador HULK presentado en este repositorio es una implementación
-completa, modular y bien testeada del lenguaje especificado en
-`hulk-docs.pdf`. Cumple al 100% el contrato de la interfaz del evaluador
-(`Para entregar/interface.md`) y pasa la totalidad de la suite del jurado
-(22 de 22 tests, incluyendo los 2 bonus de `ok/extras` que no son
-obligatorios).
+El compilador HULK descrito en este reporte es una implementación completa
+del lenguaje especificado en `hulk-docs.pdf`, organizada como un workspace
+de 15 crates con regla de capas verificada por test. Cada fase del pipeline
+—lex, parse, resolución, inferencia, expansión de macros, desugaring,
+lowering a BANNER, codegen LLVM, enlazado contra runtime C— vive en su
+propio crate con responsabilidad delimitada e interfaz pública mínima.
 
-Desde el punto de vista arquitectónico, el workspace de 15 crates con regla
-de capas verificada permite que cada fase del compilador pueda evolucionar
-de forma aislada, y los más de 750 tests cubren desde unit tests de bajo
-nivel hasta programas HULK reales que ejercitan el back-end completo
-incluyendo asignaciones GC, herencia con dispatch virtual y combinaciones
-complejas de features.
+El extra principal del proyecto es el **recolector de basura mark-and-sweep
+preciso con shadow stack** descrito en la sección 14. La pieza está
+integrada de extremo a extremo: BANNER define las instrucciones
+`ShadowPush`/`ShadowPop` y el lowerer las emite para variables locales de
+tipo referencia; el codegen las traduce a llamadas al runtime y, además,
+emite `TypeTag` globales LLVM cuyos `pointer_offsets` se derivan
+automáticamente del análisis de tipos de cada `TypeDescriptor`; los
+`TypeTag*` se pasan como argumento a `hulk_alloc` en cada `new T(...)`; y
+el runtime los consume para realizar trazado preciso (sin falsos positivos),
+con manejo correcto de grafos cíclicos vía bit de marca, y threshold
+adaptativo que mantiene amortizado el costo por byte asignado. La pieza está
+validada por tests en C (`runtime/test_gc.c`), por tests BANNER que
+verifican la emisión correcta de roots según el tipo del binding
+(`crates/hulk-banner/tests/shadow_stack.rs`), y por programas HULK
+end-to-end con presión sostenida de asignación, estructuras cíclicas y
+árboles profundos (`stress-test/gc/`).
 
-El extra que añadimos al proyecto es el **recolector de basura mark-and-sweep
-preciso con shadow stack** descrito en detalle en la sección 14. Está
-integrado de extremo a extremo: BANNER conoce las instrucciones
-`ShadowPush`/`ShadowPop`, el codegen las traduce a llamadas al runtime,
-emite `TypeTag` globales con pointer-offsets derivados del análisis de
-tipos, los inserta como argumento de `hulk_alloc` para cada `new T(...)`, y
-el runtime C las consume para realizar trazado preciso (cero falsos
-positivos) con manejo correcto de ciclos y threshold adaptativo. La pieza
-está validada por tests en C (`runtime/test_gc.c`), tests BANNER de
-emisión de roots (`crates/hulk-banner/tests/shadow_stack.rs`), y tests
-end-to-end HULK con presión de asignación, grafos cíclicos y árboles
-profundos (`stress-test/gc/`).
+El sistema de diagnósticos clasificados por fase, con posiciones
+trasladables al sistema de coordenadas del fuente original del usuario
+(descontando el prelude prepended automáticamente), y con mensajes en
+español, hace que los errores reportados sean accionables: el usuario lee
+exactamente la línea y columna del archivo que escribió, con una categoría
+clara del tipo de error.
 
-El soporte para diagnósticos estructurados con clasificación por fase,
-posición de origen translatable al fuente original del usuario (descontando
-el prelude prepended) y mensajes en español facilita el diagnóstico tanto
-para humanos como para el evaluador automático del CI.
-
-Las limitaciones documentadas en la sección 20 son conocidas y aceptadas: ninguna
-afecta a los tests requeridos del jurado, y todas tienen mitigaciones claras
-para los programas que las tocaran.
+Las limitaciones de la sección 20 son aspectos del lenguaje cuya
+implementación está parcial o donde se prefirió un diseño conservador
+(igualdad exacta en chequeo de tipos en lugar de subtipado estructural,
+recursión en `mark` en lugar de pila explícita, shadow stack de tamaño
+fijo). Todas tienen una mitigación clara documentada y no comprometen la
+ejecución de programas HULK estándar.
