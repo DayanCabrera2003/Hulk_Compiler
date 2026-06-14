@@ -28,13 +28,17 @@ fn cleanup(path: &Path) {
 
 /// Compiles a HULK source string through the full pipeline (including codegen)
 /// in a child thread and asserts the compilation completes within `timeout`.
-fn assert_compiles_within(src: &str, timeout: Duration) {
+///
+/// `name` is used to produce unique temp-file paths so parallel test runs do
+/// not race on the same file.
+fn assert_compiles_within(name: &str, src: &str, timeout: Duration) {
     let src = src.to_owned();
+    let name = name.to_owned();
     let (tx, rx) = std::sync::mpsc::channel::<Result<(), String>>();
 
     std::thread::spawn(move || {
-        let src_path = write_temp_src("regression", &src);
-        let out_path = std::env::temp_dir().join("hulkc_hang_regression");
+        let src_path = write_temp_src(&name, &src);
+        let out_path = std::env::temp_dir().join(format!("hulkc_hang_{name}_out"));
         let opts = CompileOptions {
             emit: EmitKind::Executable,
             output: Some(out_path.clone()),
@@ -78,7 +82,11 @@ fn type_field_calling_numeric_function_terminates() {
         let b = new Box(-3, 4) in print(b.area());
     "#;
 
-    assert_compiles_within(src, Duration::from_secs(5));
+    assert_compiles_within(
+        "field_calling_numeric_function",
+        src,
+        Duration::from_secs(5),
+    );
 }
 
 #[test]
@@ -93,5 +101,5 @@ fn type_with_numeric_field_from_direct_param_terminates() {
         let p = new Point(1, 2) in print(p.x + p.y);
     "#;
 
-    assert_compiles_within(src, Duration::from_secs(5));
+    assert_compiles_within("field_from_direct_param", src, Duration::from_secs(5));
 }

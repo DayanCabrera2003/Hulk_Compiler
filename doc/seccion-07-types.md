@@ -347,57 +347,6 @@ Total: 13 tests, todos pasan.
 
 ---
 
-## Corrección post-sesión: bucle infinito en `infer_temp_kinds` (codegen)
-
-### Problema
-
-Al compilar programas con tipos cuyos inicializadores de campo llaman a funciones libres
-(p.ej. `width: Number = abs_num(w)`), el compilador colgaba indefinidamente durante la
-generación de código. El cuelgue ocurría en la función `infer_temp_kinds` del crate
-`hulk-codegen` (`crates/hulk-codegen/src/emit.rs`), no en el inferidor de tipos.
-
-`infer_temp_kinds` ejecuta un bucle de punto fijo sobre las instrucciones BANNER para
-determinar si cada temporal es `F64`, `I1` o `Ptr`. La propagación hacia atrás para
-`SetField` contenía este código defectuoso:
-
-```rust
-// Bug: or_insert no sobreescribe un Ptr existente, pero changed = true se fija
-// siempre que la condición es verdadera, produciendo un bucle infinito.
-if kinds.get(val_tid).copied() != Some(TempKind::F64) {
-    kinds.entry(*val_tid).or_insert(TempKind::F64);  // ← no sobreescribe Ptr
-    changed = true;                                    // ← siempre se ejecuta
-}
-```
-
-Si `val_tid` ya tenía tipo `Ptr` (porque `abs_num` retorna `Object` en el
-inferidor de tipos, que mapea a `Ptr` en codegen), la condición era verdadera, pero
-`or_insert` no modificaba el mapa. Sin embargo `changed = true` se ejecutaba, lo
-que reiniciaba el bucle en cada iteración sin ningún progreso real → bucle infinito.
-
-### Solución
-
-Cambiar `or_insert` por `insert`, que sí sobreescribe el valor existente. Así la
-actualización ocurre de verdad, `changed = true` refleja un cambio real, y el bucle
-converge:
-
-```rust
-// Fix: insert sobreescribe Ptr → F64; changed = true solo después de un cambio real.
-if kinds.get(val_tid).copied() != Some(TempKind::F64) {
-    kinds.insert(*val_tid, TempKind::F64);  // ← sobreescribe Ptr correctamente
-    changed = true;
-}
-```
-
-La corrección está en `crates/hulk-codegen/src/emit.rs`, función `infer_temp_kinds`,
-bloque de propagación hacia atrás para `Instr::SetField`.
-
-Se añadió un test de regresión en
-`crates/hulk-driver/tests/hang_field_calls_function.rs` que verifica que la
-compilación de tipos con campos numéricos inicializados por llamadas a funciones libres
-termina en menos de 5 segundos.
-
----
-
 ## Resumen de Sesión 7
 
 **Completada con ✓ en PIPELINE.md**: todas las tres subsesiones (7.1, 7.2, 7.3).
