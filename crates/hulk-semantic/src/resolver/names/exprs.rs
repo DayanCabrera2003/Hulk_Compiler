@@ -217,6 +217,14 @@ impl Resolver {
     }
 
     pub(crate) fn resolve_base(&mut self, node_id: NodeId, span: Span) {
+        // A local variable named `base` shadows the keyword. This handles the
+        // common pattern `let base: SomeType = ...` where `base` is just a
+        // variable, not the method-override pseudo-function.
+        if let Some(sym_id) = self.lookup("base") {
+            self.expr_symbols.insert(node_id, sym_id);
+            return;
+        }
+
         let Some(current_type) = self.current_type else {
             self.bag.push(
                 Diagnostic::error("base usado fuera de un método")

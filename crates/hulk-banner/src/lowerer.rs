@@ -489,11 +489,30 @@ impl<'h> Lowerer<'h> {
                 self.self_temp
                     .expect("Self_ outside of a method body"),
             ),
-            ExprKind::Base => Value::Temp(
-                // Resolver emits a diagnostic and rejects programs that use `base` outside a method.
-                self.self_temp
-                    .expect("Base outside of a method body"),
-            ),
+            ExprKind::Base => {
+                // When a local variable named `base` shadows the keyword, the
+                // resolver stores a Variable or Parameter symbol for this
+                // node. In that case emit it like a regular identifier.
+                // When `base` is the method-override pseudo-function the
+                // resolver stores a Function symbol; emit via self_temp so
+                // emit_call can dispatch the static parent-method call.
+                let is_local = self
+                    .hir
+                    .resolved_symbol(expr.id)
+                    .and_then(|sym| self.hir.symbols.table().get(sym))
+                    .map(|s| {
+                        matches!(s.kind, SymbolKind::Variable | SymbolKind::Parameter)
+                    })
+                    .unwrap_or(false);
+                if is_local {
+                    self.emit_ident(expr)
+                } else {
+                    Value::Temp(
+                        self.self_temp
+                            .expect("Base outside of a method body"),
+                    )
+                }
+            }
             ExprKind::BinOp { op, left, right } => self.emit_binop(left, *op, right),
             ExprKind::UnaryOp { op, expr: operand } => {
                 let v = self.emit_expr(operand);
