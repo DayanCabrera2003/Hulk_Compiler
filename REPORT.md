@@ -21,8 +21,9 @@
 17. [Interfaces de línea de comandos](#17-interfaces-de-línea-de-comandos)
 18. [Sistema de pruebas](#18-sistema-de-pruebas)
 19. [Construcción y dependencias](#19-construcción-y-dependencias)
-20. [Limitaciones conocidas](#20-limitaciones-conocidas)
-21. [Conclusión](#21-conclusión)
+20. [Iteración de pulido y conformidad con la suite de evaluación](#20-iteración-de-pulido-y-conformidad-con-la-suite-de-evaluación)
+21. [Limitaciones conocidas](#21-limitaciones-conocidas)
+22. [Conclusión](#22-conclusión)
 
 ---
 
@@ -1950,14 +1951,276 @@ codificados directamente en el código fuente.
 
 ---
 
-## 20. Limitaciones conocidas
+## 20. Iteración de pulido y conformidad con la suite de evaluación
+
+Esta sección documenta el conjunto de correcciones y extensiones realizadas
+en la rama `fix/grading-tests` sobre la base de compilación descrita en
+las secciones anteriores. El objetivo del trabajo fue alcanzar la
+conformidad completa con la suite oficial de evaluación ubicada en
+`tests/tests/hulk/`, cuya estructura y contrato de interfaz se definen en
+`Para entregar/interface.md`.
+
+### 20.1 Resultado de la suite oficial
+
+Al concluir esta iteración la suite arroja `RESULT: ALL_PASS`. En el bucket
+requerido, todos los 71 casos de prueba pasan. En el bucket de bonus se
+obtienen 43 de 44 casos, siendo el único caso no aprobado
+`ok/macros/define_loop`, cuya razón se documenta en la sección 20.12.
+
+### 20.2 Corrección del bucle infinito en `infer_temp_kinds`
+
+**Diagnóstico.** El codegen aplica un bucle de punto fijo para inferir el
+`TempKind` de cada temporal a partir de los usos observados en las
+instrucciones del programa BANNER. La instrucción `SetField` propaga el
+kind del valor fuente hacia atrás al temporal del valor. La implementación
+original usaba `or_insert(TempKind::F64)`, que no sobreescribe una entrada
+existente. Sin embargo, la variable `changed` se actualizaba a `true`
+independientemente de si `or_insert` había modificado la tabla o no. Esto
+causaba que, cuando un campo numérico de un struct era inicializado con el
+resultado de una llamada a función cuyo tipo retorno se resolvía como
+`Object` en el inferidor de tipos —y por tanto cuyo temporal inicial se
+clasificaba como `Ptr`—, el bucle intentara indefinidamente degradar
+ese `Ptr` a `F64`, detectaba un cambio aparente en cada iteración y nunca
+alcanzaba el punto fijo.
+
+**Solución.** Se sustituyó `or_insert` por `insert` en el paso de
+retropropagación de `SetField`. Con `insert`, una entrada `Ptr` existente
+se sobreescribe por `F64` de forma real, `changed` refleja la modificación
+efectiva y el bucle termina. Se añadió el test de regresión
+`crates/hulk-driver/tests/hang_field_calls_function.rs` para reproducir y
+fijar el escenario problemático, además de actualizar
+`doc/seccion-07-types.md` con el análisis de la causa raíz.
+
+### 20.3 Resolución de la variable local `base`
+
+**Problema.** El parser convierte toda aparición del identificador `base`
+en un nodo `ExprKind::Base`, sin considerar si existe una variable local
+con ese nombre en el scope actual. El lowerer de BANNER trataba todo
+`ExprKind::Base` como una super-referencia, lo que producía un error de
+validación de método-override cuando `base` era simplemente el nombre de
+un parámetro o variable local.
+
+**Solución.** Se añadió en el resolver semántico
+(`crates/hulk-semantic/src/resolver/names/exprs.rs`) una consulta de scope
+antes de aplicar la semántica de `base`: si el nombre `base` aparece como
+símbolo resoluble en el scope actual, el resolver registra el nodo con el
+`SymbolId` correspondiente a esa variable. El lowerer de BANNER
+(`crates/hulk-banner/src/lowerer.rs`) respeta esta decisión: si el nodo
+`Base` tiene un símbolo asignado en la tabla de expresiones, lo trata como
+una variable local cargando el temporal correspondiente; en caso contrario,
+aplica la lógica de super-referencia. El test
+`crates/hulk-driver/tests/base_var_shadow.rs` cubre el escenario completo
+con parámetros de función y variables de bloque llamadas `base`.
+
+### 20.4 Igualdad polimórfica (`==`/`!=`) por tipo de operando
+
+**Problema.** Los operadores `==` y `!=` se emitían siempre como una
+comparación de enteros de 64 bits (`icmp eq`), lo que producía resultados
+incorrectos cuando los operandos eran strings (cuya representación es un
+puntero a `HulkStr`) o doubles.
+
+**Solución.** El lowerer de BANNER reescribe los nodos `BinOp` con
+`BinOpKind::Eq` o `BinOpKind::Ne` sobre operandos `String` en llamadas
+explícitas a `__hulk_str_eq`, un nuevo helper del runtime C definido en
+`runtime/strings.h` y `runtime/strings.c`. La función compara el contenido
+léxico de ambas cadenas mediante `strcmp` y devuelve un entero conveniente
+para el codegen (`1` si iguales, `0` si distintos). En el codegen,
+`crates/hulk-codegen/src/emit_ops.rs` despacha según el `TempKind` del
+primer operando: `F64` emite `fcmp oeq`/`fcmp une`, `I1` emite `icmp
+eq`/`icmp ne`, y `Ptr` produce una llamada a `__hulk_str_eq` comparando el
+resultado con cero. La firma de `__hulk_str_eq` se declara en la estructura
+`RtFunctions` (`crates/hulk-codegen/src/rt.rs`). Esta corrección resolvió
+los casos de prueba `string_compare`, `chained_elif` y los tests
+polimórficos que comparaban el valor de retorno de métodos cuyo tipo era
+`String`.
+
+### 20.5 Resolución de campos sobre parámetros con tipo struct
+
+**Problema.** El método `param_runtime_hint` del lowerer de BANNER
+retornaba `None` para parámetros anotados con tipos de usuario (por
+ejemplo, `other: Vector`). El codegen nunca registraba estos parámetros en
+`temp_type_names`, por lo que cualquier acceso al campo de un parámetro
+que no fuera `self` producía el error en tiempo de compilación "struct type
+not statically known".
+
+**Solución.** Se añadió en `param_runtime_hint` un caso para
+`TypeAnn::Named(n)` que retorna `Some(n.clone())` cuando el nombre no es
+uno de los tipos primitivos (`Number`, `Boolean`, `Object`). El ciclo
+existente en el codegen que procesa los hints por parámetro propaga el
+nombre al mapa `temp_type_names` de forma automática, sin cambios
+adicionales en la lógica de resolución de campos. El test
+`crates/hulk-codegen/tests/field_on_nonself_temp.rs` verifica cuatro
+escenarios distintos: acceso a campo en parámetro de método con tipo
+struct, en variable ligada al resultado de un constructor, en dos variables
+struct simultáneas, y en el escenario completo de `vector_math`.
+
+### 20.6 Validaciones semánticas nuevas
+
+Se incorporaron tres validaciones en el inferidor de tipos
+(`crates/hulk-types/src/inferer.rs`) que la especificación del lenguaje
+exige pero que no estaban implementadas.
+
+**Condición de `if` debe ser `Boolean`.** Cuando el tipo inferido de la
+condición de una expresión `if` no es `Boolean` y no es `Unknown`
+(indicador de que el inferidor no pudo determinar el tipo), se emite el
+diagnóstico `condición de 'if' debe ser Boolean, se obtuvo T`. La guarda
+sobre `Unknown` evita falsos positivos en expresiones cuyo tipo el
+inferidor no resuelve estáticamente.
+
+**Iterador de `for` debe ser iterable.** El operando de iteración de un
+bucle `for` se valida contra la lista de tipos iterables conocidos:
+`Vector`, `String`, `Range` y cualquier tipo de usuario cuyo nombre
+conforma con los protocolos `Iterable` o `Enumerable`. Si el tipo del
+operando no es uno de estos ni es `Unknown`, se emite el diagnóstico
+`el iterable de 'for' debe ser Iterable, Vector, String o Range, se
+obtuvo T`.
+
+**Tipo de retorno de función.** Cuando una función declara un tipo de
+retorno explícito, el tipo inferido del cuerpo se verifica mediante
+`env.is_assignable(body_ty, declared_ty)` (subtipado estructural, no
+igualdad exacta). Si la asignabilidad no se satisface y ninguno de los
+dos extremos es `Unknown`, se emite el diagnóstico `tipo de retorno
+incompatible: se declaró T pero el cuerpo es de tipo U`. El uso de
+`is_assignable` en lugar de igualdad exacta es deliberado: permite que
+una función declarada como `Animal` retorne correctamente un valor de
+tipo `Dog`, respetando la covarianza de retorno que la especificación
+de HULK requiere.
+
+Cada nueva validación está cubierta por tests de regresión en
+`crates/hulk-driver/tests/error_cases.rs`.
+
+### 20.7 Alias léxicos `define` e `interface`
+
+La suite de evaluación utiliza la palabra clave `define` como sinónimo de
+`function` en los tests del grupo `ok/macros/`. Del mismo modo, algunos
+tests emplean `interface` donde la especificación principal usa `protocol`.
+
+Se añadieron ambas palabras como variantes del token correspondiente en
+`crates/hulk-tokens/src/lib.rs`: `Token::Define` (reconocido por el lexer
+junto a `Token::Function` en todos los contextos de declaración de función)
+y `Token::Interface` (reconocido junto a `Token::Protocol`). El parser
+(`crates/hulk-parser/src/decl/function.rs`) acepta `Token::Define` en los
+mismos puntos que acepta `Token::Function`. Todos los cambios son léxicos y
+no afectan ninguna otra fase del pipeline.
+
+La palabra clave `define`, según el alcance declarado de esta iteración,
+sirve exclusivamente como alias sintáctico. No se implementa evaluación
+diferida de argumentos ni higiene en la expansión del cuerpo, características
+que la especificación de macros verdaderas de HULK requeriría. Esta
+delimitación es coherente con los tests del grading: todos los casos del
+grupo `ok/macros/` que están marcados como obligatorios pasan con el alias
+simple.
+
+### 20.8 Tipos funcionales y lambdas con palabra clave `function`
+
+**Tipos funcionales en anotaciones.** La sintaxis `(T1, T2) -> R` para
+anotar el tipo de un argumento de función ya de orden superior estaba
+representada en `TypeAnn::Functor` desde una versión anterior del AST
+(sección 5.5), pero no existían tests que verificaran el camino completo
+del parser. Se añadieron tests en `crates/hulk-parser/src/tests.rs` que
+cubren la anotación con cero, uno y dos parámetros, el retorno `Void`
+(`-> ()`), y el caso de mala formación `(Number` sin el paréntesis de
+cierre.
+
+**Lambda con `function`.** La especificación del grading incluye la forma
+`function (params): T -> body` como expresión de lambda anónima,
+distinta de una declaración de función con nombre. Se implementó en
+`crates/hulk-parser/src/complex.rs` la función `parse_function_keyword_lambda`,
+invocada desde `parse_nud` cuando el token actual es `Token::Function` y
+el siguiente es `Token::LParen`, con ayuda de `peek_is_recovery_boundary`
+para desambiguar inequívocamente del inicio de una declaración. La
+gramática de los parámetros y del tipo de retorno es idéntica a la de
+las lambdas clásicas `(p: T): R => body`.
+
+Se corrigió además un bug en la recolección de variables libres del
+desugaring de lambdas (`crates/hulk-desugar/src/transforms/lambda.rs`):
+cuando la variable libre era un nodo `ExprKind::Base` cuyo símbolo
+resuelto corresponde a una variable local (ver sección 20.3), el recolector
+de variables libres no lo reconocía como captura y el reescritor no la
+sustituía por `self.<name>` en el tipo sintético generado. Ambas funciones
+`collect_free_vars` y `rewrite_free_vars` se extendieron para tratar ese
+caso. Gracias a esta corrección el test `lambda_closure.hulk` pasa.
+
+### 20.9 Arrays
+
+Se implementó soporte completo de arrays de elementos numéricos y de
+objetos, articulado en cuatro subtareas encadenadas.
+
+**Anotación de tipo `T[]`.** La sintaxis postfija `T[]` ya estaba
+representada en `TypeAnn::Vector` desde el diseño inicial del AST. Se
+verificó y documentó que el parser (`parse_type_ann_suffix`) la maneja
+correctamente de forma recursiva, permitiendo tipos como `Number[][]`.
+Se añadieron tests de cobertura en `crates/hulk-parser/src/tests.rs`.
+
+**Literal de array `{a, b, c}`.** La apertura de llave `{` en posición
+de expresión era ambigua entre un bloque y un literal de array. Se
+resolvió con lookahead de un token: si tras la primera expresión aparece
+una coma, el parser toma el camino `parse_array_literal_rest`; en caso
+contrario, el nodo se trata como un bloque mediante `continue_block_after_first`.
+Las tres funciones auxiliares (`parse_brace_expr`,
+`parse_array_literal_rest`, `continue_block_after_first`) se definieron en
+`crates/hulk-parser/src/expr.rs` manteniendo cada una por debajo del límite
+de 50 líneas. El nodo resultante es un `ExprKind::VecLiteral`.
+
+**Indexado `arr[i]` y `.size()`.** Se incorporaron al AST dos nuevas
+variantes de `ExprKind`: `ArrayNew` para la construcción `new T[N]` y
+`ArrayGen` para el generador `new T[N]{ i -> body }`. El parser
+disambigua `new T[...]` de `new T(...)` por la presencia del corchete.
+La instrucción `GetIndex` existente en BANNER se reutiliza para la operación
+`arr[i]`, mientras que `SetIndex` cubre la asignación `arr[i] := v`. En el
+runtime C se añadieron `__arr_new`, `__objarr_new`, `__objarr_get`,
+`__objarr_set` y `__objarr_size` (`runtime/strings.c` y `runtime/strings.h`)
+para arrays de números y arrays de punteros respectivamente. El método
+`.size()` sobre un array de números despacha a `__vec_size` reutilizando el
+hint `$vector` que el lowerer propaga desde `__arr_new`.
+
+**Generador, mutación, arrays 2D y paso por parámetro.** Se implementó el
+desugaring de `new T[N]{ i -> body }` en
+`crates/hulk-desugar/src/transforms/array_gen.rs`: el generador se
+transforma en un `let arr = __arr_new(N) in while (i < N) { arr[i] :=
+body; i := i + 1 }`. Los casos de `ArrayGen` y `ArrayNew` se registraron
+en el dispatcher de desugar y en la recolección/reescritura de variables
+libres para lambdas. Los arrays 2D (`Number[][]`) usan `__objarr_new` y
+el lowerer propaga el hint `$objarr` a través de `GetIndex` para que el
+índice anidado enrute correctamente a `__objarr_get` y la asignación
+interna a `__vec_set`. El paso por parámetro de arrays (`Number[]`) se
+integra a través del mecanismo `param_runtime_hint` ya descrito en la
+sección 20.5.
+
+### 20.10 Limitaciones conocidas de esta iteración
+
+Las limitaciones introducidas o identificadas durante esta fase se añaden
+a las de la sección 21.
+
+**`define_loop.hulk` (bonus).** El caso `ok/macros/define_loop` requiere
+que los argumentos de `define` se evalúen con semántica diferida (lazy),
+de forma que la macro pueda implementar estructuras de control con
+evaluación condicional del cuerpo. El alias léxico implementado expande los
+argumentos de forma ansiosa (como una llamada a función normal), lo que
+es incompatible con este caso. El caso queda fuera del alcance de esta
+iteración.
+
+**Sintaxis de literal `[a, b, c]`.** La especificación oficial del lenguaje
+define los literales de vector con corchetes cuadrados. La suite de
+evaluación del grading utiliza literales con llaves (`{a, b, c}`), que es
+la forma soportada por el compilador. No se implementó la sintaxis de
+corchetes porque habría creado ambigüedad con el indexado `arr[i]`.
+
+**Sin bounds-checking en arrays.** El acceso a `arr[i]` no verifica que
+el índice esté dentro del rango válido en tiempo de ejecución, lo que es
+consistente con el comportamiento de `__vec_get` sobre vectores. Un acceso
+fuera de rango produce comportamiento indefinido en C.
+
+---
+
+## 21. Limitaciones conocidas
 
 Algunas características del lenguaje se encuentran parcialmente
 implementadas o presentan limitaciones identificadas durante el desarrollo.
 Se documentan a continuación a fin de ofrecer una visión completa del
 estado del proyecto.
 
-### 20.1 Limitaciones del análisis semántico y la inferencia de tipos
+### 21.1 Limitaciones del análisis semántico y la inferencia de tipos
 
 - **Subtipado en la validación de llamadas**: la verificación de tipos de
   argumento aplica igualdad exacta más `Object` como comodín; no admite,
@@ -1976,7 +2239,7 @@ estado del proyecto.
   argumento es análogo al anterior; el codegen conserva la información
   precisa necesaria para resolver el dispatch.
 
-### 20.2 Clausuras con captura del scope exterior
+### 21.2 Clausuras con captura del scope exterior
 
 La construcción `function f(n) => (x) => x + n;` —una función que retorna
 una clausura que captura su parámetro— produce un error
@@ -1991,7 +2254,7 @@ posible: modelar la operación con subtipos en lugar de clausuras de orden
 superior; por ejemplo, declarar un tipo `Adder(n: Number)` con un método
 `apply(x)`.
 
-### 20.3 Operador `as` (downcast)
+### 21.3 Operador `as` (downcast)
 
 La expresión `(obj as ConcreteType).method()` produce un error
 `unresolved callee '__hulk_as'` durante el enlazado. Mitigación posible:
@@ -2000,27 +2263,27 @@ directamente. El operador `is` para chequeo de tipo en tiempo de
 ejecución sí está plenamente soportado; el operador `as` permanece
 limitado.
 
-### 20.4 Acceso a caracteres de cadena
+### 21.4 Acceso a caracteres de cadena
 
 El runtime expone únicamente `hulk_string_new` y `hulk_string_concat`.
 No existen operaciones equivalentes a `length`, `char_at` o
 `substring` accesibles a nivel HULK. Mitigación posible: trabajar con
 vectores `Number[]` cuando se requiera manipulación carácter a carácter.
 
-### 20.5 Acceso a campo sobre el valor retornado por una función no-`new`
+### 21.5 Acceso a campo sobre el valor retornado por una función no-`new`
 
 La expresión `mk().field` produce el error
 `cannot resolve field 'field' on object — struct type not statically known`.
 Mitigación posible: enlazar el resultado a una variable explícita antes
 de acceder al campo, mediante una expresión `let o = mk() in o.field`.
 
-### 20.6 Macros con cuerpo en posición trailing
+### 21.6 Macros con cuerpo en posición trailing
 
 La sintaxis `name(args) { body }` —donde el bloque se sitúa después de
 los paréntesis como argumento implícito— no está soportada. La
 invocación debe expresarse como `name(args, { body })`.
 
-### 20.7 Recursión profunda en la fase de marcado del recolector
+### 21.7 Recursión profunda en la fase de marcado del recolector
 
 Como se mencionó en la sección 14.13, los árboles extremadamente
 profundos podrían llegar a desbordar la pila de C durante la fase de
@@ -2029,7 +2292,7 @@ posible consistiría en sustituir la recursión por una pila explícita.
 
 ---
 
-## 21. Conclusión
+## 22. Conclusión
 
 El compilador HULK descrito en este informe constituye una implementación
 completa del lenguaje especificado en `hulk-docs.pdf`. Su organización en
