@@ -181,6 +181,11 @@ fn collect_expr_ids(expr: &Expr, ids: &mut HashSet<NodeId>) {
                 collect_expr_ids(arg, ids);
             }
         }
+        ExprKind::ArrayNew { size, .. } => collect_expr_ids(size, ids),
+        ExprKind::ArrayGen { size, body, .. } => {
+            collect_expr_ids(size, ids);
+            collect_expr_ids(body, ids);
+        }
         ExprKind::Is { expr, .. } | ExprKind::As { expr, .. } => collect_expr_ids(expr, ids),
         ExprKind::Lambda { body, .. } => collect_expr_ids(body, ids),
         ExprKind::Number(_)

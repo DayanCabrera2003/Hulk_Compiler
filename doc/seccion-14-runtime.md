@@ -38,6 +38,7 @@ El crate `hulk-codegen` la compila e integra automáticamente mediante `build.rs
 | `void* hulk_string_new(const char*)` | Crea nuevo `HulkStr` copiando un C string |
 | `void* hulk_string_concat(void*, void*)` | Concatenación inmutable: produce un nuevo `HulkStr` |
 | `void* hulk_number_to_string(double)` | Formatea un Number a String con `%g` |
+| `int __hulk_str_eq(void*, void*)` | Compara dos `HulkStr` byte a byte; devuelve 1 si iguales, 0 si distintos |
 
 **Builtins** (`builtins.h`):
 

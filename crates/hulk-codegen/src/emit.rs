@@ -691,6 +691,9 @@ pub(crate) fn infer_temp_kinds(
                             Some(Value::Global(target)) => Some((*dst, target.clone())),
                             _ => None,
                         }
+                    } else if name == "__objarr_new" {
+                        // Object array allocation: tag the result as $objarr.
+                        Some((*dst, "$objarr".to_string()))
                     } else {
                         fn_return_struct.get(name).cloned().map(|ty| (*dst, ty))
                     }
@@ -764,6 +767,7 @@ pub(crate) fn infer_temp_kinds(
                     let k = match callee {
                         Value::Global(name) if is_math_builtin(name) => TempKind::F64,
                         Value::Global(name) if name == "__hulk_is" => TempKind::I1,
+                        Value::Global(name) if name == "__hulk_str_eq" => TempKind::I1,
                         Value::Global(name) => fn_return_kinds
                             .get(name.as_str())
                             .copied()
@@ -817,9 +821,25 @@ pub(crate) fn infer_temp_kinds(
                         .unwrap_or(TempKind::Ptr);
                     kinds.entry(*dst).or_insert(k);
                 }
-                Instr::GetIndex { dst, .. } => {
-                    // __vec_get returns f64.
-                    kinds.insert(*dst, TempKind::F64);
+                Instr::GetIndex { dst, target, .. } => {
+                    // __objarr_get returns Ptr; __vec_get returns f64.
+                    // Detect by presence of "__objarr" in the call that produced target.
+                    // Heuristic: if no other instruction set dst as F64 yet, default F64.
+                    // The objarr path is handled at emit time via temp_type_names.
+                    // For infer purposes, check if target came from __objarr_new.
+                    let is_objarr = temp_structs
+                        .get(match target {
+                            Value::Temp(tid) => tid,
+                            _ => &TempId(u32::MAX),
+                        })
+                        .map(|s| s == "$objarr")
+                        .unwrap_or(false);
+                    let k = if is_objarr {
+                        TempKind::Ptr
+                    } else {
+                        TempKind::F64
+                    };
+                    kinds.insert(*dst, k);
                 }
                 instr => {
                     if let Some(dst) = instr_dst(instr) {
@@ -886,6 +906,9 @@ pub(crate) fn infer_temp_kinds(
                 }
             }
             // SetField: if field is numeric, the value being stored should be F64.
+            // Use insert (not or_insert) so an existing Ptr kind is upgraded to
+            // F64. Using or_insert here would leave a Ptr-typed temp unchanged
+            // while still setting changed = true, producing an infinite loop.
             if let Instr::SetField {
                 object: Value::Temp(obj_tid),
                 field,
@@ -895,7 +918,7 @@ pub(crate) fn infer_temp_kinds(
                 if let Some(tname) = temp_structs.get(obj_tid) {
                     if let Some(&TempKind::F64) = field_kind.get(&(tname.clone(), field.clone())) {
                         if kinds.get(val_tid).copied() != Some(TempKind::F64) {
-                            kinds.entry(*val_tid).or_insert(TempKind::F64);
+                            kinds.insert(*val_tid, TempKind::F64);
                             changed = true;
                         }
                     }

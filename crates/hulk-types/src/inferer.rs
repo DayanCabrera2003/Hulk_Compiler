@@ -1,4 +1,4 @@
-use hulk_ast::{BinOpKind, Expr, ExprKind, TypeAnn, UnaryOpKind};
+use hulk_ast::{BinOpKind, Expr, ExprKind, Param, Span, TypeAnn, UnaryOpKind};
 use hulk_diagnostics::{Diagnostic, DiagnosticBag, DiagnosticKind};
 use hulk_semantic::{Resolver, SymbolId};
 
@@ -164,12 +164,12 @@ impl<'a> TypeInferer<'a> {
             // While: body type (though body should not be used as value)
             ExprKind::While { condition: _, body } => self.infer_expr(body),
 
-            // For: body type
+            // For: validate the iterable, then infer body type.
             ExprKind::For {
                 binding: _,
-                iterable: _,
+                iterable,
                 body,
-            } => self.infer_expr(body),
+            } => self.infer_for(expr, iterable, body),
 
             // New T(...): type T
             ExprKind::New { type_ann, args: _ } => self.infer_new(expr, type_ann),
@@ -208,6 +208,19 @@ impl<'a> TypeInferer<'a> {
                     self.env.register_symbol_type(symbol_id, value_ty);
                 }
                 value_ty
+            }
+
+            // Array allocation: `new T[N]` — treated as OBJECT (the array pointer).
+            ExprKind::ArrayNew { size, .. } => {
+                self.infer_expr(size);
+                TypeId::OBJECT
+            }
+
+            // Array generator: `new T[N]{ i -> body }` — same OBJECT result type.
+            ExprKind::ArrayGen { size, body, .. } => {
+                self.infer_expr(size);
+                self.infer_expr(body);
+                TypeId::OBJECT
             }
         };
 
@@ -360,6 +373,47 @@ impl<'a> TypeInferer<'a> {
         false
     }
 
+    /// Validates that the inferred body type of a function is compatible with
+    /// the declared return-type annotation, if one is present.
+    ///
+    /// Emits a `SEMANTIC` diagnostic when the types are incompatible. The
+    /// check is skipped when the body type is `OBJECT` (error fallback) to
+    /// avoid cascading diagnostics after earlier failures.
+    ///
+    /// Call this **after** `infer_expr(&function.body)` so the body type has
+    /// been registered in the env.
+    pub fn check_function_return_type(
+        &mut self,
+        body_ty: TypeId,
+        return_ann: Option<&TypeAnn>,
+        fn_span: &Span,
+    ) {
+        let Some(TypeAnn::Named(declared_name)) = return_ann else {
+            return; // no annotation → nothing to check
+        };
+        let declared_ty = self.resolve_named_type(declared_name);
+        if declared_ty == TypeId::OBJECT {
+            return; // unknown declared type (e.g., user type) → skip
+        }
+        if body_ty == TypeId::OBJECT {
+            return; // fallback type from earlier error → skip cascade
+        }
+        if !self.is_assignable(body_ty, declared_ty) {
+            let got = Self::display_type(self.env, body_ty);
+            let want = declared_name;
+            self.bag.push(
+                Diagnostic::error(format!(
+                    "el cuerpo retorna {got} pero se declaró tipo de retorno {want}"
+                ))
+                .with_kind(DiagnosticKind::Semantic)
+                .with_label(
+                    fn_span.clone(),
+                    format!("se esperaba {want}, se obtuvo {got}"),
+                ),
+            );
+        }
+    }
+
     /// Best-effort human-readable name for a [`TypeId`] used in diagnostics.
     fn display_type(env: &TypeEnv, id: TypeId) -> String {
         if id == TypeId::NUMBER {
@@ -489,8 +543,20 @@ impl<'a> TypeInferer<'a> {
         elif_branches: &[(Expr, Expr)],
         else_branch: &Option<Box<Expr>>,
     ) -> TypeId {
-        // Infer condition (should be Boolean, but no error checking yet)
-        let _cond_type = self.infer_expr(condition);
+        // Infer condition and verify it is Boolean.
+        // Skip the check when the type collapsed to OBJECT (error already
+        // emitted by a prior phase) to avoid cascading diagnostics.
+        let cond_type = self.infer_expr(condition);
+        if cond_type != TypeId::BOOLEAN && cond_type != TypeId::OBJECT {
+            let got = Self::display_type(self.env, cond_type);
+            self.bag.push(
+                Diagnostic::error(format!(
+                    "la condición del if debe ser Boolean, se obtuvo {got}"
+                ))
+                .with_kind(DiagnosticKind::Semantic)
+                .with_label(condition.span.clone(), "se esperaba una expresión Boolean"),
+            );
+        }
 
         // Infer then-branch type
         let then_type = self.infer_expr(then_branch);
@@ -498,7 +564,17 @@ impl<'a> TypeInferer<'a> {
         // Infer elif-branch types
         let mut all_types = vec![then_type];
         for (elif_cond, elif_body) in elif_branches {
-            let _cond_type = self.infer_expr(elif_cond);
+            let elif_cond_type = self.infer_expr(elif_cond);
+            if elif_cond_type != TypeId::BOOLEAN && elif_cond_type != TypeId::OBJECT {
+                let got = Self::display_type(self.env, elif_cond_type);
+                self.bag.push(
+                    Diagnostic::error(format!(
+                        "la condición del elif debe ser Boolean, se obtuvo {got}"
+                    ))
+                    .with_kind(DiagnosticKind::Semantic)
+                    .with_label(elif_cond.span.clone(), "se esperaba una expresión Boolean"),
+                );
+            }
             all_types.push(self.infer_expr(elif_body));
         }
 
@@ -517,8 +593,63 @@ impl<'a> TypeInferer<'a> {
             .unwrap_or(TypeId::OBJECT)
     }
 
-    fn infer_new(&mut self, _expr: &Expr, type_ann: &hulk_ast::TypeAnn) -> TypeId {
-        if let hulk_ast::TypeAnn::Named(name) = type_ann {
+    /// Validates that the iterable expression in `for (x in <iterable>)` has
+    /// a type that supports the iteration protocol (Iterable, Enumerable,
+    /// Vector, or a user-defined type with `next()`/`current()` / `iter()`).
+    ///
+    /// Number and Boolean are explicitly not iterable; any other type
+    /// that cannot be classified defaults to Object and passes silently to
+    /// avoid false positives when type information is unavailable.
+    fn infer_for(&mut self, _expr: &Expr, iterable: &Expr, body: &Expr) -> TypeId {
+        let iter_ty = self.infer_expr(iterable);
+        if !self.is_iterable_type(iter_ty) && iter_ty != TypeId::OBJECT {
+            let got = Self::display_type(self.env, iter_ty);
+            self.bag.push(
+                Diagnostic::error(format!("{got} no es iterable"))
+                    .with_kind(DiagnosticKind::Semantic)
+                    .with_label(
+                        iterable.span.clone(),
+                        "se esperaba un tipo iterable (Iterable, Enumerable o Vector)",
+                    ),
+            );
+        }
+        self.infer_expr(body)
+    }
+
+    /// Returns `true` when `ty` can be used as the source of a `for` loop.
+    ///
+    /// Accepted types:
+    /// - `TypeKind::Vector` — built-in vector type.
+    /// - `TypeKind::Iterable` — `T*` annotation.
+    /// - Protocols or user-defined types named `Iterable` or `Enumerable`.
+    /// - User-defined types that have a `next()` and `current()` method
+    ///   (structural Iterable conformance) or an `iter()` method (Enumerable).
+    ///
+    /// Number, String, and Boolean are **not** iterable.
+    fn is_iterable_type(&self, ty: TypeId) -> bool {
+        // Builtin Number and Boolean are never iterable.
+        if ty == TypeId::NUMBER || ty == TypeId::BOOLEAN {
+            return false;
+        }
+        // String: conservatively rejected (no next()/current() in the runtime).
+        if ty == TypeId::STRING {
+            return false;
+        }
+        match self.env.type_kind(ty) {
+            Some(TypeKind::Vector(_)) | Some(TypeKind::Iterable(_)) => true,
+            Some(TypeKind::Protocol { name }) => name == "Iterable" || name == "Enumerable",
+            Some(TypeKind::UserDefined { name, .. }) => {
+                let has_next = self.resolver.type_with_name_has_method(name, "next");
+                let has_current = self.resolver.type_with_name_has_method(name, "current");
+                let has_iter = self.resolver.type_with_name_has_method(name, "iter");
+                (has_next && has_current) || has_iter
+            }
+            _ => false,
+        }
+    }
+
+    fn infer_new(&mut self, _expr: &Expr, type_ann: &TypeAnn) -> TypeId {
+        if let TypeAnn::Named(name) = type_ann {
             if let Some(id) = self.env.type_id_by_name(name) {
                 return id;
             }
@@ -526,7 +657,7 @@ impl<'a> TypeInferer<'a> {
         TypeId::OBJECT
     }
 
-    fn infer_type_ann(&mut self, _type_ann: &hulk_ast::TypeAnn) -> TypeId {
+    fn infer_type_ann(&mut self, _type_ann: &TypeAnn) -> TypeId {
         // For now, return Object; in 7.3, resolve type annotations
         TypeId::OBJECT
     }
@@ -534,8 +665,8 @@ impl<'a> TypeInferer<'a> {
     fn infer_lambda(
         &mut self,
         _expr: &Expr,
-        _params: &[hulk_ast::Param],
-        _return_type: &Option<hulk_ast::TypeAnn>,
+        _params: &[Param],
+        _return_type: &Option<TypeAnn>,
         body: &Expr,
     ) -> TypeId {
         // Infer body type (parameters will be resolved in 7.3)

@@ -64,3 +64,14 @@ void* __str_substring(void* s, double start, double len) {
     result->data[ln] = '\0';
     return (void*)result;
 }
+
+int __hulk_str_eq(void* a, void* b) {
+    /* Pointer identity short-circuit. */
+    if (a == b) return 1;
+    if (!a || !b) return 0;
+    HulkStr* sa = (HulkStr*)a;
+    HulkStr* sb = (HulkStr*)b;
+    /* Different lengths → cannot be equal. */
+    if (sa->len != sb->len) return 0;
+    return memcmp(sa->data, sb->data, sa->len) == 0;
+}

@@ -293,6 +293,24 @@ impl<'a> Desugarer<'a> {
                 span,
                 id,
             ),
+            ExprKind::ArrayNew { elem_ty, size } => Expr::new(
+                ExprKind::ArrayNew {
+                    elem_ty,
+                    size: Box::new(self.desugar_expr(*size)),
+                },
+                span,
+                id,
+            ),
+            ExprKind::ArrayGen {
+                elem_ty,
+                size,
+                index_var,
+                body,
+            } => {
+                let lowered_size = self.desugar_expr(*size);
+                let lowered_body = self.desugar_expr(*body);
+                self.desugar_array_gen(elem_ty, lowered_size, index_var, lowered_body, span)
+            }
             ExprKind::Is { expr, type_ann } => Expr::new(
                 ExprKind::Is {
                     expr: Box::new(self.desugar_expr(*expr)),

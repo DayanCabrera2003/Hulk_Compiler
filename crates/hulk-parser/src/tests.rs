@@ -1,6 +1,7 @@
 //! Inline tests preserved from subsession 4.1 to guard against regressions.
+//! Session 5.1 adds tests for array type annotations (T[], T[][], etc.).
 
-use hulk_ast::{BinOpKind, ExprKind, Program, UnaryOpKind};
+use hulk_ast::{BinOpKind, ExprKind, Program, TypeAnn, UnaryOpKind};
 use hulk_diagnostics::DiagnosticBag;
 use hulk_lexer::lex;
 use hulk_tokens::SourceFile;
@@ -114,4 +115,54 @@ fn parses_boolean_and_concat() {
         }
         other => panic!("expected or expression, got {other:?}"),
     }
+}
+
+// ── Session 5.1: array type annotation tests ──────────────────────────────
+
+/// Parse `Number[]` in a let binding annotation and verify `TypeAnn::Vector`.
+#[test]
+fn type_array_number() {
+    let (program, bag) = parse_expr("let a: Number[] = 0 in a;");
+    assert!(bag.is_empty(), "diagnostics: {:?}", bag.diagnostics());
+    // The body of the program is a Let whose first binding carries the annotation.
+    let ExprKind::Let { bindings, .. } = &program.body.kind else {
+        panic!("expected Let, got {:?}", program.body.kind);
+    };
+    let ExprKind::LetBinding(lb) = &bindings[0].kind else {
+        panic!("expected LetBinding");
+    };
+    assert_eq!(
+        lb.type_ann,
+        Some(TypeAnn::Vector(Box::new(TypeAnn::Named(
+            "Number".to_owned()
+        ))))
+    );
+}
+
+/// Parse `Number[][]` and verify nested `TypeAnn::Vector`.
+#[test]
+fn type_array_nested() {
+    let (program, bag) = parse_expr("let m: Number[][] = 0 in m;");
+    assert!(bag.is_empty(), "diagnostics: {:?}", bag.diagnostics());
+    let ExprKind::Let { bindings, .. } = &program.body.kind else {
+        panic!("expected Let");
+    };
+    let ExprKind::LetBinding(lb) = &bindings[0].kind else {
+        panic!("expected LetBinding");
+    };
+    let expected = TypeAnn::Vector(Box::new(TypeAnn::Vector(Box::new(TypeAnn::Named(
+        "Number".to_owned(),
+    )))));
+    assert_eq!(lb.type_ann, Some(expected));
+}
+
+/// `Number[` without closing `]` must not advance past the size expression.
+/// The bracket stays for the expression parser (it looks like an index on an Ident).
+/// The important invariant: parser produces diagnostics rather than panicking.
+#[test]
+fn type_array_no_close_does_not_panic() {
+    // A lone `Number[` in expression position: parser recovers.
+    // We cannot predict how far it gets, but it must not panic.
+    let (_prog, _bag) = parse_expr("let a: Number[ = 0 in a;");
+    // No assertion on content — just "did not panic" is sufficient.
 }

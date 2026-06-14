@@ -263,6 +263,114 @@ fn error_non_inferrable_function_param() {
     assert_error_contains(&bag, "no inferible");
 }
 
+// ─── if condition must be Boolean (Task 1.1) ─────────────────────────────────
+
+#[test]
+fn error_if_condition_number() {
+    let bag = run("if_cond_num", "if (5) print(\"yes\") else print(\"no\");");
+    assert_error_contains(&bag, "Boolean");
+}
+
+#[test]
+fn error_if_condition_string() {
+    let bag = run("if_cond_str", r#"if ("hi") print("yes") else print("no");"#);
+    assert_error_contains(&bag, "Boolean");
+}
+
+#[test]
+fn no_error_if_condition_true_literal() {
+    let bag = run(
+        "if_cond_bool_lit",
+        r#"if (true) print("yes") else print("no");"#,
+    );
+    assert!(
+        !bag.has_errors(),
+        "Boolean literal condition must be valid: {:?}",
+        bag.diagnostics()
+    );
+}
+
+#[test]
+fn no_error_if_condition_comparison() {
+    let bag = run(
+        "if_cond_cmp",
+        "if (1 < 2) print(\"yes\") else print(\"no\");",
+    );
+    assert!(
+        !bag.has_errors(),
+        "comparison condition must be valid: {:?}",
+        bag.diagnostics()
+    );
+}
+
+#[test]
+fn no_error_if_condition_boolean_variable() {
+    let bag = run(
+        "if_cond_bool_var",
+        r#"let b: Boolean = true in if (b) print("yes") else print("no");"#,
+    );
+    assert!(
+        !bag.has_errors(),
+        "Boolean variable condition must be valid: {:?}",
+        bag.diagnostics()
+    );
+}
+
+// ─── for iterator must be iterable (Task 1.2) ────────────────────────────────
+
+#[test]
+fn error_for_iterator_number() {
+    let bag = run("for_iter_num", "for (x in 42) { print(x); }");
+    assert_error_contains(&bag, "iterable");
+}
+
+#[test]
+fn error_for_iterator_boolean() {
+    let bag = run("for_iter_bool", "for (x in true) { print(x); }");
+    assert_error_contains(&bag, "iterable");
+}
+
+#[test]
+fn no_error_for_iterator_range() {
+    let bag = run("for_iter_range", "for (x in range(0, 5)) { print(x); }");
+    assert!(
+        !bag.has_errors(),
+        "range() must be a valid iterator: {:?}",
+        bag.diagnostics()
+    );
+}
+
+// ─── function return type must match annotation (Task 1.3) ───────────────────
+
+#[test]
+fn error_return_type_string_declared_number_block_body() {
+    let bag = run(
+        "ret_mismatch_block",
+        "function f(): Number { \"abc\"; } f();",
+    );
+    assert_error_contains(&bag, "retorno");
+}
+
+#[test]
+fn no_error_return_type_number_matches() {
+    let bag = run("ret_ok_num", "function f(): Number { 5; } f();");
+    assert!(
+        !bag.has_errors(),
+        "Number body with Number annotation must be valid: {:?}",
+        bag.diagnostics()
+    );
+}
+
+#[test]
+fn no_error_return_type_no_annotation() {
+    let bag = run("ret_ok_no_ann", "function f() { 5; } f();");
+    assert!(
+        !bag.has_errors(),
+        "function without return annotation must be valid: {:?}",
+        bag.diagnostics()
+    );
+}
+
 // ─── valid programs produce no errors (sanity) ────────────────────────────────
 
 #[test]

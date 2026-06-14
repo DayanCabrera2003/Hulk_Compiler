@@ -1,4 +1,4 @@
-use inkwell::FloatPredicate;
+use inkwell::{FloatPredicate, IntPredicate};
 
 use hulk_banner::{TempId, Value};
 use hulk_hir::{BinOpKind, UnaryOpKind};
@@ -39,8 +39,8 @@ impl<'ctx> Codegen<'ctx> {
                 LlvmVal::Float(self.builder.build_float_rem(l, r, "frem")?)
             }
             BinOpKind::Pow => self.emit_pow(left, right)?,
-            BinOpKind::Eq => self.emit_float_cmp(left, right, FloatPredicate::OEQ, "feq")?,
-            BinOpKind::Ne => self.emit_float_cmp(left, right, FloatPredicate::ONE, "fne")?,
+            BinOpKind::Eq => self.emit_eq_op(left, right, false)?,
+            BinOpKind::Ne => self.emit_eq_op(left, right, true)?,
             BinOpKind::Lt => self.emit_float_cmp(left, right, FloatPredicate::OLT, "flt")?,
             BinOpKind::Le => self.emit_float_cmp(left, right, FloatPredicate::OLE, "fle")?,
             BinOpKind::Gt => self.emit_float_cmp(left, right, FloatPredicate::OGT, "fgt")?,
@@ -140,6 +140,85 @@ impl<'ctx> Codegen<'ctx> {
         ))
     }
 
+    /// Emit an equality or inequality comparison, dispatching on operand kinds.
+    ///
+    /// - Both operands are `F64` → float compare (`feq` / `fne`).
+    /// - Both operands are `I1`  → integer compare (xor for ne, eq for eq).
+    /// - Either operand is `Ptr` → call `__hulk_str_eq` (safe for strings and
+    ///   objects; for non-string objects it compares pointer identity).
+    ///
+    /// If `negate` is true the result is inverted (implements `!=`).
+    fn emit_eq_op(
+        &mut self,
+        left: &Value,
+        right: &Value,
+        negate: bool,
+    ) -> CodegenResult<LlvmVal<'ctx>> {
+        let lkind = self.value_kind(left);
+        let rkind = self.value_kind(right);
+
+        let result = match (lkind, rkind) {
+            // Both numeric: float compare.
+            (TempKind::F64, TempKind::F64) => {
+                let pred = FloatPredicate::OEQ;
+                let (l, r) = self.load_float_pair(left, right, "eq")?;
+                LlvmVal::Int(self.builder.build_float_compare(pred, l, r, "feq")?)
+            }
+            // Both boolean: integer compare.
+            (TempKind::I1, TempKind::I1) => {
+                let lv = self.load_val(left)?;
+                let rv = self.load_val(right)?;
+                let l = self.coerce_to_bool(lv)?;
+                let r = self.coerce_to_bool(rv)?;
+                LlvmVal::Int(
+                    self.builder
+                        .build_int_compare(IntPredicate::EQ, l, r, "ieq")?,
+                )
+            }
+            // At least one pointer (string, object, null): delegate to runtime helper.
+            _ => self.emit_str_eq_call(left, right)?,
+        };
+
+        if negate {
+            let iv = match result {
+                LlvmVal::Int(i) => i,
+                _ => self.coerce_to_bool(result)?,
+            };
+            return Ok(LlvmVal::Int(self.builder.build_not(iv, "ne")?));
+        }
+        Ok(result)
+    }
+
+    /// Call `__hulk_str_eq(a, b) -> i1`, coercing both operands to ptr.
+    fn emit_str_eq_call(&mut self, left: &Value, right: &Value) -> CodegenResult<LlvmVal<'ctx>> {
+        let lv = self.load_val(left)?;
+        let rv = self.load_val(right)?;
+        let l = self.coerce_to_ptr(lv)?;
+        let r = self.coerce_to_ptr(rv)?;
+        let result =
+            self.builder
+                .build_call(self.rt.hulk_str_eq, &[l.into(), r.into()], "str_eq")?;
+        let iv = result
+            .try_as_basic_value()
+            .left()
+            .ok_or_else(|| CodegenError::Llvm("__hulk_str_eq returned void".to_string()))?
+            .into_int_value();
+        Ok(LlvmVal::Int(iv))
+    }
+
+    /// Determine the `TempKind` of a `Value` without loading it.
+    ///
+    /// For constants the kind is fixed; for temporaries it is looked up from
+    /// the inferred `temp_kinds` table for the current function.
+    fn value_kind(&self, val: &Value) -> TempKind {
+        match val {
+            Value::ConstNum(_) => TempKind::F64,
+            Value::ConstBool(_) => TempKind::I1,
+            Value::ConstStr(_) | Value::ConstNull | Value::Global(_) => TempKind::Ptr,
+            Value::Temp(tid) => self.temp_kinds.get(tid).copied().unwrap_or(TempKind::Ptr),
+        }
+    }
+
     fn emit_concat_op(&mut self, left: &Value, right: &Value) -> CodegenResult<LlvmVal<'ctx>> {
         let lv = self.load_val(left)?;
         let rv = self.load_val(right)?;
@@ -157,6 +236,7 @@ impl<'ctx> Codegen<'ctx> {
     }
 }
 
+#[allow(dead_code)]
 fn extract_float<'ctx>(val: LlvmVal<'ctx>) -> CodegenResult<inkwell::values::FloatValue<'ctx>> {
     extract_float_ctx(val, "operation", "operand")
 }

@@ -140,6 +140,24 @@ impl Resolver {
                 self.resolve_expr(body);
                 self.pop_scope();
             }
+            ExprKind::ArrayNew { elem_ty, size } => {
+                self.resolve_type_ann(elem_ty, expr.span.clone());
+                self.resolve_expr(size);
+            }
+            ExprKind::ArrayGen {
+                elem_ty,
+                size,
+                index_var,
+                body,
+            } => {
+                self.resolve_type_ann(elem_ty, expr.span.clone());
+                self.resolve_expr(size);
+                // The index variable is a fresh binding visible only in `body`.
+                self.push_scope();
+                self.define(index_var.clone(), SymbolKind::Variable, expr.span.clone());
+                self.resolve_expr(body);
+                self.pop_scope();
+            }
         }
     }
 
@@ -217,6 +235,14 @@ impl Resolver {
     }
 
     pub(crate) fn resolve_base(&mut self, node_id: NodeId, span: Span) {
+        // A local variable named `base` shadows the keyword. This handles the
+        // common pattern `let base: SomeType = ...` where `base` is just a
+        // variable, not the method-override pseudo-function.
+        if let Some(sym_id) = self.lookup("base") {
+            self.expr_symbols.insert(node_id, sym_id);
+            return;
+        }
+
         let Some(current_type) = self.current_type else {
             self.bag.push(
                 Diagnostic::error("base usado fuera de un método")

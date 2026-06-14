@@ -119,6 +119,21 @@ pub enum ExprKind {
         type_ann: TypeAnn,
         args: Vec<Expr>,
     },
+    /// `new T[N]` — allocate an array of element type `T` with `N` slots.
+    /// The element type is the inner type of the `Vector` annotation;
+    /// `size` is the runtime count expression.
+    ArrayNew {
+        elem_ty: TypeAnn,
+        size: Box<Expr>,
+    },
+    /// `new T[N]{ i -> body }` — allocate and initialise with a generator.
+    /// Desugared in hulk-desugar into a let+while loop.
+    ArrayGen {
+        elem_ty: TypeAnn,
+        size: Box<Expr>,
+        index_var: String,
+        body: Box<Expr>,
+    },
     Is {
         expr: Box<Expr>,
         type_ann: TypeAnn,

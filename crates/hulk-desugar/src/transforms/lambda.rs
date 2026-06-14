@@ -277,11 +277,35 @@ impl<'a> Desugarer<'a> {
     /// type so the caller can synthesise a typed field.
     fn collect_free_vars(&self, expr: &Expr, bound: &mut HashSet<String>, free: &mut Vec<FreeVar>) {
         match &expr.kind {
-            ExprKind::Number(_)
-            | ExprKind::StringLit(_)
-            | ExprKind::Bool(_)
-            | ExprKind::Self_
-            | ExprKind::Base => {}
+            ExprKind::Number(_) | ExprKind::StringLit(_) | ExprKind::Bool(_) | ExprKind::Self_ => {}
+            // `base` parses as `ExprKind::Base`. When the user names a local variable
+            // `base`, the resolver binds it to a Variable symbol. In that case it acts
+            // as a normal free variable and must be captured by the enclosing lambda.
+            ExprKind::Base => {
+                let name = "base";
+                if bound.contains(name) {
+                    return;
+                }
+                if free.iter().any(|v| v.name == name) {
+                    return;
+                }
+                let Some(symbol_id) = self.resolver.expr_symbol(expr.id) else {
+                    return;
+                };
+                let Some(symbol) = self.resolver.table().get(symbol_id) else {
+                    return;
+                };
+                if !matches!(symbol.kind, SymbolKind::Variable | SymbolKind::Parameter) {
+                    return; // actual `base` keyword — not a local variable
+                }
+                let type_ann = self.symbol_type_ann(symbol_id);
+                free.push(FreeVar {
+                    name: name.to_owned(),
+                    type_ann,
+                    span: expr.span.clone(),
+                    symbol_id: Some(symbol_id),
+                });
+            }
             ExprKind::Ident(name) => {
                 if bound.contains(name) {
                     return;
@@ -409,6 +433,22 @@ impl<'a> Desugarer<'a> {
                     self.collect_free_vars(a, bound, free);
                 }
             }
+            ExprKind::ArrayNew { size, .. } => {
+                self.collect_free_vars(size, bound, free);
+            }
+            ExprKind::ArrayGen {
+                size,
+                index_var,
+                body,
+                ..
+            } => {
+                self.collect_free_vars(size, bound, free);
+                let added = bound.insert(index_var.clone());
+                self.collect_free_vars(body, bound, free);
+                if added {
+                    bound.remove(index_var);
+                }
+            }
             ExprKind::Is { expr: inner, .. } | ExprKind::As { expr: inner, .. } => {
                 self.collect_free_vars(inner, bound, free);
             }
@@ -439,6 +479,17 @@ impl<'a> Desugarer<'a> {
                     self.node_ids.next_id(),
                 )),
                 field: name,
+            },
+            // `base` parses as ExprKind::Base when used as a variable name. When
+            // collected as a free variable (captured), rewrite it to `self.base`
+            // so the synthetic lambda type's field is accessed correctly.
+            ExprKind::Base if captures.contains("base") => ExprKind::FieldAccess {
+                receiver: Box::new(Expr::new(
+                    ExprKind::Self_,
+                    span.clone(),
+                    self.node_ids.next_id(),
+                )),
+                field: "base".to_owned(),
             },
             ExprKind::BinOp { op, left, right } => ExprKind::BinOp {
                 op,
@@ -553,6 +604,21 @@ impl<'a> Desugarer<'a> {
                     .map(|a| self.rewrite_free_vars(a, captures))
                     .collect(),
             },
+            ExprKind::ArrayNew { elem_ty, size } => ExprKind::ArrayNew {
+                elem_ty,
+                size: Box::new(self.rewrite_free_vars(*size, captures)),
+            },
+            ExprKind::ArrayGen {
+                elem_ty,
+                size,
+                index_var,
+                body,
+            } => ExprKind::ArrayGen {
+                elem_ty,
+                size: Box::new(self.rewrite_free_vars(*size, captures)),
+                index_var,
+                body: Box::new(self.rewrite_free_vars(*body, captures)),
+            },
             ExprKind::Is {
                 expr: inner,
                 type_ann,
@@ -570,6 +636,8 @@ impl<'a> Desugarer<'a> {
             // Inner lambdas already had their own captures resolved by a
             // separate `lower_lambda` invocation in the desugar pass, so
             // they are opaque to the outer rewrite.
+            // `ExprKind::Base` when it is NOT a captured variable (i.e., it is the
+            // genuine `base(...)` method-override call) is also left untouched here.
             kind @ (ExprKind::Number(_)
             | ExprKind::StringLit(_)
             | ExprKind::Bool(_)

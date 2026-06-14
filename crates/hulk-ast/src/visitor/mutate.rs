@@ -259,6 +259,20 @@ pub fn walk_expr_mut<V: VisitorMut + ?Sized>(visitor: &mut V, expr: &mut Expr) {
             }
             visitor.visit_expr_mut(body);
         }
+        ExprKind::ArrayNew { elem_ty, size } => {
+            visitor.visit_type_ann_mut(elem_ty);
+            visitor.visit_expr_mut(size);
+        }
+        ExprKind::ArrayGen {
+            elem_ty,
+            size,
+            body,
+            ..
+        } => {
+            visitor.visit_type_ann_mut(elem_ty);
+            visitor.visit_expr_mut(size);
+            visitor.visit_expr_mut(body);
+        }
     }
 }
 

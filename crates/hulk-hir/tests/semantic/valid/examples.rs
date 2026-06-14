@@ -174,6 +174,10 @@ fn conditionals_example_infers_string_if_expression() {
             ExprKind::New { args, .. } => {
                 args.iter().any(|arg| contains_string_literal(arg, target))
             }
+            ExprKind::ArrayNew { size, .. } => contains_string_literal(size, target),
+            ExprKind::ArrayGen { size, body, .. } => {
+                contains_string_literal(size, target) || contains_string_literal(body, target)
+            }
             ExprKind::Is { expr, .. } | ExprKind::As { expr, .. } => {
                 contains_string_literal(expr, target)
             }

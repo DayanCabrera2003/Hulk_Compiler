@@ -347,6 +347,63 @@ Total: 13 tests, todos pasan.
 
 ---
 
+---
+
+## Fix 1.1 — Validación de condición Boolean en `if`
+
+### Qué se implementó
+
+**Archivo**: `crates/hulk-types/src/inferer.rs` (método `infer_if`)
+
+La condición de cada rama `if`/`elif` se valida contra `TypeId::BOOLEAN`. Si el tipo
+inferido no es Boolean ni Object (Object actúa como comodín para evitar cascadas tras
+errores previos), se emite un diagnóstico `SEMANTIC`.
+
+### Decisión de diseño
+
+Se usa `TypeId::OBJECT` como comodín (en lugar de un `TypeId::UNKNOWN` dedicado) porque
+ya es el tipo de fallback para expresiones cuya resolución falla en fases anteriores.
+Emitir un diagnóstico secundario sobre una condición de tipo Object, cuando la causa raíz
+ya fue reportada, generaría ruido innecesario.
+
+### Gotcha
+
+Las ramas `elif` también se validan; la misma lógica se aplica por cada condición adicional.
+
+---
+
+## Fix 1.2 — Validación de tipo iterable en `for`
+
+### Qué se implementó
+
+**Archivo**: `crates/hulk-types/src/inferer.rs` (nuevo método `infer_for` y helper privado `is_iterable_type`)
+
+La expresión iterable de `for (x in <expr>)` se infiere con `infer_expr` y luego se
+valida con `is_iterable_type`. Si el tipo no es iterable, se emite un diagnóstico `SEMANTIC`.
+
+### Tipos aceptados como iterables
+
+- `TypeKind::Vector(_)` — vector built-in.
+- `TypeKind::Iterable(_)` — `T*` annotation.
+- `TypeKind::Protocol { name: "Iterable" | "Enumerable" }` — los protocolos del prelude.
+- `TypeKind::UserDefined` con métodos `next()` y `current()` (conformance estructural a `Iterable`).
+- `TypeKind::UserDefined` con método `iter()` (conformance estructural a `Enumerable`).
+- `TypeId::OBJECT` — comodín, evita cascadas de error.
+
+### Tipos rechazados
+
+- `TypeId::NUMBER` — nunca iterable.
+- `TypeId::BOOLEAN` — nunca iterable.
+- `TypeId::STRING` — conservadoramente rechazado; String no implementa `next()`/`current()` en el runtime.
+
+### Decisión de diseño
+
+Se usa la misma API `type_with_name_has_method` que el desugarer para determinar
+conformance estructural, asegurando consistencia entre la validación estática y el
+lowering de `for`.
+
+---
+
 ## Resumen de Sesión 7
 
 **Completada con ✓ en PIPELINE.md**: todas las tres subsesiones (7.1, 7.2, 7.3).
@@ -361,3 +418,32 @@ Total: 13 tests, todos pasan.
 - `cargo build -p hulk-types`: sin errores
 
 **Siguiente sesión**: Sesión 8 — HIR (Higher Intermediate Representation)
+
+---
+
+## 7.10 Validación de tipo de retorno (Tarea 1.3)
+
+`check_function_return_type` se invoca tras inferir el cuerpo de cada
+función declarada con anotación de tipo de retorno (`function f(): T { ... }`).
+Compara `body_ty` con `declared_ty` usando `is_assignable`, lo que permite
+subtipos compatibles. Si el cuerpo retorna un tipo no asignable al declarado,
+emite un diagnóstico SEMANTIC:
+
+```
+(line,col) SEMANTIC: el cuerpo retorna String pero se declaró tipo de retorno Number
+```
+
+### Casos cubiertos
+
+- Tipo del cuerpo distinto del declarado → error.
+- Sin anotación (`function f() { ... }`) → no se valida (la inferencia es
+  autoritativa).
+- Tipo declarado desconocido (`TypeId::OBJECT` como fallback de error previo) → skip
+  para evitar cascadas de diagnósticos.
+- `body_ty == OBJECT` (fallback de error previo en el cuerpo) → skip.
+
+### Tests
+
+`crates/hulk-driver/tests/error_cases.rs` cubre los casos felices (sin
+anotación, tipo coincidente) y de error (tipo divergente). El test
+de grading `errors/semantic/type_mismatch_return.hulk` exit 3.

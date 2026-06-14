@@ -9,6 +9,7 @@
 //!   invocable types.
 //! - [`vec_generator`]: `[e | x in it]` → `let __vec = __vec_new() in { for ... ; __vec }`.
 
+pub(crate) mod array_gen;
 pub(crate) mod for_loop;
 pub(crate) mod lambda;
 pub(crate) mod string_concat;

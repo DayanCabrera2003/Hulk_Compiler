@@ -235,16 +235,27 @@ impl<'h> Lowerer<'h> {
     // -------- Per-function frame setup --------
 
     /// Map a parameter's type annotation to the runtime sentinel the codegen
-    /// uses to dispatch builtin methods. `Number[]` becomes `$vector` so
-    /// `xs.size()` / `for (x in xs)` route through the C runtime helpers;
-    /// `String` becomes `$string` so `s.size()` / `s.charAt(i)` /
-    /// `s.substring(start, len)` dispatch the same way. `Number*` could
-    /// legitimately receive a Range or user iterable so it's left generic
-    /// and resolved through the vtable at the call site.
+    /// uses to dispatch builtin methods and resolve struct field accesses.
+    ///
+    /// - `Number[]` → `"$vector"`: enables `xs.size()` / `for (x in xs)` to
+    ///   route through the C-runtime helpers.
+    /// - `String`   → `"$string"`: enables `s.size()` / `s.charAt(i)` /
+    ///   `s.substring(start, len)` to dispatch the same way.
+    /// - Any other named type (user-defined struct) → the type name itself,
+    ///   so that `param.field` expressions can resolve the struct layout in
+    ///   codegen. Without this, `resolve_field` cannot find the struct type
+    ///   for a non-self receiver (e.g., `other.x` in `dot(other: Vector)`).
+    /// - `Number*` / primitive types / wildcard → `None` (resolved through
+    ///   the vtable or handled as scalars).
     fn param_runtime_hint(ann: Option<&TypeAnn>) -> Option<String> {
         match ann? {
             TypeAnn::Vector(_) => Some("$vector".to_owned()),
             TypeAnn::Named(n) if n == "String" => Some("$string".to_owned()),
+            // Primitive scalar types have no struct layout; leave them as-is.
+            TypeAnn::Named(n) if matches!(n.as_str(), "Number" | "Boolean" | "Object") => None,
+            // User-defined struct type: register the type name so codegen can
+            // resolve field accesses on this parameter (e.g. `other.x`).
+            TypeAnn::Named(n) => Some(n.clone()),
             _ => None,
         }
     }
@@ -489,11 +500,30 @@ impl<'h> Lowerer<'h> {
                 self.self_temp
                     .expect("Self_ outside of a method body"),
             ),
-            ExprKind::Base => Value::Temp(
-                // Resolver emits a diagnostic and rejects programs that use `base` outside a method.
-                self.self_temp
-                    .expect("Base outside of a method body"),
-            ),
+            ExprKind::Base => {
+                // When a local variable named `base` shadows the keyword, the
+                // resolver stores a Variable or Parameter symbol for this
+                // node. In that case emit it like a regular identifier.
+                // When `base` is the method-override pseudo-function the
+                // resolver stores a Function symbol; emit via self_temp so
+                // emit_call can dispatch the static parent-method call.
+                let is_local = self
+                    .hir
+                    .resolved_symbol(expr.id)
+                    .and_then(|sym| self.hir.symbols.table().get(sym))
+                    .map(|s| {
+                        matches!(s.kind, SymbolKind::Variable | SymbolKind::Parameter)
+                    })
+                    .unwrap_or(false);
+                if is_local {
+                    self.emit_ident(expr)
+                } else {
+                    Value::Temp(
+                        self.self_temp
+                            .expect("Base outside of a method body"),
+                    )
+                }
+            }
             ExprKind::BinOp { op, left, right } => self.emit_binop(left, *op, right),
             ExprKind::UnaryOp { op, expr: operand } => {
                 let v = self.emit_expr(operand);
@@ -533,6 +563,12 @@ impl<'h> Lowerer<'h> {
                 });
                 Value::Temp(dst)
             }
+            ExprKind::ArrayNew { elem_ty, size } => {
+                self.emit_array_new(elem_ty, size)
+            }
+            ExprKind::ArrayGen { .. } => panic!(
+                "lowerer encountered ArrayGen — should have been desugared before BANNER lowering"
+            ),
             ExprKind::FieldAccess { receiver, field } => {
                 let rv = self.emit_expr(receiver);
                 let dst = self.fresh_temp();
@@ -699,6 +735,26 @@ impl<'h> Lowerer<'h> {
             BinOpKind::ConcatSpaced => {
                 panic!("ConcatSpaced should have been desugared before BANNER lowering");
             }
+            BinOpKind::Eq | BinOpKind::Ne if self.either_operand_is_string(left, right) => {
+                // At least one operand is a String: use the byte-level runtime
+                // comparator instead of the float-comparison path so that Ptr-typed
+                // LLVM values do not end up in `feq`/`fne` instructions.
+                self.emit(Instr::Call {
+                    dst,
+                    callee: Value::Global("__hulk_str_eq".to_string()),
+                    args: vec![lv, rv],
+                });
+                if op == BinOpKind::Ne {
+                    // Negate the equality result to get inequality.
+                    let neg_dst = self.fresh_temp();
+                    self.emit(Instr::UnOp {
+                        dst: neg_dst,
+                        op: UnaryOpKind::Not,
+                        operand: Value::Temp(dst),
+                    });
+                    return Value::Temp(neg_dst);
+                }
+            }
             _ => {
                 self.emit(Instr::BinOp {
                     dst,
@@ -709,6 +765,25 @@ impl<'h> Lowerer<'h> {
             }
         }
         Value::Temp(dst)
+    }
+
+    /// Returns `true` when the HIR type of either operand is `String`.
+    ///
+    /// Also treats `ConstStr` values and `Value::ConstStr` literals as strings
+    /// so that purely literal comparisons like `"a" == "b"` are covered even
+    /// when type inference has not annotated the node.
+    fn either_operand_is_string(&self, left: &Expr, right: &Expr) -> bool {
+        self.expr_is_string(left) || self.expr_is_string(right)
+    }
+
+    /// Returns `true` when the expression's HIR type is `String`, or when the
+    /// expression is a string literal.
+    fn expr_is_string(&self, expr: &Expr) -> bool {
+        if matches!(expr.kind, ExprKind::StringLit(_)) {
+            return true;
+        }
+        let ty = self.hir.expr_type(expr.id).unwrap_or(TypeId::OBJECT);
+        ty == TypeId::STRING
     }
 
     fn emit_call(&mut self, callee: &Expr, args: &[Expr]) -> Value {
@@ -976,6 +1051,27 @@ impl<'h> Lowerer<'h> {
         self.emit(Instr::Jump(loop_label));
         self.emit(Instr::Label(end_label));
         Value::ConstNull
+    }
+
+    /// Emit `new T[N]` as a runtime call.
+    ///
+    /// - `Number[]` → `__arr_new(N)`: fixed-size vector where `len == N`.
+    /// - `Number[][]` or other reference types → `__objarr_new(N)`: pointer array.
+    fn emit_array_new(&mut self, elem_ty: &TypeAnn, size: &Expr) -> Value {
+        let size_val = self.emit_expr(size);
+        let dst = self.fresh_temp();
+        let is_obj_array = !matches!(elem_ty, TypeAnn::Named(n) if n == "Number");
+        let callee = if is_obj_array {
+            "__objarr_new"
+        } else {
+            "__arr_new"
+        };
+        self.emit(Instr::Call {
+            dst,
+            callee: Value::Global(callee.to_string()),
+            args: vec![size_val],
+        });
+        Value::Temp(dst)
     }
 
     fn emit_vec_literal(&mut self, elems: &[Expr]) -> Value {

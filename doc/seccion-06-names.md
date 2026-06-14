@@ -143,3 +143,24 @@ for diagnostic in resolver.diagnostics().diagnostics() {
     println!("{}", diagnostic.message);
 }
 ```
+
+---
+
+## Corrección — Falso positivo de `base` con variable local
+
+### Problema
+
+El analizador (parser) convierte el token `base` a `ExprKind::Base` en todos los contextos, porque en HULK `base` es una pseudo-función reservada para invocar el método padre en tipos derivados. Sin embargo, nada impide que el usuario declare una variable local también llamada `base` (por ejemplo, `let base: Printer = new FancyPrinter(…)`). Cuando esa variable se usaba como receptor de una llamada de método (`base.format("x")`), el resolver veía `ExprKind::Base` y ejecutaba la validación de método-override, emitiendo un falso positivo "base usado fuera de un método" porque el programa no se encontraba dentro de ningún método en ese momento.
+
+### Solución: sombreado por variable local
+
+La corrección se aplica en dos puntos:
+
+1. **`hulk-semantic` — `resolve_base`** (`crates/hulk-semantic/src/resolver/names/exprs.rs`): antes de realizar cualquier validación de contexto de método, el resolver consulta `self.lookup("base")`. Si el scope actual (o algún scope ancestral) contiene una variable o parámetro con ese nombre, el nodo se resuelve como un identificador ordinario — igual que haría `resolve_ident_with_id` para cualquier otro nombre — y la función retorna sin emitir diagnósticos. Solo cuando `lookup` devuelve `None` se procede con la lógica original que verifica `current_type`, `current_method_name` y la existencia del tipo padre.
+
+2. **`hulk-banner` — `emit_expr` caso `ExprKind::Base`** (`crates/hulk-banner/src/lowerer.rs`): el lowerer del IR de BANNER también distingue los dos casos consultando el tipo del símbolo resuelto para el nodo. Si el símbolo es `Variable` o `Parameter` (variable local que sombrea la palabra clave), se delega a `emit_ident`, que maneja correctamente temporales de variables locales y parámetros. Si el símbolo es `Function` (método padre en un contexto de override) o no existe símbolo (nodo con error previo), se conserva la lógica anterior basada en `self_temp`.
+
+### Gotcha
+
+La distinción en el lowerer no puede basarse únicamente en la presencia del símbolo resuelto, porque `resolve_base` también almacena un símbolo cuando `base` actúa como palabra clave válida de override (el símbolo apunta al método del tipo padre). Por eso la condición comprueba el `SymbolKind` — solo `Variable` y `Parameter` indican sombreado real.
+

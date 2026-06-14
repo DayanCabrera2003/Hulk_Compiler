@@ -41,19 +41,30 @@ fn unclosed_paren_in_function_params() {
 }
 
 // ---------------------------------------------------------------------------
-// `function` sin nombre
+// `function` sin nombre / lambda mal formada
 // ---------------------------------------------------------------------------
 
+/// `function () => 1;` is now parsed as an anonymous lambda expression (Tarea 4.2).
+/// The lambda form uses `->`, not `=>`, so the parser emits a diagnostic at `=>`.
 #[test]
-fn function_without_name_reports_identifier_expected() {
+fn function_keyword_lambda_with_fat_arrow_reports_error() {
     let (_, diags) = parse_capturing_all("syn.hulk", "function () => 1;");
     assert_any_error(&diags);
-    assert_has_message(&diags, "identificador");
+    // The parser reports that it expected Arrow (`->`) token.
+    assert_has_message(&diags, "Arrow");
 }
 
 #[test]
 fn function_with_only_keyword_and_semicolon() {
     let (_, diags) = parse_capturing_all("syn.hulk", "function ; 0;");
+    assert_any_error(&diags);
+}
+
+/// A named `function` is a declaration; its identifier is required.
+#[test]
+fn named_function_without_identifier_before_body_reports_error() {
+    let (_, diags) = parse_capturing_all("syn.hulk", "function bad( type Other { x = 0; } 0;");
+    // The broken `bad` function triggers an error, but `Other` recovers.
     assert_any_error(&diags);
 }
 

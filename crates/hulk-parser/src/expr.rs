@@ -82,6 +82,12 @@ impl Parser {
             Token::New => return self.parse_new_expr(),
             Token::LBracket => return self.parse_vec_literal_or_generator(),
             Token::LParen if self.is_lambda_start() => return self.parse_lambda_expr(),
+            // `function (` starts an anonymous lambda expression.
+            // `function <ident>` is a named declaration and must not appear
+            // in expression position — handled upstream by `parse_program`.
+            Token::Function if matches!(self.peek_at(1), Token::LParen) => {
+                return self.parse_function_keyword_lambda();
+            }
             _ => {}
         }
 
@@ -116,7 +122,7 @@ impl Parser {
             Token::Minus => self.parse_unary(UnaryOpKind::Neg, token.span),
             Token::Bang => self.parse_unary(UnaryOpKind::Not, token.span),
             Token::LParen => self.parse_grouping(token.span),
-            Token::LBrace => self.parse_block_expr(token.span),
+            Token::LBrace => self.parse_brace_expr(token.span),
             other => self.synthetic_error_expr(other, token.span),
         }
     }
@@ -308,6 +314,121 @@ impl Parser {
             .get(self.pos - 1)
             .map(|t| t.span.clone())
             .unwrap_or_else(|| self.peek_span())
+    }
+
+    // ---- brace dispatch: block vs array literal ---------------------------
+
+    /// Disambiguates `{...}` into either a block expression or an array
+    /// literal `{a, b, c}`.
+    ///
+    /// Rule: after parsing the first element inside `{`, if the next token is
+    /// `,`, the construct is an array literal; otherwise it is a regular block.
+    /// An empty `{}` is always a block (empty block).
+    pub(crate) fn parse_brace_expr(&mut self, lbrace_span: Span) -> Expr {
+        // Empty brace → empty block.
+        if self.at(&Token::RBrace) {
+            let rbrace = self.advance();
+            let span = lbrace_span.merge(rbrace.span);
+            let id = self.next_node_id();
+            return Expr::new(ExprKind::Block(vec![]), span, id);
+        }
+
+        // Recovery boundaries inside `{` always mean a block.
+        if self.peek_is_recovery_boundary() {
+            return self.parse_block_expr(lbrace_span);
+        }
+
+        // Parse the first expression and peek at what follows.
+        let first = self.parse_expression();
+
+        if self.at(&Token::Comma) {
+            // Array literal: `{first, ...}`
+            self.parse_array_literal_rest(first, lbrace_span)
+        } else {
+            // Block: first expression is just the first statement.
+            self.continue_block_after_first(first, lbrace_span)
+        }
+    }
+
+    /// Finish parsing an array literal after the first element and its
+    /// trailing `,` have been identified.  Collects remaining elements
+    /// until `}`.
+    fn parse_array_literal_rest(&mut self, first: Expr, lbrace_span: Span) -> Expr {
+        let mut elems = vec![first];
+        while self.at(&Token::Comma) {
+            self.advance(); // consume ','
+            if self.at(&Token::RBrace) {
+                break; // trailing comma
+            }
+            elems.push(self.parse_expression());
+        }
+        let end_span = self
+            .expect(
+                &Token::RBrace,
+                "se esperaba '}' al cerrar literal de arreglo",
+            )
+            .map(|t| t.span)
+            .unwrap_or_else(|| self.previous_span());
+        let span = lbrace_span.merge(end_span);
+        let id = self.next_node_id();
+        Expr::new(ExprKind::VecLiteral(elems), span, id)
+    }
+
+    /// Resume block parsing after the first expression has already been parsed.
+    ///
+    /// The first expression may be followed by `;` (consumed here), by another
+    /// expression (missing separator error), or by `}` (single-expression block).
+    fn continue_block_after_first(&mut self, first: Expr, lbrace_span: Span) -> Expr {
+        let mut exprs = vec![first];
+
+        // Handle optional `;` after the first statement.
+        if self.at(&Token::Semicolon) {
+            self.advance();
+        } else if !self.at(&Token::RBrace) {
+            // Missing separator; emit diagnostic and attempt to recover.
+            let span = self.peek_span();
+            self.bag_mut().push(
+                hulk_diagnostics::Diagnostic::error("se esperaba ';' o '}'")
+                    .with_label(span, "separador faltante en bloque"),
+            );
+            self.skip_until(&[Token::Semicolon, Token::RBrace, Token::Eof]);
+            if self.at(&Token::Semicolon) {
+                self.advance();
+            }
+        }
+
+        // Continue parsing the remaining statements of the block.
+        while !self.at(&Token::RBrace) && !self.at(&Token::Eof) {
+            if self.peek_is_recovery_boundary() {
+                break;
+            }
+            let expr = self.parse_expression();
+            exprs.push(expr);
+            if self.at(&Token::Semicolon) {
+                self.advance();
+            } else if !self.at(&Token::RBrace) {
+                let span = self.peek_span();
+                self.bag_mut().push(
+                    hulk_diagnostics::Diagnostic::error("se esperaba ';' o '}'")
+                        .with_label(span, "separador faltante en bloque"),
+                );
+                self.skip_until(&[Token::Semicolon, Token::RBrace, Token::Eof]);
+                if self.at(&Token::Semicolon) {
+                    self.advance();
+                }
+            }
+        }
+
+        let span = if let Some(rbrace) =
+            self.expect(&Token::RBrace, "se esperaba '}' para cerrar bloque")
+        {
+            lbrace_span.merge(rbrace.span)
+        } else {
+            lbrace_span
+        };
+
+        let id = self.next_node_id();
+        Expr::new(ExprKind::Block(exprs), span, id)
     }
 
     // ---- block expression -------------------------------------------------

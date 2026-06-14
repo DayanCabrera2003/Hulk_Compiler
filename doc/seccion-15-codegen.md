@@ -61,7 +61,8 @@ Este orden se establece una sola vez y todas las emisiones posteriores lo respet
 |---|---|
 | `BinOp(Add/Sub/Mul/Div/Mod)` | `build_float_{add,sub,mul,div,rem}` |
 | `BinOp(Pow)` | Llamada al intrinsic `llvm.pow.f64` |
-| `BinOp(Eq/Ne/Lt/Le/Gt/Ge)` | `build_float_compare` con predicado OEQ/ONE/OLT/OLE/OGT/OGE |
+| `BinOp(Eq/Ne)` | Dispatch por `TempKind`: `feq/fne` si `F64`, `icmp eq` si `I1`, `__hulk_str_eq` si `Ptr` |
+| `BinOp(Lt/Le/Gt/Ge)` | `build_float_compare` con predicado OLT/OLE/OGT/OGE |
 | `BinOp(And/Or)` | `build_and` / `build_or` sobre `i1` |
 | `BinOp(Concat)` | Llamada a `__hulk_concat(a, b)` del runtime |
 | `UnOp(Neg)` | `build_float_neg` |
@@ -150,6 +151,49 @@ La solución permanente es instalar `libffi-devel`:
 sudo dnf install libffi-devel
 ```
 
+## Resolución de campos en parámetros con tipo struct
+
+### Problema
+
+`resolve_field` (en `emit_mem.rs`) solo encontraba el tipo LLVM del receptor si el
+`TempId` estaba registrado en `temp_type_names`. Ese mapa se poblaba para `self` (primer
+parámetro de los métodos) y para los resultados de `New`. No se poblaba para parámetros con
+anotaciones de tipo struct (p. ej., `other: Vector` en `dot(other: Vector)`), por lo que
+`other.x` producía el error "struct type not statically known".
+
+### Causa raíz
+
+`param_runtime_hint` en el lowerer de BANNER devolvía `None` para cualquier tipo nombrado
+que no fuera `String`. La función traduce la anotación de tipo de un parámetro al
+centinela de runtime que el codegen usa para despachar métodos y resolver campos. Para tipos
+de struct de usuario, el centinela adecuado es el propio nombre del tipo.
+
+### Solución (subsesión 0.5)
+
+Se extendió `param_runtime_hint` para devolver `Some(n.clone())` cuando la anotación es
+`TypeAnn::Named(n)` y `n` no es un tipo primitivo (`Number`, `Boolean`, `Object`). El
+codegen ya iteraba sobre `param_runtime_hints` y los insertaba en `temp_type_names` para
+cada parámetro, por lo que no fue necesario modificar el codegen.
+
+```rust
+// crates/hulk-banner/src/lowerer.rs
+fn param_runtime_hint(ann: Option<&TypeAnn>) -> Option<String> {
+    match ann? {
+        TypeAnn::Vector(_) => Some("$vector".to_owned()),
+        TypeAnn::Named(n) if n == "String" => Some("$string".to_owned()),
+        TypeAnn::Named(n) if matches!(n.as_str(), "Number" | "Boolean" | "Object") => None,
+        TypeAnn::Named(n) => Some(n.clone()),   // ← fix
+        _ => None,
+    }
+}
+```
+
+### Impacto
+
+La corrección permite acceder a campos en cualquier parámetro con tipo de struct anotado,
+incluyendo el patrón `dot(other: Vector)` del test `vector_math.hulk`. El score del grupo
+`ok/oop` pasó de 9/10 a 10/10.
+
 ## Restricciones conocidas
 
 - Los campos de structs de usuario se almacenan siempre como `ptr` en LLVM, incluso si el
@@ -158,3 +202,54 @@ sudo dnf install libffi-devel
   el runtime (pendiente sesión 16).
 - Los punteros `null` en HULK se representan como `ptr null` de LLVM; no hay comprobación
   de nulidad en tiempo de ejecución en esta sesión.
+
+---
+
+## Corrección post-sesión: bucle infinito en `infer_temp_kinds`
+
+### Problema
+
+Al compilar programas con tipos cuyos inicializadores de campo llaman a funciones libres
+(p.ej. `width: Number = abs_num(w)`), el compilador colgaba indefinidamente durante la
+generación de código. El cuelgue ocurría en la función `infer_temp_kinds` de este crate
+(`crates/hulk-codegen/src/emit.rs`).
+
+`infer_temp_kinds` ejecuta un bucle de punto fijo sobre las instrucciones BANNER para
+determinar si cada temporal es `F64`, `I1` o `Ptr`. La propagación hacia atrás para
+`SetField` contenía este código defectuoso:
+
+```rust
+// Bug: or_insert no sobreescribe un Ptr existente, pero changed = true se fija
+// siempre que la condición es verdadera, produciendo un bucle infinito.
+if kinds.get(val_tid).copied() != Some(TempKind::F64) {
+    kinds.entry(*val_tid).or_insert(TempKind::F64);  // ← no sobreescribe Ptr
+    changed = true;                                    // ← siempre se ejecuta
+}
+```
+
+Si `val_tid` ya tenía tipo `Ptr` (porque `abs_num` retorna `Object` en el
+inferidor de tipos, que mapea a `Ptr` en codegen), la condición era verdadera, pero
+`or_insert` no modificaba el mapa. Sin embargo `changed = true` se ejecutaba, lo
+que reiniciaba el bucle en cada iteración sin ningún progreso real → bucle infinito.
+
+### Solución
+
+Cambiar `or_insert` por `insert`, que sí sobreescribe el valor existente. Así la
+actualización ocurre de verdad, `changed = true` refleja un cambio real, y el bucle
+converge:
+
+```rust
+// Fix: insert sobreescribe Ptr → F64; changed = true solo después de un cambio real.
+if kinds.get(val_tid).copied() != Some(TempKind::F64) {
+    kinds.insert(*val_tid, TempKind::F64);  // ← sobreescribe Ptr correctamente
+    changed = true;
+}
+```
+
+La corrección está en `crates/hulk-codegen/src/emit.rs`, función `infer_temp_kinds`,
+bloque de propagación hacia atrás para `Instr::SetField`.
+
+Se añadió un test de regresión en
+`crates/hulk-driver/tests/hang_field_calls_function.rs` que verifica que la
+compilación de tipos con campos numéricos inicializados por llamadas a funciones libres
+termina en menos de 5 segundos.
