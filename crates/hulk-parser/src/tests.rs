@@ -133,7 +133,9 @@ fn type_array_number() {
     };
     assert_eq!(
         lb.type_ann,
-        Some(TypeAnn::Vector(Box::new(TypeAnn::Named("Number".to_owned()))))
+        Some(TypeAnn::Vector(Box::new(TypeAnn::Named(
+            "Number".to_owned()
+        ))))
     );
 }
 

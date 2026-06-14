@@ -161,6 +161,52 @@ double __vec_size(void* vec) {
     return (double)v->len;
 }
 
+/* ── Fixed-size numeric array (`new Number[N]`) ──────────────────────────── */
+/* Creates a HulkVec with len == cap == N (all elements zero-initialised).
+   Unlike __vec_new (which starts with len=0 for push-based growth), this
+   allocator is used by `new T[N]` so that `.size()` reports N immediately. */
+void* __arr_new(double n) {
+    size_t cap = (size_t)(n > 0 ? n : 0);
+    HulkVec* v = (HulkVec*)hulk_alloc(&hulk_vec_tag, sizeof(HulkVec));
+    v->len  = cap;
+    v->cap  = cap;
+    v->pos  = (size_t)-1;
+    v->data = (double*)calloc(cap > 0 ? cap : 1, sizeof(double));
+    return (void*)v;
+}
+
+/* ── Object-pointer array (stores void* elements — used by Number[][] etc.) ── */
+
+typedef struct HulkObjArr {
+    size_t  len;
+    void**  data;   /* C-heap pointer array; not GC-traced */
+} HulkObjArr;
+
+TypeTag hulk_objarr_tag = { "ObjArray", 0, NULL, NULL };
+
+void* __objarr_new(double n) {
+    size_t cap = (size_t)(n > 0 ? n : 4);
+    HulkObjArr* a = (HulkObjArr*)hulk_alloc(&hulk_objarr_tag, sizeof(HulkObjArr));
+    a->len  = cap;
+    a->data = (void**)calloc(cap, sizeof(void*));
+    return (void*)a;
+}
+
+void* __objarr_get(void* arr, double idx) {
+    HulkObjArr* a = (HulkObjArr*)arr;
+    return a->data[(size_t)idx];
+}
+
+void __objarr_set(void* arr, double idx, void* val) {
+    HulkObjArr* a = (HulkObjArr*)arr;
+    a->data[(size_t)idx] = val;
+}
+
+double __objarr_size(void* arr) {
+    HulkObjArr* a = (HulkObjArr*)arr;
+    return (double)a->len;
+}
+
 /* Overwrite the element at index `idx` (0-based). No bounds-check beyond
    what HULK semantics require — the parser/codegen never emit out-of-range
    indices for well-typed code, and the test programs exercise valid

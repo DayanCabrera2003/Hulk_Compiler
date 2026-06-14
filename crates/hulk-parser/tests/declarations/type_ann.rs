@@ -32,9 +32,8 @@ fn type_lambda_one_arg() {
 #[test]
 fn type_lambda_two_args() {
     // `(Number, Boolean) -> Number` as a function parameter annotation.
-    let program = parse_ok(
-        "function apply(f: (Number, Boolean) -> Number, x: Number): Number => x;",
-    );
+    let program =
+        parse_ok("function apply(f: (Number, Boolean) -> Number, x: Number): Number => x;");
     match &program.functions[0].params[0].type_ann {
         Some(TypeAnn::Functor { params, ret }) => {
             assert_eq!(params.len(), 2);
@@ -62,9 +61,8 @@ fn type_lambda_zero_args() {
 #[test]
 fn type_lambda_nested() {
     // `(Number) -> (Number) -> Number` — curried/nested functor.
-    let program = parse_ok(
-        "function curry(f: (Number) -> (Number) -> Number, x: Number): Number => 0;",
-    );
+    let program =
+        parse_ok("function curry(f: (Number) -> (Number) -> Number, x: Number): Number => 0;");
     match &program.functions[0].params[0].type_ann {
         Some(TypeAnn::Functor { params, ret }) => {
             assert_eq!(params.len(), 1);

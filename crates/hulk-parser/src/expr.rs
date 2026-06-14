@@ -363,7 +363,10 @@ impl Parser {
             elems.push(self.parse_expression());
         }
         let end_span = self
-            .expect(&Token::RBrace, "se esperaba '}' al cerrar literal de arreglo")
+            .expect(
+                &Token::RBrace,
+                "se esperaba '}' al cerrar literal de arreglo",
+            )
             .map(|t| t.span)
             .unwrap_or_else(|| self.previous_span());
         let span = lbrace_span.merge(end_span);

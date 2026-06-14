@@ -145,11 +145,24 @@ pub(crate) fn build_kitchen_sink_program() -> Program {
         iterable: vec_gen_iter,
     });
 
-    // --- new / is / as / lambda ------------------------------------------
+    // --- new / ArrayNew / ArrayGen / is / as / lambda ---------------------
     let new_arg = num_0_eb(&mut f);
     let new_obj = f.e(ExprKind::New {
         type_ann: TypeAnn::Named("Point".to_owned()),
         args: vec![*new_arg],
+    });
+    let arr_new_size = f.eb(ExprKind::Number(3.0));
+    let arr_new = f.e(ExprKind::ArrayNew {
+        elem_ty: TypeAnn::Named("Number".to_owned()),
+        size: arr_new_size,
+    });
+    let arr_gen_size = f.eb(ExprKind::Number(3.0));
+    let arr_gen_body = f.eb(ExprKind::Number(0.0));
+    let arr_gen = f.e(ExprKind::ArrayGen {
+        elem_ty: TypeAnn::Named("Number".to_owned()),
+        size: arr_gen_size,
+        index_var: "i".to_owned(),
+        body: arr_gen_body,
     });
     let is_inner = ident_x_eb(&mut f);
     let is = f.e(ExprKind::Is {
@@ -186,6 +199,8 @@ pub(crate) fn build_kitchen_sink_program() -> Program {
         vec_lit,
         vec_gen,
         new_obj,
+        arr_new,
+        arr_gen,
         is,
         as_expr,
         lambda,

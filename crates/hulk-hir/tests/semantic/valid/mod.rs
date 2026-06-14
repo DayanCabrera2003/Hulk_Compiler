@@ -216,6 +216,9 @@ fn find_expr_by_predicate<'a>(
         ExprKind::New { args, .. } => args
             .iter()
             .find_map(|arg| find_expr_by_predicate(arg, predicate)),
+        ExprKind::ArrayNew { size, .. } => find_expr_by_predicate(size, predicate),
+        ExprKind::ArrayGen { size, body, .. } => find_expr_by_predicate(size, predicate)
+            .or_else(|| find_expr_by_predicate(body, predicate)),
         ExprKind::Is { expr, .. } | ExprKind::As { expr, .. } => {
             find_expr_by_predicate(expr, predicate)
         }

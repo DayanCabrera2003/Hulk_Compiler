@@ -3,7 +3,7 @@
 //! vector literals, generators, and `match` (structural pattern matching
 //! for macros, per hulk-docs.pdf A.1472).
 
-use hulk_ast::{Expr, ExprKind, LetBinding, Param};
+use hulk_ast::{Expr, ExprKind, LetBinding, Param, TypeAnn};
 use hulk_tokens::{Span, Token};
 
 use crate::Parser;
@@ -165,11 +165,26 @@ impl Parser {
         cond
     }
 
-    // ---- new Type(args) ---------------------------------------------------
+    // ---- new Type(args)  /  new T[N]  /  new T[N]{i -> body} ------------
 
+    /// Parse `new` expressions.
+    ///
+    /// Three forms are accepted:
+    /// - `new TypeName(args)` — user-defined type constructor.
+    /// - `new T[N]` — fixed-size array allocation (1D or higher).
+    /// - `new T[N]{ i -> body }` — array allocation with initialiser.
     pub(crate) fn parse_new_expr(&mut self) -> Expr {
         let new_tok = self.advance(); // consume 'new'
         let type_ann = self.parse_type_ann();
+
+        // `new T[N]` — the `[` here is not a `[]` suffix (those are consumed
+        // by parse_type_ann_suffix only when the next token is `]`). A lone
+        // `[expr]` after the type means array-new syntax.
+        if self.at(&Token::LBracket) && !matches!(self.peek_at(1), Token::RBracket) {
+            return self.parse_array_new(new_tok.span, type_ann);
+        }
+
+        // Standard constructor: `new TypeName(args)`.
         let args = if self.at(&Token::LParen) {
             self.parse_paren_args()
         } else {
@@ -177,6 +192,50 @@ impl Parser {
         };
         let span = new_tok.span.merge(self.previous_span());
         self.make_expr(ExprKind::New { type_ann, args }, span)
+    }
+
+    /// Parse `new T[N]` or `new T[N]{ i -> body }` after the type has been
+    /// consumed.  `type_ann` is the element-type annotation (already parsed).
+    fn parse_array_new(&mut self, new_span: hulk_tokens::Span, elem_ty: TypeAnn) -> Expr {
+        self.advance(); // consume '['
+        let size = self.parse_expression();
+        self.expect(&Token::RBracket, "se esperaba ']' en 'new T[N]'");
+
+        // Optional generator block: `{ i -> body }`
+        if self.at(&Token::LBrace) {
+            self.advance(); // consume '{'
+            let (index_var, _) = self
+                .expect_ident("se esperaba nombre del índice en generador de arreglo")
+                .unwrap_or_else(|| (String::new(), self.peek_span()));
+            self.expect(
+                &Token::Arrow,
+                "se esperaba '->' en generador de arreglo: { i -> body }",
+            );
+            let body = self.parse_expression();
+            self.expect(
+                &Token::RBrace,
+                "se esperaba '}' al cerrar generador de arreglo",
+            );
+            let span = new_span.merge(self.previous_span());
+            return self.make_expr(
+                ExprKind::ArrayGen {
+                    elem_ty,
+                    size: Box::new(size),
+                    index_var,
+                    body: Box::new(body),
+                },
+                span,
+            );
+        }
+
+        let span = new_span.merge(self.previous_span());
+        self.make_expr(
+            ExprKind::ArrayNew {
+                elem_ty,
+                size: Box::new(size),
+            },
+            span,
+        )
     }
 
     // ---- lambda vs grouping -----------------------------------------------

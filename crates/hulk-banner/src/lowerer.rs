@@ -563,6 +563,12 @@ impl<'h> Lowerer<'h> {
                 });
                 Value::Temp(dst)
             }
+            ExprKind::ArrayNew { elem_ty, size } => {
+                self.emit_array_new(elem_ty, size)
+            }
+            ExprKind::ArrayGen { .. } => panic!(
+                "lowerer encountered ArrayGen — should have been desugared before BANNER lowering"
+            ),
             ExprKind::FieldAccess { receiver, field } => {
                 let rv = self.emit_expr(receiver);
                 let dst = self.fresh_temp();
@@ -1045,6 +1051,27 @@ impl<'h> Lowerer<'h> {
         self.emit(Instr::Jump(loop_label));
         self.emit(Instr::Label(end_label));
         Value::ConstNull
+    }
+
+    /// Emit `new T[N]` as a runtime call.
+    ///
+    /// - `Number[]` → `__arr_new(N)`: fixed-size vector where `len == N`.
+    /// - `Number[][]` or other reference types → `__objarr_new(N)`: pointer array.
+    fn emit_array_new(&mut self, elem_ty: &TypeAnn, size: &Expr) -> Value {
+        let size_val = self.emit_expr(size);
+        let dst = self.fresh_temp();
+        let is_obj_array = !matches!(elem_ty, TypeAnn::Named(n) if n == "Number");
+        let callee = if is_obj_array {
+            "__objarr_new"
+        } else {
+            "__arr_new"
+        };
+        self.emit(Instr::Call {
+            dst,
+            callee: Value::Global(callee.to_string()),
+            args: vec![size_val],
+        });
+        Value::Temp(dst)
     }
 
     fn emit_vec_literal(&mut self, elems: &[Expr]) -> Value {

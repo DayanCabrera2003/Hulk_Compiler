@@ -209,6 +209,19 @@ impl<'a> TypeInferer<'a> {
                 }
                 value_ty
             }
+
+            // Array allocation: `new T[N]` — treated as OBJECT (the array pointer).
+            ExprKind::ArrayNew { size, .. } => {
+                self.infer_expr(size);
+                TypeId::OBJECT
+            }
+
+            // Array generator: `new T[N]{ i -> body }` — same OBJECT result type.
+            ExprKind::ArrayGen { size, body, .. } => {
+                self.infer_expr(size);
+                self.infer_expr(body);
+                TypeId::OBJECT
+            }
         };
 
         self.env.register_expr_type(expr.id, ty);

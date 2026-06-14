@@ -140,6 +140,24 @@ impl Resolver {
                 self.resolve_expr(body);
                 self.pop_scope();
             }
+            ExprKind::ArrayNew { elem_ty, size } => {
+                self.resolve_type_ann(elem_ty, expr.span.clone());
+                self.resolve_expr(size);
+            }
+            ExprKind::ArrayGen {
+                elem_ty,
+                size,
+                index_var,
+                body,
+            } => {
+                self.resolve_type_ann(elem_ty, expr.span.clone());
+                self.resolve_expr(size);
+                // The index variable is a fresh binding visible only in `body`.
+                self.push_scope();
+                self.define(index_var.clone(), SymbolKind::Variable, expr.span.clone());
+                self.resolve_expr(body);
+                self.pop_scope();
+            }
         }
     }
 

@@ -183,6 +183,8 @@ fn expr_kind_name(kind: &hulk_ast::ExprKind) -> &'static str {
         ExprKind::While { .. } => "While",
         ExprKind::For { .. } => "For",
         ExprKind::New { .. } => "New",
+        ExprKind::ArrayNew { .. } => "ArrayNew",
+        ExprKind::ArrayGen { .. } => "ArrayGen",
         ExprKind::Is { .. } => "Is",
         ExprKind::As { .. } => "As",
         ExprKind::Lambda { .. } => "Lambda",

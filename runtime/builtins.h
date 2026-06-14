@@ -63,4 +63,14 @@ int __hulk_is(void* obj, TypeTag* target);
    is true, otherwise prints a diagnostic to stderr and aborts the program. */
 void* __hulk_as(void* obj, TypeTag* target);
 
+/* Fixed-size numeric array: length equals capacity from the start.
+   Used by `new Number[N]` allocations (unlike __vec_new which starts empty). */
+void*   __arr_new(double n);
+
+/* Object-pointer array: stores void* elements (used by Number[][] etc.). */
+void*   __objarr_new(double n);
+void*   __objarr_get(void* arr, double idx);
+void    __objarr_set(void* arr, double idx, void* val);
+double  __objarr_size(void* arr);
+
 #endif /* HULK_BUILTINS_H */

@@ -39,7 +39,8 @@ impl<'ctx> Codegen<'ctx> {
         if let Value::Global(name) = callee {
             let type_hint = match name.as_str() {
                 "range" => Some("$range".to_string()),
-                "__vec_new" => Some("$vector".to_string()),
+                "__vec_new" | "__arr_new" => Some("$vector".to_string()),
+                "__objarr_new" => Some("$objarr".to_string()),
                 // `__hulk_as` returns a value of the requested target type,
                 // which is the second argument (a Global naming that type).
                 "__hulk_as" => match args.get(1) {
@@ -87,6 +88,9 @@ impl<'ctx> Codegen<'ctx> {
                     }
                     ("$vector", "size") => {
                         return self.emit_builtin_method_f64(dst, receiver, self.rt.vec_size)
+                    }
+                    ("$objarr", "size") => {
+                        return self.emit_builtin_method_f64(dst, receiver, self.rt.objarr_size)
                     }
                     ("$string", "size") => {
                         return self.emit_builtin_method_f64(dst, receiver, self.rt.str_size)

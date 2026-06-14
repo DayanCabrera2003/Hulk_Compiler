@@ -170,8 +170,9 @@ impl<'ctx> Codegen<'ctx> {
 
     /// Emit a `GetIndex { dst, target, index }` instruction.
     ///
-    /// Vectors are represented as `{ ptr data, f64 len, f64 capacity }` objects.
-    /// Index access is forwarded to `__vec_get` which returns f64.
+    /// Dispatches to the correct runtime helper based on the array kind:
+    /// - `$vector` (Number[]) → `__vec_get` returning f64.
+    /// - `$objarr` (Number[][]) → `__objarr_get` returning ptr.
     pub(crate) fn emit_get_index(
         &mut self,
         dst: TempId,
@@ -180,29 +181,47 @@ impl<'ctx> Codegen<'ctx> {
     ) -> CodegenResult<()> {
         let tv = self.load_val(target)?;
         let iv = self.load_val(index)?;
-        let vec_ptr = self.coerce_to_ptr(tv)?;
+        let arr_ptr = self.coerce_to_ptr(tv)?;
         let idx_float = match iv {
             LlvmVal::Float(f) => f,
-            _ => return Err(CodegenError::Llvm("vector index must be f64".to_string())),
+            _ => return Err(CodegenError::Llvm("array index must be f64".to_string())),
         };
 
-        let vec_get = self.rt.vec_get;
-        let call =
-            self.builder
-                .build_call(vec_get, &[vec_ptr.into(), idx_float.into()], "vec_get")?;
-        let f = call
-            .try_as_basic_value()
-            .left()
-            .ok_or_else(|| CodegenError::Llvm("__vec_get returned void".to_string()))?
-            .into_float_value();
-        self.store_temp(dst, LlvmVal::Float(f))
+        let is_objarr = self.target_is_objarr(target);
+        if is_objarr {
+            let get_fn = self.rt.objarr_get;
+            let call = self.builder.build_call(
+                get_fn,
+                &[arr_ptr.into(), idx_float.into()],
+                "objarr_get",
+            )?;
+            let p = call
+                .try_as_basic_value()
+                .left()
+                .ok_or_else(|| CodegenError::Llvm("__objarr_get returned void".to_string()))?
+                .into_pointer_value();
+            // The element is itself an array — tag as $vector.
+            self.temp_type_names.insert(dst, "$vector".to_owned());
+            self.store_temp(dst, LlvmVal::Ptr(p))
+        } else {
+            let vec_get = self.rt.vec_get;
+            let call =
+                self.builder
+                    .build_call(vec_get, &[arr_ptr.into(), idx_float.into()], "vec_get")?;
+            let f = call
+                .try_as_basic_value()
+                .left()
+                .ok_or_else(|| CodegenError::Llvm("__vec_get returned void".to_string()))?
+                .into_float_value();
+            self.store_temp(dst, LlvmVal::Float(f))
+        }
     }
 
     /// Emit a `SetIndex { target, index, value }` instruction.
     ///
-    /// Lowers `v[i] := x` to a runtime `__vec_set(vec, idx, value)` call.
-    /// `value` is coerced to f64; the runtime only stores numeric vectors
-    /// (matching __vec_push/__vec_get).
+    /// Dispatches to the correct runtime helper based on the array kind:
+    /// - `$vector` → `__vec_set(ptr, f64, f64)`.
+    /// - `$objarr` → `__objarr_set(ptr, f64, ptr)`.
     pub(crate) fn emit_set_index(
         &mut self,
         target: &Value,
@@ -212,20 +231,43 @@ impl<'ctx> Codegen<'ctx> {
         let tv = self.load_val(target)?;
         let iv = self.load_val(index)?;
         let vv = self.load_val(value)?;
-        let vec_ptr = self.coerce_to_ptr(tv)?;
+        let arr_ptr = self.coerce_to_ptr(tv)?;
         let idx_float = match iv {
             LlvmVal::Float(f) => f,
-            _ => return Err(CodegenError::Llvm("vector index must be f64".to_string())),
+            _ => return Err(CodegenError::Llvm("array index must be f64".to_string())),
         };
-        let val_float = self.coerce_to_f64(vv)?;
 
-        let vec_set = self.get_or_declare_vec_set();
-        self.builder.build_call(
-            vec_set,
-            &[vec_ptr.into(), idx_float.into(), val_float.into()],
-            "vec_set",
-        )?;
+        let is_objarr = self.target_is_objarr(target);
+        if is_objarr {
+            let val_ptr = self.coerce_to_ptr(vv)?;
+            let set_fn = self.rt.objarr_set;
+            self.builder.build_call(
+                set_fn,
+                &[arr_ptr.into(), idx_float.into(), val_ptr.into()],
+                "objarr_set",
+            )?;
+        } else {
+            let val_float = self.coerce_to_f64(vv)?;
+            let vec_set = self.get_or_declare_vec_set();
+            self.builder.build_call(
+                vec_set,
+                &[arr_ptr.into(), idx_float.into(), val_float.into()],
+                "vec_set",
+            )?;
+        }
         Ok(())
+    }
+
+    /// Returns true when `target` is a temp tagged as `$objarr`.
+    fn target_is_objarr(&self, target: &Value) -> bool {
+        match target {
+            Value::Temp(tid) => self
+                .temp_type_names
+                .get(tid)
+                .map(|n| n == "$objarr")
+                .unwrap_or(false),
+            _ => false,
+        }
     }
 
     /// Emit an `Alloc { dst, type_name }` instruction (raw allocation, no init).

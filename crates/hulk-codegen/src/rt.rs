@@ -47,6 +47,13 @@ pub struct RuntimeFunctions<'ctx> {
     pub str_substring: FunctionValue<'ctx>,
     // String equality comparison
     pub hulk_str_eq: FunctionValue<'ctx>,
+    // Fixed-size numeric array allocation (`new Number[N]`)
+    pub arr_new: FunctionValue<'ctx>,
+    // Object-pointer array operations (for Number[][] etc.)
+    pub objarr_new: FunctionValue<'ctx>,
+    pub objarr_get: FunctionValue<'ctx>,
+    pub objarr_set: FunctionValue<'ctx>,
+    pub objarr_size: FunctionValue<'ctx>,
 }
 
 impl<'ctx> RuntimeFunctions<'ctx> {
@@ -225,6 +232,25 @@ impl<'ctx> RuntimeFunctions<'ctx> {
             None,
         );
 
+        // Fixed-size numeric array: `new Number[N]`.
+        let arr_new = module.add_function("__arr_new", ptr_t.fn_type(&[f64_t.into()], false), None);
+
+        // Object-pointer array functions.
+        let objarr_new =
+            module.add_function("__objarr_new", ptr_t.fn_type(&[f64_t.into()], false), None);
+        let objarr_get = module.add_function(
+            "__objarr_get",
+            ptr_t.fn_type(&[ptr_t.into(), f64_t.into()], false),
+            None,
+        );
+        let objarr_set = module.add_function(
+            "__objarr_set",
+            void_t.fn_type(&[ptr_t.into(), f64_t.into(), ptr_t.into()], false),
+            None,
+        );
+        let objarr_size =
+            module.add_function("__objarr_size", f64_t.fn_type(&[ptr_t.into()], false), None);
+
         let _ = bool_t;
 
         Self {
@@ -259,6 +285,11 @@ impl<'ctx> RuntimeFunctions<'ctx> {
             str_char_at,
             str_substring,
             hulk_str_eq,
+            arr_new,
+            objarr_new,
+            objarr_get,
+            objarr_set,
+            objarr_size,
         }
     }
 
@@ -289,6 +320,11 @@ impl<'ctx> RuntimeFunctions<'ctx> {
             "__str_char_at" => Some(self.str_char_at),
             "__str_substring" => Some(self.str_substring),
             "__hulk_str_eq" => Some(self.hulk_str_eq),
+            "__arr_new" => Some(self.arr_new),
+            "__objarr_new" => Some(self.objarr_new),
+            "__objarr_get" => Some(self.objarr_get),
+            "__objarr_set" => Some(self.objarr_set),
+            "__objarr_size" => Some(self.objarr_size),
             _ => None,
         }
     }
