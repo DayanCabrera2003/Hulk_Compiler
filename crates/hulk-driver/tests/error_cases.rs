@@ -340,6 +340,37 @@ fn no_error_for_iterator_range() {
     );
 }
 
+// ─── function return type must match annotation (Task 1.3) ───────────────────
+
+#[test]
+fn error_return_type_string_declared_number_block_body() {
+    let bag = run(
+        "ret_mismatch_block",
+        "function f(): Number { \"abc\"; } f();",
+    );
+    assert_error_contains(&bag, "retorno");
+}
+
+#[test]
+fn no_error_return_type_number_matches() {
+    let bag = run("ret_ok_num", "function f(): Number { 5; } f();");
+    assert!(
+        !bag.has_errors(),
+        "Number body with Number annotation must be valid: {:?}",
+        bag.diagnostics()
+    );
+}
+
+#[test]
+fn no_error_return_type_no_annotation() {
+    let bag = run("ret_ok_no_ann", "function f() { 5; } f();");
+    assert!(
+        !bag.has_errors(),
+        "function without return annotation must be valid: {:?}",
+        bag.diagnostics()
+    );
+}
+
 // ─── valid programs produce no errors (sanity) ────────────────────────────────
 
 #[test]

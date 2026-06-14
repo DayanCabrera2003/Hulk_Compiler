@@ -1,4 +1,4 @@
-use hulk_ast::{BinOpKind, Expr, ExprKind, TypeAnn, UnaryOpKind};
+use hulk_ast::{BinOpKind, Expr, ExprKind, Param, Span, TypeAnn, UnaryOpKind};
 use hulk_diagnostics::{Diagnostic, DiagnosticBag, DiagnosticKind};
 use hulk_semantic::{Resolver, SymbolId};
 
@@ -360,6 +360,47 @@ impl<'a> TypeInferer<'a> {
         false
     }
 
+    /// Validates that the inferred body type of a function is compatible with
+    /// the declared return-type annotation, if one is present.
+    ///
+    /// Emits a `SEMANTIC` diagnostic when the types are incompatible. The
+    /// check is skipped when the body type is `OBJECT` (error fallback) to
+    /// avoid cascading diagnostics after earlier failures.
+    ///
+    /// Call this **after** `infer_expr(&function.body)` so the body type has
+    /// been registered in the env.
+    pub fn check_function_return_type(
+        &mut self,
+        body_ty: TypeId,
+        return_ann: Option<&TypeAnn>,
+        fn_span: &Span,
+    ) {
+        let Some(TypeAnn::Named(declared_name)) = return_ann else {
+            return; // no annotation → nothing to check
+        };
+        let declared_ty = self.resolve_named_type(declared_name);
+        if declared_ty == TypeId::OBJECT {
+            return; // unknown declared type (e.g., user type) → skip
+        }
+        if body_ty == TypeId::OBJECT {
+            return; // fallback type from earlier error → skip cascade
+        }
+        if !self.is_assignable(body_ty, declared_ty) {
+            let got = Self::display_type(self.env, body_ty);
+            let want = declared_name;
+            self.bag.push(
+                Diagnostic::error(format!(
+                    "el cuerpo retorna {got} pero se declaró tipo de retorno {want}"
+                ))
+                .with_kind(DiagnosticKind::Semantic)
+                .with_label(
+                    fn_span.clone(),
+                    format!("se esperaba {want}, se obtuvo {got}"),
+                ),
+            );
+        }
+    }
+
     /// Best-effort human-readable name for a [`TypeId`] used in diagnostics.
     fn display_type(env: &TypeEnv, id: TypeId) -> String {
         if id == TypeId::NUMBER {
@@ -594,8 +635,8 @@ impl<'a> TypeInferer<'a> {
         }
     }
 
-    fn infer_new(&mut self, _expr: &Expr, type_ann: &hulk_ast::TypeAnn) -> TypeId {
-        if let hulk_ast::TypeAnn::Named(name) = type_ann {
+    fn infer_new(&mut self, _expr: &Expr, type_ann: &TypeAnn) -> TypeId {
+        if let TypeAnn::Named(name) = type_ann {
             if let Some(id) = self.env.type_id_by_name(name) {
                 return id;
             }
@@ -603,7 +644,7 @@ impl<'a> TypeInferer<'a> {
         TypeId::OBJECT
     }
 
-    fn infer_type_ann(&mut self, _type_ann: &hulk_ast::TypeAnn) -> TypeId {
+    fn infer_type_ann(&mut self, _type_ann: &TypeAnn) -> TypeId {
         // For now, return Object; in 7.3, resolve type annotations
         TypeId::OBJECT
     }
@@ -611,8 +652,8 @@ impl<'a> TypeInferer<'a> {
     fn infer_lambda(
         &mut self,
         _expr: &Expr,
-        _params: &[hulk_ast::Param],
-        _return_type: &Option<hulk_ast::TypeAnn>,
+        _params: &[Param],
+        _return_type: &Option<TypeAnn>,
         body: &Expr,
     ) -> TypeId {
         // Infer body type (parameters will be resolved in 7.3)

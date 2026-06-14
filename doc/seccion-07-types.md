@@ -418,3 +418,32 @@ lowering de `for`.
 - `cargo build -p hulk-types`: sin errores
 
 **Siguiente sesión**: Sesión 8 — HIR (Higher Intermediate Representation)
+
+---
+
+## 7.10 Validación de tipo de retorno (Tarea 1.3)
+
+`check_function_return_type` se invoca tras inferir el cuerpo de cada
+función declarada con anotación de tipo de retorno (`function f(): T { ... }`).
+Compara `body_ty` con `declared_ty` usando `is_assignable`, lo que permite
+subtipos compatibles. Si el cuerpo retorna un tipo no asignable al declarado,
+emite un diagnóstico SEMANTIC:
+
+```
+(line,col) SEMANTIC: el cuerpo retorna String pero se declaró tipo de retorno Number
+```
+
+### Casos cubiertos
+
+- Tipo del cuerpo distinto del declarado → error.
+- Sin anotación (`function f() { ... }`) → no se valida (la inferencia es
+  autoritativa).
+- Tipo declarado desconocido (`TypeId::OBJECT` como fallback de error previo) → skip
+  para evitar cascadas de diagnósticos.
+- `body_ty == OBJECT` (fallback de error previo en el cuerpo) → skip.
+
+### Tests
+
+`crates/hulk-driver/tests/error_cases.rs` cubre los casos felices (sin
+anotación, tipo coincidente) y de error (tipo divergente). El test
+de grading `errors/semantic/type_mismatch_return.hulk` exit 3.

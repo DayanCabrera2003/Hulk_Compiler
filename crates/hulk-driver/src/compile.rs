@@ -195,7 +195,12 @@ fn infer_all(program: &Program, inferer: &mut TypeInferer<'_>) {
         // so the body's Ident lookups see Number/String/Boolean instead of
         // defaulting to Object.
         inferer.register_function_params_by_name(&function.name);
-        inferer.infer_expr(&function.body);
+        let body_ty = inferer.infer_expr(&function.body);
+        inferer.check_function_return_type(
+            body_ty,
+            function.return_type.as_ref(),
+            &function.span,
+        );
     }
 
     for type_decl in &program.types {
