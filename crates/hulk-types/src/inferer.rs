@@ -489,8 +489,20 @@ impl<'a> TypeInferer<'a> {
         elif_branches: &[(Expr, Expr)],
         else_branch: &Option<Box<Expr>>,
     ) -> TypeId {
-        // Infer condition (should be Boolean, but no error checking yet)
-        let _cond_type = self.infer_expr(condition);
+        // Infer condition and verify it is Boolean.
+        // Skip the check when the type collapsed to OBJECT (error already
+        // emitted by a prior phase) to avoid cascading diagnostics.
+        let cond_type = self.infer_expr(condition);
+        if cond_type != TypeId::BOOLEAN && cond_type != TypeId::OBJECT {
+            let got = Self::display_type(self.env, cond_type);
+            self.bag.push(
+                Diagnostic::error(format!(
+                    "la condición del if debe ser Boolean, se obtuvo {got}"
+                ))
+                .with_kind(DiagnosticKind::Semantic)
+                .with_label(condition.span.clone(), "se esperaba una expresión Boolean"),
+            );
+        }
 
         // Infer then-branch type
         let then_type = self.infer_expr(then_branch);
@@ -498,7 +510,17 @@ impl<'a> TypeInferer<'a> {
         // Infer elif-branch types
         let mut all_types = vec![then_type];
         for (elif_cond, elif_body) in elif_branches {
-            let _cond_type = self.infer_expr(elif_cond);
+            let elif_cond_type = self.infer_expr(elif_cond);
+            if elif_cond_type != TypeId::BOOLEAN && elif_cond_type != TypeId::OBJECT {
+                let got = Self::display_type(self.env, elif_cond_type);
+                self.bag.push(
+                    Diagnostic::error(format!(
+                        "la condición del elif debe ser Boolean, se obtuvo {got}"
+                    ))
+                    .with_kind(DiagnosticKind::Semantic)
+                    .with_label(elif_cond.span.clone(), "se esperaba una expresión Boolean"),
+                );
+            }
             all_types.push(self.infer_expr(elif_body));
         }
 

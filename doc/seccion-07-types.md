@@ -347,6 +347,31 @@ Total: 13 tests, todos pasan.
 
 ---
 
+---
+
+## Fix 1.1 — Validación de condición Boolean en `if`
+
+### Qué se implementó
+
+**Archivo**: `crates/hulk-types/src/inferer.rs` (método `infer_if`)
+
+La condición de cada rama `if`/`elif` se valida contra `TypeId::BOOLEAN`. Si el tipo
+inferido no es Boolean ni Object (Object actúa como comodín para evitar cascadas tras
+errores previos), se emite un diagnóstico `SEMANTIC`.
+
+### Decisión de diseño
+
+Se usa `TypeId::OBJECT` como comodín (en lugar de un `TypeId::UNKNOWN` dedicado) porque
+ya es el tipo de fallback para expresiones cuya resolución falla en fases anteriores.
+Emitir un diagnóstico secundario sobre una condición de tipo Object, cuando la causa raíz
+ya fue reportada, generaría ruido innecesario.
+
+### Gotcha
+
+Las ramas `elif` también se validan; la misma lógica se aplica por cada condición adicional.
+
+---
+
 ## Resumen de Sesión 7
 
 **Completada con ✓ en PIPELINE.md**: todas las tres subsesiones (7.1, 7.2, 7.3).

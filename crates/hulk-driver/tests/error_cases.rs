@@ -263,6 +263,53 @@ fn error_non_inferrable_function_param() {
     assert_error_contains(&bag, "no inferible");
 }
 
+// ─── if condition must be Boolean (Task 1.1) ─────────────────────────────────
+
+#[test]
+fn error_if_condition_number() {
+    let bag = run("if_cond_num", "if (5) print(\"yes\") else print(\"no\");");
+    assert_error_contains(&bag, "Boolean");
+}
+
+#[test]
+fn error_if_condition_string() {
+    let bag = run("if_cond_str", r#"if ("hi") print("yes") else print("no");"#);
+    assert_error_contains(&bag, "Boolean");
+}
+
+#[test]
+fn no_error_if_condition_true_literal() {
+    let bag = run("if_cond_bool_lit", r#"if (true) print("yes") else print("no");"#);
+    assert!(
+        !bag.has_errors(),
+        "Boolean literal condition must be valid: {:?}",
+        bag.diagnostics()
+    );
+}
+
+#[test]
+fn no_error_if_condition_comparison() {
+    let bag = run("if_cond_cmp", "if (1 < 2) print(\"yes\") else print(\"no\");");
+    assert!(
+        !bag.has_errors(),
+        "comparison condition must be valid: {:?}",
+        bag.diagnostics()
+    );
+}
+
+#[test]
+fn no_error_if_condition_boolean_variable() {
+    let bag = run(
+        "if_cond_bool_var",
+        r#"let b: Boolean = true in if (b) print("yes") else print("no");"#,
+    );
+    assert!(
+        !bag.has_errors(),
+        "Boolean variable condition must be valid: {:?}",
+        bag.diagnostics()
+    );
+}
+
 // ─── valid programs produce no errors (sanity) ────────────────────────────────
 
 #[test]
