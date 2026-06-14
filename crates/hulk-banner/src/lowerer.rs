@@ -235,16 +235,27 @@ impl<'h> Lowerer<'h> {
     // -------- Per-function frame setup --------
 
     /// Map a parameter's type annotation to the runtime sentinel the codegen
-    /// uses to dispatch builtin methods. `Number[]` becomes `$vector` so
-    /// `xs.size()` / `for (x in xs)` route through the C runtime helpers;
-    /// `String` becomes `$string` so `s.size()` / `s.charAt(i)` /
-    /// `s.substring(start, len)` dispatch the same way. `Number*` could
-    /// legitimately receive a Range or user iterable so it's left generic
-    /// and resolved through the vtable at the call site.
+    /// uses to dispatch builtin methods and resolve struct field accesses.
+    ///
+    /// - `Number[]` → `"$vector"`: enables `xs.size()` / `for (x in xs)` to
+    ///   route through the C-runtime helpers.
+    /// - `String`   → `"$string"`: enables `s.size()` / `s.charAt(i)` /
+    ///   `s.substring(start, len)` to dispatch the same way.
+    /// - Any other named type (user-defined struct) → the type name itself,
+    ///   so that `param.field` expressions can resolve the struct layout in
+    ///   codegen. Without this, `resolve_field` cannot find the struct type
+    ///   for a non-self receiver (e.g., `other.x` in `dot(other: Vector)`).
+    /// - `Number*` / primitive types / wildcard → `None` (resolved through
+    ///   the vtable or handled as scalars).
     fn param_runtime_hint(ann: Option<&TypeAnn>) -> Option<String> {
         match ann? {
             TypeAnn::Vector(_) => Some("$vector".to_owned()),
             TypeAnn::Named(n) if n == "String" => Some("$string".to_owned()),
+            // Primitive scalar types have no struct layout; leave them as-is.
+            TypeAnn::Named(n) if matches!(n.as_str(), "Number" | "Boolean" | "Object") => None,
+            // User-defined struct type: register the type name so codegen can
+            // resolve field accesses on this parameter (e.g. `other.x`).
+            TypeAnn::Named(n) => Some(n.clone()),
             _ => None,
         }
     }

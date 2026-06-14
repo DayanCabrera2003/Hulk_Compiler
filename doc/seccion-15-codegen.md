@@ -151,6 +151,49 @@ La solución permanente es instalar `libffi-devel`:
 sudo dnf install libffi-devel
 ```
 
+## Resolución de campos en parámetros con tipo struct
+
+### Problema
+
+`resolve_field` (en `emit_mem.rs`) solo encontraba el tipo LLVM del receptor si el
+`TempId` estaba registrado en `temp_type_names`. Ese mapa se poblaba para `self` (primer
+parámetro de los métodos) y para los resultados de `New`. No se poblaba para parámetros con
+anotaciones de tipo struct (p. ej., `other: Vector` en `dot(other: Vector)`), por lo que
+`other.x` producía el error "struct type not statically known".
+
+### Causa raíz
+
+`param_runtime_hint` en el lowerer de BANNER devolvía `None` para cualquier tipo nombrado
+que no fuera `String`. La función traduce la anotación de tipo de un parámetro al
+centinela de runtime que el codegen usa para despachar métodos y resolver campos. Para tipos
+de struct de usuario, el centinela adecuado es el propio nombre del tipo.
+
+### Solución (subsesión 0.5)
+
+Se extendió `param_runtime_hint` para devolver `Some(n.clone())` cuando la anotación es
+`TypeAnn::Named(n)` y `n` no es un tipo primitivo (`Number`, `Boolean`, `Object`). El
+codegen ya iteraba sobre `param_runtime_hints` y los insertaba en `temp_type_names` para
+cada parámetro, por lo que no fue necesario modificar el codegen.
+
+```rust
+// crates/hulk-banner/src/lowerer.rs
+fn param_runtime_hint(ann: Option<&TypeAnn>) -> Option<String> {
+    match ann? {
+        TypeAnn::Vector(_) => Some("$vector".to_owned()),
+        TypeAnn::Named(n) if n == "String" => Some("$string".to_owned()),
+        TypeAnn::Named(n) if matches!(n.as_str(), "Number" | "Boolean" | "Object") => None,
+        TypeAnn::Named(n) => Some(n.clone()),   // ← fix
+        _ => None,
+    }
+}
+```
+
+### Impacto
+
+La corrección permite acceder a campos en cualquier parámetro con tipo de struct anotado,
+incluyendo el patrón `dot(other: Vector)` del test `vector_math.hulk`. El score del grupo
+`ok/oop` pasó de 9/10 a 10/10.
+
 ## Restricciones conocidas
 
 - Los campos de structs de usuario se almacenan siempre como `ptr` en LLVM, incluso si el
