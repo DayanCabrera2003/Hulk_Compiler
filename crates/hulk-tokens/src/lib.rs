@@ -103,7 +103,7 @@ pub fn keyword_token(ident: &str) -> Option<Token> {
         "type" => Some(Token::Type),
         "inherits" => Some(Token::Inherits),
         "new" => Some(Token::New),
-        "protocol" => Some(Token::Protocol),
+        "protocol" | "interface" => Some(Token::Protocol),
         "extends" => Some(Token::Extends),
         "def" => Some(Token::Def),
         "match" => Some(Token::Match),
@@ -133,6 +133,14 @@ mod tests {
         // using either keyword parse identically.
         assert_eq!(keyword_token("define"), Some(Token::Function));
         assert_eq!(keyword_token("function"), Some(Token::Function));
+    }
+
+    #[test]
+    fn interface_keyword_lexed_as_protocol_token() {
+        // `interface` is accepted as a synonym for `protocol` so that programs
+        // using either keyword parse identically.
+        assert_eq!(keyword_token("interface"), Some(Token::Protocol));
+        assert_eq!(keyword_token("protocol"), Some(Token::Protocol));
     }
 
     #[test]
