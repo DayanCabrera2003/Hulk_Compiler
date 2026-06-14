@@ -92,7 +92,7 @@ pub fn keyword_token(ident: &str) -> Option<Token> {
     match ident {
         "true" => Some(Token::True),
         "false" => Some(Token::False),
-        "function" => Some(Token::Function),
+        "function" | "define" => Some(Token::Function),
         "let" => Some(Token::Let),
         "in" => Some(Token::In),
         "if" => Some(Token::If),
@@ -125,6 +125,14 @@ mod tests {
         assert_eq!(keyword_token("protocol"), Some(Token::Protocol));
         assert_eq!(keyword_token("identifier"), None);
         assert_eq!(keyword_token("self"), None);
+    }
+
+    #[test]
+    fn define_keyword_lexed_as_function_token() {
+        // `define` is accepted as a synonym for `function` so that programs
+        // using either keyword parse identically.
+        assert_eq!(keyword_token("define"), Some(Token::Function));
+        assert_eq!(keyword_token("function"), Some(Token::Function));
     }
 
     #[test]

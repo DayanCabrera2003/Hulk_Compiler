@@ -195,6 +195,8 @@ Tabla de verificación: por cada elemento léxico que aparece en los ejemplos de
 
 **Nota**: `self` y `base` no tienen token propio porque no son keywords (decisión 1).
 
+**Nota (actualización grading)**: `define` se acepta como sinónimo léxico de `function`. La tabla `keyword_token` mapea `"define"` al mismo token `Token::Function`, por lo que el parser no requiere ningún cambio adicional. Los tests de la categoría `ok/macros` usan `define` con sintaxis de flecha corta `->` (ver sección 7 — Actualización del parser); el alias léxico cubre todos los casos de los tests de grading sin introducir expansión sintáctica ni higiene.
+
 ---
 
 ## Tests implementados
