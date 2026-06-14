@@ -886,6 +886,9 @@ pub(crate) fn infer_temp_kinds(
                 }
             }
             // SetField: if field is numeric, the value being stored should be F64.
+            // Use insert (not or_insert) so an existing Ptr kind is upgraded to
+            // F64. Using or_insert here would leave a Ptr-typed temp unchanged
+            // while still setting changed = true, producing an infinite loop.
             if let Instr::SetField {
                 object: Value::Temp(obj_tid),
                 field,
@@ -895,7 +898,7 @@ pub(crate) fn infer_temp_kinds(
                 if let Some(tname) = temp_structs.get(obj_tid) {
                     if let Some(&TempKind::F64) = field_kind.get(&(tname.clone(), field.clone())) {
                         if kinds.get(val_tid).copied() != Some(TempKind::F64) {
-                            kinds.entry(*val_tid).or_insert(TempKind::F64);
+                            kinds.insert(*val_tid, TempKind::F64);
                             changed = true;
                         }
                     }
