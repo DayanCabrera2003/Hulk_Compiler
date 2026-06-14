@@ -42,4 +42,8 @@ void* __str_char_at(void* s, double idx);
    requested range overflows the source string, copying stops at the end. */
 void* __str_substring(void* s, double start, double len);
 
+/* Returns 1 if the two HulkStr objects contain the same bytes, 0 otherwise.
+   Handles NULL inputs conservatively (NULL == NULL is 1, NULL != non-NULL). */
+int __hulk_str_eq(void* a, void* b);
+
 #endif /* HULK_STRINGS_H */

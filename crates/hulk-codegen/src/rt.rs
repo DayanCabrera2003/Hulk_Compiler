@@ -45,6 +45,8 @@ pub struct RuntimeFunctions<'ctx> {
     pub str_size: FunctionValue<'ctx>,
     pub str_char_at: FunctionValue<'ctx>,
     pub str_substring: FunctionValue<'ctx>,
+    // String equality comparison
+    pub hulk_str_eq: FunctionValue<'ctx>,
 }
 
 impl<'ctx> RuntimeFunctions<'ctx> {
@@ -215,6 +217,14 @@ impl<'ctx> RuntimeFunctions<'ctx> {
             None,
         );
 
+        // __hulk_str_eq(void* a, void* b) -> i1
+        // Compares two HulkStr objects byte-by-byte; returns 1 if equal.
+        let hulk_str_eq = module.add_function(
+            "__hulk_str_eq",
+            bool_t.fn_type(&[ptr_t.into(), ptr_t.into()], false),
+            None,
+        );
+
         let _ = bool_t;
 
         Self {
@@ -248,6 +258,7 @@ impl<'ctx> RuntimeFunctions<'ctx> {
             str_size,
             str_char_at,
             str_substring,
+            hulk_str_eq,
         }
     }
 
@@ -277,6 +288,7 @@ impl<'ctx> RuntimeFunctions<'ctx> {
             "__str_size" => Some(self.str_size),
             "__str_char_at" => Some(self.str_char_at),
             "__str_substring" => Some(self.str_substring),
+            "__hulk_str_eq" => Some(self.hulk_str_eq),
             _ => None,
         }
     }

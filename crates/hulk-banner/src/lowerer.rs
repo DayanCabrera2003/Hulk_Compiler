@@ -718,6 +718,26 @@ impl<'h> Lowerer<'h> {
             BinOpKind::ConcatSpaced => {
                 panic!("ConcatSpaced should have been desugared before BANNER lowering");
             }
+            BinOpKind::Eq | BinOpKind::Ne if self.either_operand_is_string(left, right) => {
+                // At least one operand is a String: use the byte-level runtime
+                // comparator instead of the float-comparison path so that Ptr-typed
+                // LLVM values do not end up in `feq`/`fne` instructions.
+                self.emit(Instr::Call {
+                    dst,
+                    callee: Value::Global("__hulk_str_eq".to_string()),
+                    args: vec![lv, rv],
+                });
+                if op == BinOpKind::Ne {
+                    // Negate the equality result to get inequality.
+                    let neg_dst = self.fresh_temp();
+                    self.emit(Instr::UnOp {
+                        dst: neg_dst,
+                        op: UnaryOpKind::Not,
+                        operand: Value::Temp(dst),
+                    });
+                    return Value::Temp(neg_dst);
+                }
+            }
             _ => {
                 self.emit(Instr::BinOp {
                     dst,
@@ -728,6 +748,25 @@ impl<'h> Lowerer<'h> {
             }
         }
         Value::Temp(dst)
+    }
+
+    /// Returns `true` when the HIR type of either operand is `String`.
+    ///
+    /// Also treats `ConstStr` values and `Value::ConstStr` literals as strings
+    /// so that purely literal comparisons like `"a" == "b"` are covered even
+    /// when type inference has not annotated the node.
+    fn either_operand_is_string(&self, left: &Expr, right: &Expr) -> bool {
+        self.expr_is_string(left) || self.expr_is_string(right)
+    }
+
+    /// Returns `true` when the expression's HIR type is `String`, or when the
+    /// expression is a string literal.
+    fn expr_is_string(&self, expr: &Expr) -> bool {
+        if matches!(expr.kind, ExprKind::StringLit(_)) {
+            return true;
+        }
+        let ty = self.hir.expr_type(expr.id).unwrap_or(TypeId::OBJECT);
+        ty == TypeId::STRING
     }
 
     fn emit_call(&mut self, callee: &Expr, args: &[Expr]) -> Value {

@@ -61,7 +61,8 @@ Este orden se establece una sola vez y todas las emisiones posteriores lo respet
 |---|---|
 | `BinOp(Add/Sub/Mul/Div/Mod)` | `build_float_{add,sub,mul,div,rem}` |
 | `BinOp(Pow)` | Llamada al intrinsic `llvm.pow.f64` |
-| `BinOp(Eq/Ne/Lt/Le/Gt/Ge)` | `build_float_compare` con predicado OEQ/ONE/OLT/OLE/OGT/OGE |
+| `BinOp(Eq/Ne)` | Dispatch por `TempKind`: `feq/fne` si `F64`, `icmp eq` si `I1`, `__hulk_str_eq` si `Ptr` |
+| `BinOp(Lt/Le/Gt/Ge)` | `build_float_compare` con predicado OLT/OLE/OGT/OGE |
 | `BinOp(And/Or)` | `build_and` / `build_or` sobre `i1` |
 | `BinOp(Concat)` | Llamada a `__hulk_concat(a, b)` del runtime |
 | `UnOp(Neg)` | `build_float_neg` |

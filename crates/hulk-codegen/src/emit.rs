@@ -764,6 +764,7 @@ pub(crate) fn infer_temp_kinds(
                     let k = match callee {
                         Value::Global(name) if is_math_builtin(name) => TempKind::F64,
                         Value::Global(name) if name == "__hulk_is" => TempKind::I1,
+                        Value::Global(name) if name == "__hulk_str_eq" => TempKind::I1,
                         Value::Global(name) => fn_return_kinds
                             .get(name.as_str())
                             .copied()
