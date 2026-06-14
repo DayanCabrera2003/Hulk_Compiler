@@ -279,7 +279,10 @@ fn error_if_condition_string() {
 
 #[test]
 fn no_error_if_condition_true_literal() {
-    let bag = run("if_cond_bool_lit", r#"if (true) print("yes") else print("no");"#);
+    let bag = run(
+        "if_cond_bool_lit",
+        r#"if (true) print("yes") else print("no");"#,
+    );
     assert!(
         !bag.has_errors(),
         "Boolean literal condition must be valid: {:?}",
@@ -289,7 +292,10 @@ fn no_error_if_condition_true_literal() {
 
 #[test]
 fn no_error_if_condition_comparison() {
-    let bag = run("if_cond_cmp", "if (1 < 2) print(\"yes\") else print(\"no\");");
+    let bag = run(
+        "if_cond_cmp",
+        "if (1 < 2) print(\"yes\") else print(\"no\");",
+    );
     assert!(
         !bag.has_errors(),
         "comparison condition must be valid: {:?}",
@@ -306,6 +312,30 @@ fn no_error_if_condition_boolean_variable() {
     assert!(
         !bag.has_errors(),
         "Boolean variable condition must be valid: {:?}",
+        bag.diagnostics()
+    );
+}
+
+// ─── for iterator must be iterable (Task 1.2) ────────────────────────────────
+
+#[test]
+fn error_for_iterator_number() {
+    let bag = run("for_iter_num", "for (x in 42) { print(x); }");
+    assert_error_contains(&bag, "iterable");
+}
+
+#[test]
+fn error_for_iterator_boolean() {
+    let bag = run("for_iter_bool", "for (x in true) { print(x); }");
+    assert_error_contains(&bag, "iterable");
+}
+
+#[test]
+fn no_error_for_iterator_range() {
+    let bag = run("for_iter_range", "for (x in range(0, 5)) { print(x); }");
+    assert!(
+        !bag.has_errors(),
+        "range() must be a valid iterator: {:?}",
         bag.diagnostics()
     );
 }

@@ -164,12 +164,12 @@ impl<'a> TypeInferer<'a> {
             // While: body type (though body should not be used as value)
             ExprKind::While { condition: _, body } => self.infer_expr(body),
 
-            // For: body type
+            // For: validate the iterable, then infer body type.
             ExprKind::For {
                 binding: _,
-                iterable: _,
+                iterable,
                 body,
-            } => self.infer_expr(body),
+            } => self.infer_for(expr, iterable, body),
 
             // New T(...): type T
             ExprKind::New { type_ann, args: _ } => self.infer_new(expr, type_ann),
@@ -537,6 +537,61 @@ impl<'a> TypeInferer<'a> {
             .copied()
             .reduce(|a, b| self.env.lca(a, b))
             .unwrap_or(TypeId::OBJECT)
+    }
+
+    /// Validates that the iterable expression in `for (x in <iterable>)` has
+    /// a type that supports the iteration protocol (Iterable, Enumerable,
+    /// Vector, or a user-defined type with `next()`/`current()` / `iter()`).
+    ///
+    /// Number and Boolean are explicitly not iterable; any other type
+    /// that cannot be classified defaults to Object and passes silently to
+    /// avoid false positives when type information is unavailable.
+    fn infer_for(&mut self, _expr: &Expr, iterable: &Expr, body: &Expr) -> TypeId {
+        let iter_ty = self.infer_expr(iterable);
+        if !self.is_iterable_type(iter_ty) && iter_ty != TypeId::OBJECT {
+            let got = Self::display_type(self.env, iter_ty);
+            self.bag.push(
+                Diagnostic::error(format!("{got} no es iterable"))
+                    .with_kind(DiagnosticKind::Semantic)
+                    .with_label(
+                        iterable.span.clone(),
+                        "se esperaba un tipo iterable (Iterable, Enumerable o Vector)",
+                    ),
+            );
+        }
+        self.infer_expr(body)
+    }
+
+    /// Returns `true` when `ty` can be used as the source of a `for` loop.
+    ///
+    /// Accepted types:
+    /// - `TypeKind::Vector` — built-in vector type.
+    /// - `TypeKind::Iterable` — `T*` annotation.
+    /// - Protocols or user-defined types named `Iterable` or `Enumerable`.
+    /// - User-defined types that have a `next()` and `current()` method
+    ///   (structural Iterable conformance) or an `iter()` method (Enumerable).
+    ///
+    /// Number, String, and Boolean are **not** iterable.
+    fn is_iterable_type(&self, ty: TypeId) -> bool {
+        // Builtin Number and Boolean are never iterable.
+        if ty == TypeId::NUMBER || ty == TypeId::BOOLEAN {
+            return false;
+        }
+        // String: conservatively rejected (no next()/current() in the runtime).
+        if ty == TypeId::STRING {
+            return false;
+        }
+        match self.env.type_kind(ty) {
+            Some(TypeKind::Vector(_)) | Some(TypeKind::Iterable(_)) => true,
+            Some(TypeKind::Protocol { name }) => name == "Iterable" || name == "Enumerable",
+            Some(TypeKind::UserDefined { name, .. }) => {
+                let has_next = self.resolver.type_with_name_has_method(name, "next");
+                let has_current = self.resolver.type_with_name_has_method(name, "current");
+                let has_iter = self.resolver.type_with_name_has_method(name, "iter");
+                (has_next && has_current) || has_iter
+            }
+            _ => false,
+        }
     }
 
     fn infer_new(&mut self, _expr: &Expr, type_ann: &hulk_ast::TypeAnn) -> TypeId {
