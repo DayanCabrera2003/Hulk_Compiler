@@ -82,6 +82,12 @@ impl Parser {
             Token::New => return self.parse_new_expr(),
             Token::LBracket => return self.parse_vec_literal_or_generator(),
             Token::LParen if self.is_lambda_start() => return self.parse_lambda_expr(),
+            // `function (` starts an anonymous lambda expression.
+            // `function <ident>` is a named declaration and must not appear
+            // in expression position — handled upstream by `parse_program`.
+            Token::Function if matches!(self.peek_at(1), Token::LParen) => {
+                return self.parse_function_keyword_lambda();
+            }
             _ => {}
         }
 

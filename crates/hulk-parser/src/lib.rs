@@ -183,11 +183,23 @@ impl Parser {
     /// new top-level declaration. A `parse_*_decl` that reaches one of these
     /// with its header unfinished should bail out with a synthetic node
     /// rather than attempt to consume more tokens.
+    ///
+    /// `Token::Function` is only a recovery boundary when it begins a *named*
+    /// function declaration (`function name(`), not when it begins an anonymous
+    /// lambda (`function (`). Named declarations have an identifier immediately
+    /// after the keyword.
     pub(crate) fn peek_is_recovery_boundary(&self) -> bool {
-        matches!(
+        if matches!(
             self.peek(),
-            Token::Eof | Token::Function | Token::Type | Token::Protocol | Token::Def
-        )
+            Token::Eof | Token::Type | Token::Protocol | Token::Def
+        ) {
+            return true;
+        }
+        if matches!(self.peek(), Token::Function) {
+            // function `(` → anonymous lambda, not a boundary
+            return !matches!(self.peek_at(1), Token::LParen);
+        }
+        false
     }
 
     /// Scans forward from the current position (called *after* `[` has been

@@ -181,6 +181,43 @@ impl Parser {
 
     // ---- lambda vs grouping -----------------------------------------------
 
+    /// Parses `function (params) [: RetType] -> body` as an anonymous lambda
+    /// expression.
+    ///
+    /// Called when `peek()` is `Token::Function` and the next token is `(`,
+    /// which distinguishes an anonymous lambda from a named function declaration.
+    /// The body is a single expression after `->` — no trailing semicolon is
+    /// consumed here; that responsibility belongs to the enclosing context (e.g.
+    /// a block that may expect `;` between statements).
+    pub(crate) fn parse_function_keyword_lambda(&mut self) -> Expr {
+        let fn_tok = self.advance(); // consume 'function'
+        self.expect(&Token::LParen, "se esperaba '(' en lambda anonima");
+        let params = self.parse_param_list();
+        self.expect(
+            &Token::RParen,
+            "se esperaba ')' al cerrar parametros de lambda",
+        );
+
+        let return_type = if self.at(&Token::Colon) {
+            self.advance();
+            Some(self.parse_type_ann())
+        } else {
+            None
+        };
+
+        self.expect(&Token::Arrow, "se esperaba '->' en lambda anonima");
+        let body = self.parse_expression();
+        let span = fn_tok.span.merge(body.span.clone());
+        self.make_expr(
+            ExprKind::Lambda {
+                params,
+                return_type,
+                body: Box::new(body),
+            },
+            span,
+        )
+    }
+
     /// Looks ahead at the tokens following an unconsumed `(` and decides
     /// whether the construct is a lambda header. Must be called when
     /// `self.peek()` is `LParen`.

@@ -62,9 +62,15 @@ impl Parser {
     }
 
     fn is_decl_start(&self) -> bool {
-        matches!(
-            self.peek(),
-            Token::Function | Token::Type | Token::Protocol | Token::Def
-        )
+        if matches!(self.peek(), Token::Type | Token::Protocol | Token::Def) {
+            return true;
+        }
+        // `function (` is an anonymous lambda expression, not a declaration.
+        // Only treat `function` as a declaration start when followed by an
+        // identifier (the function name).
+        if matches!(self.peek(), Token::Function) {
+            return matches!(self.peek_at(1), Token::Ident(_));
+        }
+        false
     }
 }

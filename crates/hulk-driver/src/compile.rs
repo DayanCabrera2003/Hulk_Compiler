@@ -196,11 +196,7 @@ fn infer_all(program: &Program, inferer: &mut TypeInferer<'_>) {
         // defaulting to Object.
         inferer.register_function_params_by_name(&function.name);
         let body_ty = inferer.infer_expr(&function.body);
-        inferer.check_function_return_type(
-            body_ty,
-            function.return_type.as_ref(),
-            &function.span,
-        );
+        inferer.check_function_return_type(body_ty, function.return_type.as_ref(), &function.span);
     }
 
     for type_decl in &program.types {
