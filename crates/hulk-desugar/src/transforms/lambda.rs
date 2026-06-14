@@ -433,6 +433,22 @@ impl<'a> Desugarer<'a> {
                     self.collect_free_vars(a, bound, free);
                 }
             }
+            ExprKind::ArrayNew { size, .. } => {
+                self.collect_free_vars(size, bound, free);
+            }
+            ExprKind::ArrayGen {
+                size,
+                index_var,
+                body,
+                ..
+            } => {
+                self.collect_free_vars(size, bound, free);
+                let added = bound.insert(index_var.clone());
+                self.collect_free_vars(body, bound, free);
+                if added {
+                    bound.remove(index_var);
+                }
+            }
             ExprKind::Is { expr: inner, .. } | ExprKind::As { expr: inner, .. } => {
                 self.collect_free_vars(inner, bound, free);
             }
@@ -587,6 +603,21 @@ impl<'a> Desugarer<'a> {
                     .into_iter()
                     .map(|a| self.rewrite_free_vars(a, captures))
                     .collect(),
+            },
+            ExprKind::ArrayNew { elem_ty, size } => ExprKind::ArrayNew {
+                elem_ty,
+                size: Box::new(self.rewrite_free_vars(*size, captures)),
+            },
+            ExprKind::ArrayGen {
+                elem_ty,
+                size,
+                index_var,
+                body,
+            } => ExprKind::ArrayGen {
+                elem_ty,
+                size: Box::new(self.rewrite_free_vars(*size, captures)),
+                index_var,
+                body: Box::new(self.rewrite_free_vars(*body, captures)),
             },
             ExprKind::Is {
                 expr: inner,
