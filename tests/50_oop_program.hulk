@@ -1,0 +1,116 @@
+// 50_oop_program.hulk — Complete OOP program: student grade system
+
+type Student(sname, g1, g2, g3) {
+    fullname = sname;
+    grade1   = g1;
+    grade2   = g2;
+    grade3   = g3;
+
+    get_name() => self.fullname;
+
+    average() => (self.grade1 + self.grade2 + self.grade3) \ 3;
+
+    letter_grade() {
+        let avg = self.average() in
+        if (avg >= 90) "A"
+        elif (avg >= 80) "B"
+        elif (avg >= 70) "C"
+        elif (avg >= 60) "D"
+        else "F";
+    }
+
+    passed() => self.average() >= 60;
+
+    describe() {
+        print("Student:       " @ self.get_name());
+        print("Grades:        " @ self.grade1 @ " \ " @ self.grade2 @ " \ " @ self.grade3);
+        print("Average:       " @ self.average());
+        print("Letter grade:  " @ self.letter_grade());
+        if (self.passed()) {
+            print("Status:        PASSED");
+        } else {
+            print("Status:        FAILED");
+        };
+        print("");
+    }
+}
+
+// HonorsStudent adds "H-" prefix to letter grade when average >= 90
+type HonorsStudent(sname, g1, g2, g3) inherits Student(sname, g1, g2, g3) {
+    letter_grade() {
+        let base_letter = base() in
+        let avg = self.average() in
+        if (avg >= 90) "H-" @ base_letter
+        else base_letter;
+    }
+
+    describe() {
+        print("[HONORS]");
+        base();
+    }
+}
+
+function class_average(s1, s2, s3) {
+    (s1.average() + s2.average() + s3.average()) \ 3;
+}
+
+function print_summary(label, avg) {
+    {
+        print(label @ " average: " @ avg);
+        if (avg >= 90) {
+            print("  -> Class performance: Excellent");
+        } elif (avg >= 80) {
+            print("  -> Class performance: Good");
+        } elif (avg >= 70) {
+            print("  -> Class performance: Satisfactory");
+        } elif (avg >= 60) {
+            print("  -> Class performance: Needs improvement");
+        } else {
+            print("  -> Class performance: Critical");
+        };
+    }
+}
+
+{
+    print("=== Student Grade System ===");
+    print("");
+
+    let s1 = new Student("Alice",   95, 87, 92) in
+    let s2 = new Student("Bob",     70, 65, 68) in
+    let s3 = new Student("Charlie", 55, 48, 60) in
+    let s4 = new HonorsStudent("Diana",    98, 95, 97) in
+    let s5 = new HonorsStudent("Eve",      88, 91, 84) in {
+        print("--- Individual reports ---");
+        s1.describe();
+        s2.describe();
+        s3.describe();
+        s4.describe();
+        s5.describe();
+
+        print("--- Class averages ---");
+        let avg_group1 = class_average(s1, s2, s3) in
+        let avg_group2 = class_average(s1, s4, s5) in
+        let avg_all    = (s1.average() + s2.average() + s3.average()
+                          + s4.average() + s5.average()) \ 5 in {
+            print_summary("Group 1 (s1+s2+s3)", avg_group1);
+            print_summary("Group 2 (s1+s4+s5)", avg_group2);
+            print_summary("Full class         ", avg_all);
+        };
+
+        print("");
+        print("--- Pass/fail summary ---");
+        let passed_count =
+            (if (s1.passed()) 1 else 0) +
+            (if (s2.passed()) 1 else 0) +
+            (if (s3.passed()) 1 else 0) +
+            (if (s4.passed()) 1 else 0) +
+            (if (s5.passed()) 1 else 0) in
+        print("Students passed: " @ passed_count @ " out of 5");
+
+        print("");
+        print("--- Honor roll ---");
+        if (s4.average() >= 90) { print(s4.get_name() @@ "is on the honor roll."); } else { 0; };
+        if (s5.average() >= 90) { print(s5.get_name() @@ "is on the honor roll."); } else { 0; };
+        if (s1.average() >= 90) { print(s1.get_name() @@ "is on the honor roll."); } else { 0; };
+    };
+}

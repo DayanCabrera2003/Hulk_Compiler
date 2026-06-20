@@ -1,0 +1,92 @@
+// 12_destructive_assignment_patterns.hulk
+// Demonstrates the := destructive assignment operator in HULK
+
+// Pattern 1: Countdown from N to 0 using while + :=
+function countdown(start: Number): Number {
+    let n = start in {
+        while (n >= 0) {
+            print("Countdown: " @ n);
+            n := n - 1;
+        };
+        n
+    }
+}
+
+// Pattern 2: Accumulate sum 1..N using :=
+function sum_to(limit: Number): Number {
+    let total = 0, i = 1 in {
+        while (i <= limit) {
+            total := total + i;
+            i := i + 1;
+        };
+        total
+    }
+}
+
+// Pattern 3: Iterative factorial using :=
+function factorial_iter(n: Number): Number {
+    let acc = 1, k = 1 in {
+        while (k <= n) {
+            acc := acc * k;
+            k := k + 1;
+        };
+        acc
+    }
+}
+
+// Pattern 4: Swap two values via a temporary variable
+function swap_demo(a: Number, b: Number): Number {
+    let va = a, vb = b in {
+        print("Before swap: a=" @ va @ " b=" @ vb);
+        let temp = va in {
+            va := vb;
+            vb := temp;
+        };
+        print("After swap:  a=" @ va @ " b=" @ vb);
+        va + vb
+    }
+}
+
+// Pattern 5: := returns the assigned value (use it directly in an expression)
+function assign_and_double(init: Number): Number {
+    let x = init in {
+        // := returns the new value; capture it in a let binding
+        let assigned = (x := init * 3) in
+        assigned * 2
+    }
+}
+
+// Pattern 6: Collatz step accumulator — count steps to reach 1
+function collatz_steps(start: Number): Number {
+    let n = start, steps = 0 in {
+        while (n != 1) {
+            if (n % 2 == 0)
+                n := n \ 2
+            else
+                n := 3 * n + 1;
+            steps := steps + 1;
+        };
+        steps
+    }
+}
+
+// --- Run all patterns ---
+{
+    print("=== Countdown from 3 ===");
+    countdown(3);
+
+    print("=== Sum 1..10 ===");
+    print(sum_to(10));
+
+    print("=== Factorial 6 ===");
+    print(factorial_iter(6));
+
+    print("=== Swap 7 and 13 ===");
+    swap_demo(7, 13);
+
+    print("=== Assign-and-double init=5 ===");
+    print(assign_and_double(5));
+
+    print("=== Collatz steps for 27 ===");
+    print(collatz_steps(27));
+}

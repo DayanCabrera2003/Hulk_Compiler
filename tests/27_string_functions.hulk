@@ -1,0 +1,126 @@
+// 27_string_functions.hulk — Functions returning and consuming strings
+
+// Repeat a string n times (builds by concatenation)
+function repeat_str(s: String, n: Number): String {
+    let result = "" in
+    let i = 0 in
+    {
+        while (i < n) {
+            result := result @ s;
+            i := i + 1;
+        };
+        result
+    }
+}
+
+// Row of n asterisks
+function stars(n: Number): String => repeat_str("*", n);
+
+// Row of n dashes
+function dashes(n: Number): String => repeat_str("-", n);
+
+// Simple Roman numerals for 1..10
+function to_roman(n: Number): String =>
+    if (n == 1) "I"
+    elif (n == 2) "II"
+    elif (n == 3) "III"
+    elif (n == 4) "IV"
+    elif (n == 5) "V"
+    elif (n == 6) "VI"
+    elif (n == 7) "VII"
+    elif (n == 8) "VIII"
+    elif (n == 9) "IX"
+    elif (n == 10) "X"
+    else "?";
+
+// Describe a boolean
+function describe_bool(b: Boolean): String =>
+    if (b) "yes (true)" else "no (false)";
+
+// Box: print a framed label
+function print_box(label: String) {
+    let width = 20 in
+    {
+        print("+" @ dashes(width) @ "+");
+        print("|" @ repeat_str(" ", 4) @ label @ repeat_str(" ", width - 4 - 6) @ "|");
+        print("+" @ dashes(width) @ "+");
+    }
+}
+
+// Banner: a sequence of boxed section titles
+function print_banner(title: String) {
+    print(stars(30));
+    print("*** " @ title @ " ***");
+    print(stars(30));
+}
+
+// Ordinal suffix for numbers 1-20
+function ordinal(n: Number): String =>
+    if (n == 1) "1st"
+    elif (n == 2) "2nd"
+    elif (n == 3) "3rd"
+    elif (n == 11) "11th"
+    elif (n == 12) "12th"
+    elif (n == 13) "13th"
+    else n @ "th";
+
+// Greet with ordinal repetition
+function greet_n(name: String, n: Number) {
+    print("Hello for the " @ ordinal(n) @ " time, " @ name @ "!");
+}
+
+{
+    print_banner("String Function Gallery");
+
+    print("");
+    print("=== repeat_str ===");
+    print(repeat_str("ab", 5));
+    print(repeat_str("-", 20));
+    print(repeat_str("HULK", 3));
+
+    print("");
+    print("=== stars and dashes ===");
+    let w = 1 in
+    while (w <= 8) {
+        print(stars(w));
+        w := w + 1;
+    };
+
+    print("");
+    print("=== to_roman (1..10) ===");
+    let r = 1 in
+    while (r <= 10) {
+        print("  " @ r @ " = " @ to_roman(r));
+        r := r + 1;
+    };
+
+    print("");
+    print("=== describe_bool ===");
+    print("  true  -> " @ describe_bool(true));
+    print("  false -> " @ describe_bool(false));
+    print("  5>3   -> " @ describe_bool(5 > 3));
+    print("  2>9   -> " @ describe_bool(2 > 9));
+
+    print("");
+    print("=== print_box ===");
+    print_box("HULK");
+    print_box("Hello");
+
+    print("");
+    print("=== ordinal ===");
+    let o = 1 in
+    while (o <= 15) {
+        print("  " @ ordinal(o));
+        o := o + 1;
+    };
+
+    print("");
+    print("=== greet_n ===");
+    let g = 1 in
+    while (g <= 5) {
+        greet_n("World", g);
+        g := g + 1;
+    };
+
+    print_banner("End");
+}

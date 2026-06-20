@@ -1,0 +1,111 @@
+// 10_nested_let_arithmetic.hulk
+// Deeply nested let expressions, let as expression in function args,
+// multi-binding equivalence, and progressive computation
+
+// Show that multi-binding is sugar for nested lets
+function multi_vs_nested(): Number {
+    // Multi-binding form: let a=1, b=2, c=3 in a+b+c
+    let multi = let a = 1, b = 2, c = 3 in a + b + c in
+
+    // Equivalent nested form
+    let nested = let a = 1 in let b = 2 in let c = 3 in a + b + c in
+
+    // Both should be 6
+    if (multi == nested) multi else -1
+}
+
+// Function that accepts a let expression as argument
+function double(n: Number): Number => n * 2;
+function add_three(a: Number, b: Number, c: Number): Number => a + b + c;
+
+// Compute a polynomial step by step using nested lets
+function poly(x: Number): Number {
+    // Evaluate 3x^4 - 2x^3 + 5x^2 - x + 7 step by step
+    let x2 = x ^ 2 in
+    let x3 = x2 * x in
+    let x4 = x3 * x in
+    let term4 = 3 * x4 in
+    let term3 = 2 * x3 in
+    let term2 = 5 * x2 in
+    let term1 = x in
+    let constant = 7 in
+    term4 - term3 + term2 - term1 + constant
+}
+
+// Five-level deep let computing a running product
+function deep_product(start: Number): Number {
+    let a = start in
+    let b = a * 2 in
+    let c = b + a in        // 3*start
+    let d = c * b in        // 3*start * 2*start = 6*start^2
+    let e = d - c in        // 6*start^2 - 3*start
+    e
+}
+
+{
+    // === Section 1: Deeply nested let (5 levels) ===
+    print("=== Deeply Nested Let ===");
+    let result =
+        let level1 = 2 in
+            let level2 = level1 ^ 3 in          // 8
+                let level3 = level2 + level1 in // 10
+                    let level4 = level3 * level2 in  // 80
+                        let level5 = level4 - level3 in  // 70
+                            level5
+    in
+    print("5-level nested let result (2,8,10,80,70): " @ result);
+
+    // === Section 2: let as expression inside print argument ===
+    print("=== let as expression in function args ===");
+    print(let a = 100 in a \ 4);
+    print(double(let x = 13 in x + 7));
+    print(add_three(
+        let p = 10 in p,
+        let q = 20 in q * 2,
+        let r = 5 in r ^ 2
+    ));
+
+    // === Section 3: Multi-binding vs nested lets ===
+    print("=== Multi-binding equivalence ===");
+    print("multi_vs_nested() = " @ multi_vs_nested());
+
+    // Inline demonstration
+    let from_multi  = let x = 3, y = 4 in x ^ 2 + y ^ 2 in
+    let from_nested = let x = 3 in let y = 4 in x ^ 2 + y ^ 2 in
+    print("Multi-binding  3^2+4^2 = " @ from_multi);
+    print("Nested lets    3^2+4^2 = " @ from_nested);
+    print("Equal? " @ (from_multi == from_nested));
+
+    // === Section 4: Polynomial step-by-step ===
+    print("=== Polynomial 3x^4-2x^3+5x^2-x+7 ===");
+    print("poly(0) = " @ poly(0));   // 7
+    print("poly(1) = " @ poly(1));   // 3-2+5-1+7=12
+    print("poly(2) = " @ poly(2));   // 48-16+20-2+7=57
+    print("poly(-1)= " @ poly(-1));  // 3+2+5+1+7=18
+
+    // === Section 5: deep_product ===
+    print("=== Deep product (5 lets) ===");
+    print("deep_product(1) = " @ deep_product(1));  // 6-3=3
+    print("deep_product(2) = " @ deep_product(2));  // 24-6=18
+    print("deep_product(3) = " @ deep_product(3));  // 54-9=45
+
+    // === Section 6: let chains building a sentence ===
+    print("=== Let chains building a sentence ===");
+    let w1 = "The" in
+    let w2 = w1 @@ "quick" in
+    let w3 = w2 @@ "brown" in
+    let w4 = w3 @@ "fox" in
+    let w5 = w4 @@ "jumps." in
+    print(w5);
+
+    // === Section 7: Nested let inside for-loop ===
+    print("=== Nested let inside loop ===");
+    for (i in range(1, 6)) {
+        let sq = i ^ 2 in
+        let cb = i ^ 3 in
+        let line = "i=" @ i @ " sq=" @ sq @ " cb=" @ cb in
+        print(line);
+    };
+
+    print("--- Nested let arithmetic complete ---")
+}

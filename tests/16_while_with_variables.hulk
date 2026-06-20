@@ -1,0 +1,122 @@
+// 16_while_with_variables.hulk
+// Multiple while-based algorithms using destructive assignment
+
+// Algorithm 1: Count up from start to end, printing each step
+function count_up(start: Number, stop: Number): Number {
+    let i = start in {
+        while (i <= stop) {
+            print(i);
+            i := i + 1;
+        };
+        i
+    }
+}
+
+// Algorithm 2: Count down from start to 0
+function count_down(start: Number): Number {
+    let i = start in {
+        while (i >= 0) {
+            print(i);
+            i := i - 1;
+        };
+        0
+    }
+}
+
+// Algorithm 3: Sum of integers 1..N
+function sum_n(n: Number): Number {
+    let total = 0, i = 1 in {
+        while (i <= n) {
+            total := total + i;
+            i := i + 1;
+        };
+        total
+    }
+}
+
+// Algorithm 4: Product 1..N (factorial)
+function factorial(n: Number): Number {
+    let product = 1, k = 1 in {
+        while (k <= n) {
+            product := product * k;
+            k := k + 1;
+        };
+        product
+    }
+}
+
+// Algorithm 5: Find first perfect square strictly greater than threshold
+function first_square_above(threshold: Number): Number {
+    let k = 1 in {
+        while (k * k <= threshold) {
+            k := k + 1;
+        };
+        k * k
+    }
+}
+
+// Algorithm 6: Collatz sequence — print every value until reaching 1
+function collatz(start: Number): Number {
+    let n = start, steps = 0 in {
+        print("Collatz from " @ start @ ":");
+        print(n);
+        while (n != 1) {
+            if (n % 2 == 0)
+                n := n \ 2
+            else
+                n := 3 * n + 1;
+            print(n);
+            steps := steps + 1;
+        };
+        steps
+    }
+}
+
+// Algorithm 7: Binary representation (print bits from MSB to LSB)
+function power_of_two_below(n: Number): Number {
+    let p = 1 in {
+        while (p * 2 <= n) {
+            p := p * 2;
+        };
+        p
+    }
+}
+
+function print_binary(n: Number): Number {
+    let remaining = n, bit = power_of_two_below(n) in {
+        print("Binary of " @ n @ ":");
+        while (bit >= 1) {
+            if (remaining >= bit) {
+                print("1");
+                remaining := remaining - bit;
+            } else
+                print("0");
+            bit := bit \ 2;
+        };
+        0
+    }
+}
+
+// --- Run all algorithms ---
+{
+    print("=== Count up 1..5 ===");
+    count_up(1, 5);
+
+    print("=== Count down 4..0 ===");
+    count_down(4);
+
+    print("=== Sum 1..100 ===");
+    print(sum_n(100));
+
+    print("=== Factorial 10 ===");
+    print(factorial(10));
+
+    print("=== First square > 1000 ===");
+    print(first_square_above(1000));
+
+    print("=== Collatz(17) ===");
+    print("Steps: " @ collatz(17));
+
+    print("=== Binary of 42 ===");
+    print_binary(42);
+}

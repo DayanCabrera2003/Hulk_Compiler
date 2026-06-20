@@ -1,0 +1,91 @@
+// 24_recursive_fibonacci.hulk — Fibonacci variants and related sequences
+
+// Naive recursive Fibonacci
+function fib_rec(n: Number): Number =>
+    if (n <= 0) 0
+    elif (n == 1) 1
+    else fib_rec(n - 1) + fib_rec(n - 2);
+
+// Iterative Fibonacci using destructive assignment
+function fib_iter(n: Number): Number {
+    if (n <= 0) {
+        0
+    } elif (n == 1) {
+        1
+    } else {
+        let a = 0 in
+        let b = 1 in
+        let i = 2 in
+        {
+            while (i <= n) {
+                let tmp = a + b in
+                {
+                    a := b;
+                    b := tmp;
+                    i := i + 1;
+                };
+            };
+            b
+        }
+    }
+}
+
+// Lucas numbers: L(0)=2, L(1)=1, L(n)=L(n-1)+L(n-2)
+function lucas(n: Number): Number =>
+    if (n == 0) 2
+    elif (n == 1) 1
+    else lucas(n - 1) + lucas(n - 2);
+
+// Tribonacci: T(0)=0, T(1)=0, T(2)=1, T(n)=T(n-1)+T(n-2)+T(n-3)
+function tribonacci(n: Number): Number =>
+    if (n <= 1) 0
+    elif (n == 2) 1
+    else tribonacci(n - 1) + tribonacci(n - 2) + tribonacci(n - 3);
+
+// Golden ratio approximation: fib(n+1) \ fib(n)
+function golden_ratio_approx(n: Number): Number =>
+    fib_iter(n + 1) \ fib_iter(n);
+
+{
+    print("=== Fibonacci (recursive vs iterative) ===");
+    let i = 0 in
+    while (i <= 12) {
+        print("  fib(" @ i @ ") rec=" @ fib_rec(i) @ "  iter=" @ fib_iter(i));
+        i := i + 1;
+    };
+
+    print("");
+    print("=== Lucas Numbers ===");
+    let j = 0 in
+    while (j <= 12) {
+        print("  L(" @ j @ ") = " @ lucas(j));
+        j := j + 1;
+    };
+
+    print("");
+    print("=== Tribonacci Numbers ===");
+    let k = 0 in
+    while (k <= 12) {
+        print("  T(" @ k @ ") = " @ tribonacci(k));
+        k := k + 1;
+    };
+
+    print("");
+    print("=== Golden Ratio Approximation (fib(n+1)/fib(n)) ===");
+    let n = 2 in
+    while (n <= 15) {
+        print("  n=" @ n @ "  phi~=" @ golden_ratio_approx(n));
+        n := n + 1;
+    };
+    print("  True phi = " @ ((1 + sqrt(5)) \ 2));
+
+    print("");
+    print("=== Fibonacci property: fib(n)^2 + fib(n+1)^2 = fib(2n+1) ===");
+    let m = 1 in
+    while (m <= 6) {
+        let lhs = fib_iter(m) ^ 2 + fib_iter(m + 1) ^ 2 in
+        let rhs = fib_iter(2 * m + 1) in
+        print("  n=" @ m @ "  lhs=" @ lhs @ "  rhs=" @ rhs @ "  match=" @ (lhs == rhs));
+        m := m + 1;
+    };
+}

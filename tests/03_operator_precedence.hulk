@@ -1,0 +1,60 @@
+// 03_operator_precedence.hulk
+// Demonstrates operator precedence rules with explicit examples
+
+// Helper: print a labeled numeric result
+function show(label: String, value: Number) => print(label @ " = " @ value);
+
+{
+    // 1. ^ before * before +
+    // 2 + 3 * 4 ^ 2  =>  2 + 3 * 16  =>  2 + 48  =>  50
+    show("2 + 3 * 4^2 (no parens)", 2 + 3 * 4 ^ 2);
+    show("2 + (3 * (4^2)) explicit", 2 + (3 * (4 ^ 2)));
+
+    // 2. Multiplication before addition
+    // 1 + 2 * 3  =>  1 + 6  =>  7
+    show("1 + 2 * 3", 1 + 2 * 3);
+    show("(1 + 2) * 3", (1 + 2) * 3);
+
+    // 3. Division (backslash) same precedence as multiplication
+    // 12 \ 4 + 2  =>  3 + 2  =>  5
+    show("12 \\ 4 + 2", 12 \ 4 + 2);
+    show("12 \\ (4 + 2)", 12 \ (4 + 2));
+
+    // 4. Unary minus before power
+    // -2^2 in many languages is -(2^2)=-4, demonstrate
+    let neg_two = -2 in
+    show("neg_two ^ 2 ((-2)^2)", neg_two ^ 2);
+
+    // 5. Modulo same level as * and \
+    // 10 + 7 % 3  =>  10 + 1  =>  11
+    show("10 + 7 % 3", 10 + 7 % 3);
+    show("(10 + 7) % 3", (10 + 7) % 3);
+
+    // 6. Chained powers (right-associative in most langs: 2^3^2 = 2^9 = 512)
+    show("2 ^ 3 ^ 2", 2 ^ 3 ^ 2);
+    show("(2 ^ 3) ^ 2", (2 ^ 3) ^ 2);
+
+    // 7. Mixed chain: subtraction is left-associative
+    // 10 - 3 - 2  =>  (10-3)-2  =>  5
+    show("10 - 3 - 2 (left-assoc)", 10 - 3 - 2);
+    show("10 - (3 - 2)", 10 - (3 - 2));
+
+    // 8. Mixed division chain
+    // 24 \ 4 \ 2  =>  (24\4)\2  =>  6\2  =>  3
+    show("24 \\ 4 \\ 2 (left-assoc)", 24 \ 4 \ 2);
+    show("24 \\ (4 \\ 2)", 24 \ (4 \ 2));
+
+    // 9. Compound: power then multiply then add
+    // 1 + 2 * 3 ^ 2 + 4  =>  1 + 2*9 + 4  =>  1+18+4  =>  23
+    show("1 + 2*3^2 + 4", 1 + 2 * 3 ^ 2 + 4);
+
+    // 10. Grouping changes everything
+    show("((1 + 2) * 3) ^ 2 + 4", ((1 + 2) * 3) ^ 2 + 4);
+
+    // 11. Multiplication vs modulo (same precedence, left-to-right)
+    // 5 * 7 % 3  =>  (5*7) % 3  =>  35 % 3  =>  2
+    show("5 * 7 % 3 (left-to-right)", 5 * 7 % 3);
+    show("5 * (7 % 3)", 5 * (7 % 3));
+
+    print("--- Precedence demo complete ---")
+}

@@ -1,0 +1,85 @@
+// 54_protocol_basic.hulk
+// Basic protocol definition and dispatch through protocol-typed parameters
+
+protocol Describable {
+    describe(): String;
+}
+
+protocol Measurable {
+    measure(): Number;
+}
+
+type Circle(r: Number) {
+    radius = r;
+    describe(): String => "Circle with radius " @ self.radius;
+    measure(): Number => PI * self.radius ^ 2;
+    circumference(): Number => 2 * PI * self.radius;
+}
+
+type Square(side: Number) {
+    side = side;
+    describe(): String => "Square with side " @ self.side;
+    measure(): Number => self.side ^ 2;
+    perimeter(): Number => 4 * self.side;
+}
+
+type Rectangle(w: Number, h: Number) {
+    width  = w;
+    height = h;
+    describe(): String => "Rectangle " @ self.width @ "x" @ self.height;
+    measure(): Number => self.width * self.height;
+    perimeter(): Number => 2 * (self.width + self.height);
+}
+
+type Triangle(base: Number, height: Number) {
+    base   = base;
+    height = height;
+    describe(): String => "Triangle base=" @ self.base @ " height=" @ self.height;
+    measure(): Number => 0.5 * self.base * self.height;
+}
+
+function print_description(d: Describable) {
+    print("Description: " @ d.describe())
+}
+
+function print_measure(m: Measurable) {
+    print("Area: " @ m.measure())
+}
+
+function print_shape(d: Describable, m: Measurable) {
+    print_description(d);
+    print_measure(m)
+}
+
+function compare_areas(a: Measurable, b: Measurable): String =>
+    if (a.measure() > b.measure()) "first is larger"
+    elif (a.measure() < b.measure()) "second is larger"
+    else "equal areas";
+
+{
+    let c  = new Circle(5) in
+    let sq = new Square(8) in
+    let r  = new Rectangle(6, 7) in
+    let t  = new Triangle(10, 4) in {
+        print("=== Circle ===");
+        print_description(c);
+        print_measure(c);
+
+        print("=== Square ===");
+        print_description(sq);
+        print_measure(sq);
+
+        print("=== Rectangle ===");
+        print_description(r);
+        print_measure(r);
+
+        print("=== Triangle ===");
+        print_description(t);
+        print_measure(t);
+
+        print("=== Comparisons ===");
+        print("Circle vs Square:    " @ compare_areas(c, sq));
+        print("Square vs Rectangle: " @ compare_areas(sq, r));
+        print("Rectangle vs Circle: " @ compare_areas(r, c))
+    }
+}

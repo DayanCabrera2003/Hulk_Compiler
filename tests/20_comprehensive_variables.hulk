@@ -1,0 +1,129 @@
+// 20_comprehensive_variables.hulk
+// Comprehensive program: simple bank account simulation
+// Uses let, :=, functions, while, if, all variable features together
+
+// --- Utility helpers ---
+
+function absval(x: Number): Number =>
+    if (x >= 0) x else (0 - x);
+
+// Format a monetary amount as a string with 2 decimal places (truncated)
+function format_money(amount: Number): String {
+    let whole = amount - (amount % 1) in
+    let cents_raw = (amount % 1) * 100 in
+    let cents = cents_raw - (cents_raw % 1) in
+    "$" @ whole @ "." @ cents
+}
+
+// --- Account operations ---
+// Each operation takes the current balance and returns the new balance.
+// Errors are printed and the original balance is returned unchanged.
+
+function deposit(balance: Number, amount: Number): Number {
+    if (amount <= 0) {
+        print("[ERROR] Deposit amount must be positive. Got: " @ amount);
+        balance
+    } else {
+        let new_balance = balance + amount in {
+            print("[DEPOSIT ] +" @ format_money(amount) @ "  -> Balance: " @ format_money(new_balance));
+            new_balance
+        }
+    }
+}
+
+function withdraw(balance: Number, amount: Number): Number {
+    if (amount <= 0) {
+        print("[ERROR] Withdrawal amount must be positive. Got: " @ amount);
+        balance
+    } elif (amount > balance) {
+        print("[ERROR] Insufficient funds. Requested: " @ format_money(amount) @ "  Available: " @ format_money(balance));
+        balance
+    } else {
+        let new_balance = balance - amount in {
+            print("[WITHDRAW] -" @ format_money(amount) @ "  -> Balance: " @ format_money(new_balance));
+            new_balance
+        }
+    }
+}
+
+function check_balance(balance: Number): Number {
+    print("[BALANCE ] " @ format_money(balance));
+    balance
+}
+
+// Apply monthly interest at a given annual rate (simple monthly compounding)
+function apply_interest(balance: Number, annual_rate: Number): Number {
+    let monthly_rate = annual_rate \ 12 in
+    let interest = balance * monthly_rate in
+    let new_balance = balance + interest in {
+        print("[INTEREST] +" @ format_money(interest) @ "  -> Balance: " @ format_money(new_balance));
+        new_balance
+    }
+}
+
+// --- Transaction processor ---
+// Processes a batch of transactions stored in two parallel vectors:
+//   types: 1=deposit, 2=withdrawal, 3=interest, 4=balance-check
+//   amounts: corresponding amounts (ignored for type 3 and 4)
+
+function process_transactions(
+    initial_balance: Number,
+    types: Number[],
+    amounts: Number[],
+    annual_rate: Number
+): Number {
+    let balance = initial_balance, i = 0, n = types.size() in {
+        while (i < n) {
+            let txtype = types[i], txamt = amounts[i] in {
+                if (txtype == 1)
+                    balance := deposit(balance, txamt)
+                elif (txtype == 2)
+                    balance := withdraw(balance, txamt)
+                elif (txtype == 3)
+                    balance := apply_interest(balance, annual_rate)
+                elif (txtype == 4)
+                    balance := check_balance(balance)
+                else
+                    print("[WARN] Unknown transaction type: " @ txtype);
+            };
+            i := i + 1;
+        };
+        balance
+    }
+}
+
+// --- Main program ---
+{
+    print("======================================");
+    print("  HULK Bank — Account Simulation");
+    print("======================================");
+
+    // Open account with initial deposit
+    let opening_balance = 500 in {
+        print("Opening account with: " @ format_money(opening_balance));
+        print("--------------------------------------");
+
+        // Transaction log — parallel vectors
+        //   types : 1=deposit, 2=withdraw, 3=interest, 4=check
+        //   amounts: 0 means unused
+        let tx_types   = [4, 1, 2, 1, 4, 2, 2, 3, 4, 2, 1, 3, 4] in
+        let tx_amounts = [0, 200, 50, 1000, 0, 750, 2000, 0, 0, 300, 150, 0, 0] in
+        let annual_rate = 0.06 in
+
+        let final_balance = process_transactions(opening_balance, tx_types, tx_amounts, annual_rate) in {
+            print("--------------------------------------");
+            print("Final balance: " @ format_money(final_balance));
+
+            // Classify account health
+            let status =
+                if (final_balance <= 0) "OVERDRAWN"
+                elif (final_balance < 100) "LOW FUNDS"
+                elif (final_balance < 1000) "NORMAL"
+                else "HEALTHY"
+            in
+            print("Account status: " @ status);
+        };
+    };
+
+    print("======================================");
+}

@@ -419,3 +419,64 @@ fn no_error_macro_call() {
         bag.diagnostics()
     );
 }
+
+// ─── attribute access ────────────────────────────────────────────────────────
+// Field access `recv.attr` is validated against the attributes reachable from
+// the enclosing type: its own attributes plus those inherited from ancestors.
+// Naming an attribute that exists nowhere in that hierarchy is a typo and is
+// rejected; inherited access is allowed (the project's idiomatic recursive
+// data structures such as Cons/List depend on reading a supertype's field).
+
+#[test]
+fn no_error_inheritor_reads_inherited_attribute() {
+    let bag = run(
+        "inheritor_reads_inherited_attr",
+        r#"type Base(p: Number) {
+    field: Number = p;
+    show(): Number => self.field;
+}
+type Derived(p: Number) inherits Base(p) {
+    use_it(): Number => self.field;
+}
+0;"#,
+    );
+    assert!(
+        !bag.has_errors(),
+        "inherited attribute access should not error: {:?}",
+        bag.diagnostics()
+    );
+}
+
+#[test]
+fn error_field_access_to_undeclared_attribute() {
+    let bag = run(
+        "field_undeclared",
+        r#"type T(n: Number) {
+    n: Number = n;
+    bad(): Number => self.missing;
+}
+0;"#,
+    );
+    assert_error(&bag, "atributo no existe: missing");
+}
+
+#[test]
+fn no_error_field_access_same_type_other_instance() {
+    // Accessing an attribute of another instance of the *same* type from
+    // inside that type's own method is legal — `dot` is code inside Vec2,
+    // so it can read any Vec2's `x`/`y`. Guards against a false positive.
+    let bag = run(
+        "field_same_type_other",
+        r#"type Vec2(x: Number, y: Number) {
+    x: Number = x;
+    y: Number = y;
+    dot(other: Vec2): Number => self.x * other.x + self.y * other.y;
+}
+let a = new Vec2(1, 2) in let b = new Vec2(3, 4) in print(a.dot(b));"#,
+    );
+    assert!(
+        !bag.has_errors(),
+        "same-type field access should not error: {:?}",
+        bag.diagnostics()
+    );
+}

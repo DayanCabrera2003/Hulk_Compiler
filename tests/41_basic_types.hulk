@@ -1,0 +1,79 @@
+// 41_basic_types.hulk — Basic type definition: Point and Rectangle
+
+type Point(px, py) {
+    x = px;
+    y = py;
+
+    getX() => self.x;
+    getY() => self.y;
+
+    setX(v) {
+        self.x := v;
+        self.x;
+    }
+
+    setY(v) {
+        self.y := v;
+        self.y;
+    }
+
+    distance_to(other_x, other_y) {
+        let dx = self.x - other_x in
+        let dy = self.y - other_y in
+        sqrt(dx ^ 2 + dy ^ 2);
+    }
+
+    to_string() => "Point(" @ self.x @ "," @ self.y @ ")";
+}
+
+type Rectangle(tx, ty, w, h) {
+    top_x = tx;
+    top_y = ty;
+    width  = w;
+    height = h;
+
+    area()      => self.width * self.height;
+    perimeter() => 2 * (self.width + self.height);
+
+    contains(px, py) {
+        let in_x = (px >= self.top_x) & (px <= self.top_x + self.width)  in
+        let in_y = (py >= self.top_y) & (py <= self.top_y + self.height) in
+        in_x & in_y;
+    }
+
+    describe() =>
+        "Rectangle at (" @ self.top_x @ "," @ self.top_y @ ")"
+        @@ "size" @@ self.width @ "x" @ self.height;
+}
+
+{
+    let p1 = new Point(3, 4) in
+    let p2 = new Point(0, 0) in {
+        print("=== Point tests ===");
+        print(p1.to_string());
+        print("getX:" @@ p1.getX());
+        print("getY:" @@ p1.getY());
+
+        // distance from (3,4) to origin => 5
+        let d = p1.distance_to(p2.getX(), p2.getY()) in
+        print("Distance to origin:" @@ d);
+
+        // mutation via setX/setY
+        p1.setX(6);
+        p1.setY(8);
+        print("After set:" @@ p1.to_string());
+        let d2 = p1.distance_to(0, 0) in
+        print("New distance to origin:" @@ d2);
+
+        print("=== Rectangle tests ===");
+        let r = new Rectangle(1, 1, 10, 5) in {
+            print(r.describe());
+            print("Area:" @@ r.area());
+            print("Perimeter:" @@ r.perimeter());
+            print("Contains (5,3):" @@ r.contains(5, 3));
+            print("Contains (11,3):" @@ r.contains(11, 3));
+            print("Contains (1,1):" @@ r.contains(1, 1));
+            print("Contains (11,6):" @@ r.contains(11, 6));
+        };
+    };
+}

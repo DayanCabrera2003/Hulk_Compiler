@@ -1,0 +1,97 @@
+// 58_complex_oop_program.hulk
+// Stack data structure implemented with a fixed-size backing vector
+
+// Maximum capacity for this stack
+// Stack stores numbers in a pre-allocated vector, tracking top index
+
+type Stack(capacity: Number) {
+    data  = [0 | x in range(0, capacity)];
+    top   = -1;
+    cap   = capacity;
+
+    push(val: Number): Boolean {
+        if (self.top < self.cap - 1) {
+            self.top := self.top + 1;
+            self.data[self.top] := val;
+            true
+        } else {
+            print("Stack overflow!");
+            false
+        }
+    };
+
+    pop(): Number {
+        if (self.top >= 0) {
+            let val = self.data[self.top] in {
+                self.top := self.top - 1;
+                val
+            }
+        } else {
+            print("Stack underflow!");
+            -1
+        }
+    };
+
+    peek(): Number =>
+        if (self.top >= 0) self.data[self.top]
+        else { print("Stack is empty!"); -1 };
+
+    is_empty(): Boolean => self.top < 0;
+
+    size(): Number => self.top + 1;
+
+    print_all() {
+        if (self.is_empty()) {
+            print("Stack is empty")
+        } else {
+            print("Stack (top -> bottom):");
+            let i = self.top in
+                while (i >= 0) {
+                    print("  " @ self.data[i]);
+                    i := i - 1
+                }
+        }
+    };
+}
+
+{
+    let s = new Stack(10) in {
+        print("=== Push 1..5 ===");
+        s.push(10);
+        s.push(20);
+        s.push(30);
+        s.push(40);
+        s.push(50);
+        s.print_all();
+        print("Size: " @ s.size());
+        print("Peek: " @ s.peek());
+
+        print("=== Pop two elements ===");
+        print("Pop: " @ s.pop());
+        print("Pop: " @ s.pop());
+        s.print_all();
+
+        print("=== Push more ===");
+        s.push(99);
+        s.push(77);
+        s.print_all();
+
+        print("=== Drain the stack ===");
+        while (!s.is_empty()) {
+            print("Popped: " @ s.pop())
+        };
+
+        print("Is empty: " @ s.is_empty());
+
+        print("=== Underflow test ===");
+        s.pop();
+
+        print("=== Fill and check overflow ===");
+        let i = 0 in
+            while (i < 12) {
+                s.push(i * 3);
+                i := i + 1
+            };
+        print("Final size: " @ s.size())
+    }
+}

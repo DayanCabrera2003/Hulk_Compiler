@@ -1,0 +1,111 @@
+// 26_higher_order_patterns.hulk — Functions as building blocks \ composition patterns
+
+// Base mathematical functions
+function double(x: Number): Number => x * 2;
+function triple(x: Number): Number => x * 3;
+function increment(x: Number): Number => x + 1;
+function square(x: Number): Number => x ^ 2;
+function negate(x: Number): Number => 0 - x;
+function half(x: Number): Number => x \ 2;
+function add_ten(x: Number): Number => x + 10;
+
+// apply_twice: applies a numeric->numeric function f twice to x
+// Because HULK doesn't have first-class functions, we simulate with an index
+// strategy: pass a tag (0=double,1=increment,2=square,3=negate) and dispatch
+function apply_fn(tag: Number, x: Number): Number =>
+    if (tag == 0) double(x)
+    elif (tag == 1) increment(x)
+    elif (tag == 2) square(x)
+    elif (tag == 3) negate(x)
+    elif (tag == 4) half(x)
+    else add_ten(x);
+
+function apply_twice(tag: Number, x: Number): Number =>
+    apply_fn(tag, apply_fn(tag, x));
+
+// iterate_n: apply f n times starting from x
+function iterate_n(tag: Number, x: Number, n: Number): Number =>
+    if (n <= 0) x else iterate_n(tag, apply_fn(tag, x), n - 1);
+
+// Numerical differentiation: (f(x+h) - f(x-h)) \ (2h)
+// f identified by tag: 0=x^2, 1=x^3, 2=sin(x), 3=exp(x)
+function eval_smooth(tag: Number, x: Number): Number =>
+    if (tag == 0) x ^ 2
+    elif (tag == 1) x ^ 3
+    elif (tag == 2) sin(x)
+    else exp(x);
+
+function deriv(tag: Number, x: Number): Number {
+    let h = 0.0001 in
+    (eval_smooth(tag, x + h) - eval_smooth(tag, x - h)) \ (2 * h)
+}
+
+// Newton's method for sqrt(target) starting from guess
+function newton_sqrt_step(x: Number, target: Number): Number =>
+    (x + target \ x) \ 2;
+
+function newton_sqrt(target: Number, steps: Number): Number {
+    let guess = target \ 2 in
+    let i = 0 in
+    {
+        while (i < steps) {
+            guess := newton_sqrt_step(guess, target);
+            i := i + 1;
+        };
+        guess
+    }
+}
+
+// Compose two tagged smooth functions: compose(f_tag, g_tag, x) = f(g(x))
+function compose_smooth(f_tag: Number, g_tag: Number, x: Number): Number =>
+    eval_smooth(f_tag, eval_smooth(g_tag, x));
+
+{
+    print("=== apply_twice ===");
+    print("  double twice on 3: " @ apply_twice(0, 3));
+    print("  increment twice on 10: " @ apply_twice(1, 10));
+    print("  square twice on 2: " @ apply_twice(2, 2));
+    print("  negate twice on 5: " @ apply_twice(3, 5));
+
+    print("");
+    print("=== iterate_n (double, start=1) ===");
+    let n = 0 in
+    while (n <= 8) {
+        print("  iterate_n(double, 1, " @ n @ ") = " @ iterate_n(0, 1, n));
+        n := n + 1;
+    };
+
+    print("");
+    print("=== iterate_n (increment, start=0) ===");
+    let m = 0 in
+    while (m <= 6) {
+        print("  iterate_n(inc, 0, " @ m @ ") = " @ iterate_n(1, 0, m));
+        m := m + 1;
+    };
+
+    print("");
+    print("=== Numerical Derivatives ===");
+    print("  d/dx[x^2] at x=3  ~ " @ deriv(0, 3) @ "  (exact=6)");
+    print("  d/dx[x^3] at x=2  ~ " @ deriv(1, 2) @ "  (exact=12)");
+    print("  d/dx[sin(x)] at x=0 ~ " @ deriv(2, 0) @ "  (exact=1)");
+    print("  d/dx[exp(x)] at x=1 ~ " @ deriv(3, 1) @ "  (exact~=2.718)");
+
+    print("");
+    print("=== Newton sqrt (10 steps) ===");
+    let targets = [2, 3, 5, 9, 16, 25, 100] in
+    let ti = 0 in
+    while (ti < targets.size()) {
+        let t = targets[ti] in
+        let ns = newton_sqrt(t, 10) in
+        print("  sqrt(" @ t @ ") ~ " @ ns @ "  builtin=" @ sqrt(t));
+        ti := ti + 1;
+    };
+
+    print("");
+    print("=== Composed functions: sin(x^2) at several x ===");
+    let xi = 0 in
+    while (xi <= 5) {
+        print("  sin(x^2) at x=" @ xi @ " = " @ compose_smooth(2, 0, xi));
+        xi := xi + 1;
+    };
+}

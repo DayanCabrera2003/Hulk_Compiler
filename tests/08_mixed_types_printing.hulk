@@ -1,0 +1,82 @@
+// 08_mixed_types_printing.hulk
+// Prints numbers, booleans via if-conditions, and strings with rich formatting
+
+// Format a boolean as "YES" or "NO"
+function yes_no(b: Boolean): String => if (b) "YES" else "NO";
+
+// Format a number with a label and unit
+function fmt_num(label: String, value: Number, unit: String): String =>
+    label @ ": " @ value @ " " @ unit;
+
+// Format a comparison result
+function compare(label: String, a: Number, b: Number): String =>
+    label @ "(" @ a @ ", " @ b @ ") => " @
+    if (a < b) "less" elif (a > b) "greater" else "equal";
+
+// Classify a number as negative, zero or positive
+function sign_label(n: Number): String =>
+    if (n < 0) "negative" elif (n == 0) "zero" else "positive";
+
+{
+    // Section 1: Simple number prints
+    print("=== Numbers ===");
+    print("The answer: " @ 42);
+    print("Pi approx:  " @ 3 * 4 ^ 0 + 0 * 1);     // just 3, silly warmup
+    print("PI constant: " @ PI);
+    print("E constant:  " @ E);
+
+    // Section 2: Arithmetic results with descriptive strings
+    print("=== Arithmetic Results ===");
+    let x = 5 in
+    print("The result of x^2 for x=5 is " @ (x ^ 2));
+    let y = 12 in
+    print("The result of x^2 for x=12 is " @ (y ^ 2));
+    print("sqrt(2) = " @ sqrt(2));
+    print("2^10 = " @ 2 ^ 10);
+    print("7 % 3 = " @ 7 % 3);
+
+    // Section 3: Formatted with unit helper
+    print("=== Formatted Values ===");
+    print(fmt_num("Speed", 299792458, "m/s"));
+    print(fmt_num("Temperature", 37, "deg C"));
+    print(fmt_num("Distance", 384400, "km"));
+    print(fmt_num("Area", PI * 5 ^ 2, "sq units"));
+
+    // Section 4: Boolean conditions printed as YES/NO
+    print("=== Boolean Tests ===");
+    print("10 > 5?  " @ yes_no(10 > 5));
+    print("3 == 4?  " @ yes_no(3 == 4));
+    print("7 != 8?  " @ yes_no(7 != 8));
+    print("sqrt(4)==2? " @ yes_no(sqrt(4) == 2));
+    let val = 6 in
+    print("6 in (0,10)? " @ yes_no((val > 0) & (val < 10)));
+
+    // Section 5: Comparisons
+    print("=== Comparisons ===");
+    print(compare("cmp", 3, 5));
+    print(compare("cmp", 7, 7));
+    print(compare("cmp", 9, 2));
+
+    // Section 6: Sign classification
+    print("=== Sign Labels ===");
+    for (n in [-5, 0, 3, -100, 42]) {
+        print(n @ " is " @ sign_label(n));
+    };
+
+    // Section 7: Mixed string + number + bool
+    print("=== Mixed Expressions ===");
+    let a = 8 in
+    let b = 3 in
+    print("a=" @ a @ " b=" @ b @
+          " | a+b=" @ (a + b) @
+          " | a*b=" @ (a * b) @
+          " | a>b: " @ yes_no(a > b));
+
+    let radius = 7 in
+    let area = PI * radius ^ 2 in
+    print("Circle radius=" @ radius @
+          " area=" @ area @
+          " (>100? " @ yes_no(area > 100) @ ")");
+
+    print("--- Mixed types printing complete ---")
+}

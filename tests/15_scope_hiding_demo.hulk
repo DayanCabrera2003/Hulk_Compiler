@@ -1,0 +1,69 @@
+// 15_scope_hiding_demo.hulk
+// Demonstrates scope hiding and variable shadowing in HULK
+
+// Helper: print current value of a variable with depth label
+function show_depth(depth: Number, name: String, value: Number): Number =>
+    print("[depth " @ depth @ "] " @ name @ " = " @ value);
+
+{
+    // Level 1: outermost binding
+    let value = 1 in {
+        show_depth(1, "value", value);
+
+        // Level 2: same name shadows level 1
+        let value = 2 in {
+            show_depth(2, "value", value);
+
+            // Level 3: shadows level 2
+            let value = 3 in {
+                show_depth(3, "value", value);
+
+                // Level 4: shadows level 3
+                let value = 4 in {
+                    show_depth(4, "value", value);
+
+                    // Level 5: innermost shadow
+                    let value = 5 in
+                        show_depth(5, "value", value);
+
+                    // Back in level 4: original level-4 value visible again
+                    show_depth(4, "value (restored)", value);
+                };
+
+                // Back in level 3
+                show_depth(3, "value (restored)", value);
+            };
+
+            // Back in level 2
+            show_depth(2, "value (restored)", value);
+        };
+
+        // Back in level 1
+        show_depth(1, "value (restored)", value);
+    };
+
+    // Demonstrate: inner let with DIFFERENT name does NOT hide outer
+    let outer_x = 100 in {
+        print("outer_x before inner scope = " @ outer_x);
+        let inner_y = 42 in
+            print("inner_y = " @ inner_y @ ", outer_x still = " @ outer_x);
+        print("outer_x after inner scope = " @ outer_x);
+    };
+
+    // Demonstrate: multiple bindings — later bindings CAN see earlier ones
+    let a = 10, b = a * 2, c = a + b in {
+        print("a=" @ a @ " b=" @ b @ " c=" @ c);
+        // Shadow a inside
+        let a = 99 in
+            print("Inside shadow: a=" @ a @ " b and c unchanged: b=" @ b @ " c=" @ c);
+        // a is 10 again here
+        print("After shadow: a=" @ a);
+    };
+
+    // Demonstrate: shadowing in a function argument position
+    let n = 7 in {
+        let result = let n = n * n in n + 1 in
+        print("n=7 outside; inside shadow n=n*n=49, result=49+1=" @ result);
+        print("n after shadow block = " @ n);
+    };
+}

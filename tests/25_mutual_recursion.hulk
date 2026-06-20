@@ -1,0 +1,78 @@
+// 25_mutual_recursion.hulk — Mutually recursive functions (forward references)
+
+// is_even and is_odd call each other; HULK supports forward references
+function is_even_r(n: Number): Boolean =>
+    if (n == 0) true else is_odd_r(n - 1);
+
+function is_odd_r(n: Number): Boolean =>
+    if (n == 0) false else is_even_r(n - 1);
+
+// Hofstadter Female (F) and Male (M) sequences
+// F(0)=1, F(n)=n-M(F(n-1))
+// M(0)=0, M(n)=n-F(M(n-1))
+function hofstadter_f(n: Number): Number =>
+    if (n == 0) 1 else n - hofstadter_m(hofstadter_f(n - 1));
+
+function hofstadter_m(n: Number): Number =>
+    if (n == 0) 0 else n - hofstadter_f(hofstadter_m(n - 1));
+
+// even_count: count even numbers in 1..n (calls odd_remaining)
+// odd_count: count odd numbers in 1..n (calls even_count)
+function even_count(n: Number): Number =>
+    if (n == 0) 0
+    elif (is_even_r(n)) even_count(n - 1) + 1
+    else even_count(n - 1);
+
+function odd_count(n: Number): Number =>
+    if (n == 0) 0
+    elif (is_odd_r(n)) odd_count(n - 1) + 1
+    else odd_count(n - 1);
+
+// A mutual recursion for counting up: ping(n) prints "ping" then calls pong
+function count_pings(n: Number): Number =>
+    if (n <= 0) 0 else count_pongs(n - 1) + 1;
+
+function count_pongs(n: Number): Number =>
+    if (n <= 0) 0 else count_pings(n - 1) + 1;
+
+{
+    print("=== Mutually Recursive is_even \ is_odd ===");
+    let i = 0 in
+    while (i <= 10) {
+        print("  " @ i @ ": even=" @ is_even_r(i) @ "  odd=" @ is_odd_r(i));
+        i := i + 1;
+    };
+
+    print("");
+    print("=== Hofstadter F and M Sequences ===");
+    let j = 0 in
+    while (j <= 12) {
+        print("  n=" @ j @ "  F=" @ hofstadter_f(j) @ "  M=" @ hofstadter_m(j));
+        j := j + 1;
+    };
+
+    print("");
+    print("=== even_count and odd_count via mutual recursion ===");
+    let k = 1 in
+    while (k <= 10) {
+        print("  1.." @ k @ "  evens=" @ even_count(k) @ "  odds=" @ odd_count(k));
+        k := k + 1;
+    };
+
+    print("");
+    print("=== Ping \ Pong count (mutual recursion depth) ===");
+    let n = 1 in
+    while (n <= 8) {
+        print("  count_pings(" @ n @ ") = " @ count_pings(n));
+        n := n + 1;
+    };
+
+    print("");
+    print("=== Verify: even_count + odd_count == n ===");
+    let m = 1 in
+    while (m <= 8) {
+        let sum = even_count(m) + odd_count(m) in
+        print("  n=" @ m @ "  even+odd=" @ sum @ "  ok=" @ (sum == m));
+        m := m + 1;
+    };
+}

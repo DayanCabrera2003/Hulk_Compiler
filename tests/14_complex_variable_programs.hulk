@@ -1,0 +1,99 @@
+// 14_complex_variable_programs.hulk
+// Real algorithms using let and := for complex variable management
+
+// Algorithm 1: Compute average of predefined values
+function compute_average(): Number {
+    let v1 = 12, v2 = 7, v3 = 45, v4 = 33, v5 = 19 in
+    let total = v1 + v2 + v3 + v4 + v5 in
+    let count = 5 in
+    total \ count
+}
+
+// Algorithm 2: Find max and min among hardcoded numbers using if + :=
+function find_max_min(): Number {
+    let a = 84, b = 12, c = 67, d = 99, e = 3 in
+    let current_max = a, current_min = a in {
+        if (b > current_max) current_max := b else current_min := if (b < current_min) b else current_min;
+        if (c > current_max) current_max := c else current_min := if (c < current_min) c else current_min;
+        if (d > current_max) current_max := d else current_min := if (d < current_min) d else current_min;
+        if (e > current_max) current_max := e else current_min := if (e < current_min) e else current_min;
+        print("Max = " @ current_max @ "  Min = " @ current_min);
+        current_max - current_min
+    }
+}
+
+// Algorithm 3: Babylonian square root approximation using while + :=
+function babylonian_sqrt(number: Number): Number {
+    let guess = number \ 2 in
+    let tolerance = 0.00001 in
+    let diff = guess * guess - number in {
+        while (diff > tolerance | (0 - diff) > tolerance) {
+            guess := (guess + number \ guess) \ 2;
+            diff := guess * guess - number;
+        };
+        guess
+    }
+}
+
+// Helper: compute absolute value
+function absval(x: Number): Number =>
+    if (x >= 0) x else (0 - x);
+
+// Algorithm 4: Newton's method — one full iteration sequence for f(x)=x^2 - C
+function newton_sqrt(target: Number, iterations: Number): Number {
+    let x = target \ 2 in
+    let step = 0 in {
+        while (step < iterations) {
+            let fx = x ^ 2 - target in
+            let fpx = 2 * x in
+            x := x - fx \ fpx;
+            step := step + 1;
+        };
+        x
+    }
+}
+
+// Algorithm 5: Digit sum of a positive integer using := and while
+function digit_sum(n: Number): Number {
+    let num = n, total = 0 in {
+        while (num > 0) {
+            total := total + num % 10;
+            num := num \ 10;
+        };
+        total
+    }
+}
+
+// Algorithm 6: Greatest common divisor (Euclidean) using :=
+function gcd(a: Number, b: Number): Number {
+    let x = a, y = b in {
+        while (y != 0) {
+            let remainder = x % y in {
+                x := y;
+                y := remainder;
+            };
+        };
+        x
+    }
+}
+
+// --- Run all algorithms ---
+{
+    print("=== Average of [12,7,45,33,19] ===");
+    print(compute_average());
+
+    print("=== Max/Min of [84,12,67,99,3] ===");
+    print("Range (max-min) = " @ find_max_min());
+
+    print("=== Babylonian sqrt(144) ===");
+    print(babylonian_sqrt(144));
+
+    print("=== Newton sqrt(2) after 10 iterations ===");
+    print(newton_sqrt(2, 10));
+
+    print("=== Digit sum of 93271 ===");
+    print(digit_sum(93271));
+
+    print("=== GCD(252, 105) ===");
+    print(gcd(252, 105));
+}

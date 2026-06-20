@@ -1,0 +1,95 @@
+// 02_arithmetic_operations.hulk
+// Exhaustive arithmetic: +, -, *, \, ^, % with let bindings and print
+
+{
+    // Basic addition
+    let a = 15 in
+    let b = 27 in
+    print("Addition: " @ a @ " + " @ b @ " = " @ (a + b));
+
+    // Subtraction
+    let x = 100 in
+    let y = 38 in
+    print("Subtraction: " @ x @ " - " @ y @ " = " @ (x - y));
+
+    // Multiplication
+    let p = 7 in
+    let q = 13 in
+    print("Multiplication: " @ p @ " * " @ q @ " = " @ (p * q));
+
+    // Division using backslash
+    let num = 144 in
+    let den = 12 in
+    print("Division: " @ num @ " \\ " @ den @ " = " @ (num \ den));
+
+    // Fractional division
+    let fd = 22 \ 7 in
+    print("22 \\ 7 = " @ fd);
+
+    // Power operator ^
+    let base = 2 in
+    let exp = 10 in
+    print("Power: " @ base @ " ^ " @ exp @ " = " @ (base ^ exp));
+
+    // Modulo operator %
+    let dividend = 97 in
+    let divisor = 11 in
+    print("Modulo: " @ dividend @ " % " @ divisor @ " = " @ (dividend % divisor));
+
+    // Negation
+    let neg = -42 in
+    print("Negation: -42 = " @ neg);
+
+    // Chained addition
+    let chain = 1 + 2 + 3 + 4 + 5 in
+    print("1+2+3+4+5 = " @ chain);
+
+    // Mixed operations
+    let mixed = 3 * 4 + 2 * 5 in
+    print("3*4 + 2*5 = " @ mixed);
+
+    // Using grouping to alter evaluation
+    let grouped = (3 + 4) * (2 + 5) in
+    print("(3+4)*(2+5) = " @ grouped);
+
+    // Power of a power
+    let pp = 2 ^ 3 ^ 1 in
+    print("2^3^1 = " @ pp);
+
+    // Square root via power 0.5
+    let sq = 81 ^ 0.5 in
+    print("81 ^ 0.5 = " @ sq);
+
+    // Large multiplication
+    let large = 999 * 999 in
+    print("999 * 999 = " @ large);
+
+    // Floating point mix
+    let flt = 1.5 * 4 + 0.5 * 4 in
+    print("1.5*4 + 0.5*4 = " @ flt);
+
+    // Modulo of floating numbers (approximation)
+    let fmod = 10 % 3 in
+    print("10 % 3 = " @ fmod);
+
+    // Compound expression: (a+b)*(a-b) = a^2 - b^2
+    let ca = 8 in
+    let cb = 3 in
+    let direct = ca ^ 2 - cb ^ 2 in
+    let factored = (ca + cb) * (ca - cb) in
+    print("a^2-b^2 = " @ direct @ " and (a+b)*(a-b) = " @ factored);
+
+    // Arithmetic with PI approximation
+    let pi_approx = 355 \ 113 in
+    print("355\\113 (pi approx) = " @ pi_approx);
+
+    // Division yielding fractional result
+    let frac = 1 \ 3 in
+    print("1 \\ 3 = " @ frac);
+
+    // Sum of squares
+    let s1 = 3 in
+    let s2 = 4 in
+    let hyp = (s1 ^ 2 + s2 ^ 2) ^ 0.5 in
+    print("Hypotenuse of 3-4 triangle = " @ hyp)
+}

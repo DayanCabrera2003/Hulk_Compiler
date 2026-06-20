@@ -1,0 +1,73 @@
+// 31_conditional_showcase.hulk
+// Exhaustive if/elif/else showcase: classify numbers, triangles, BMI, seasons
+
+function classify_number(n: Number): String =>
+    if (n < 0) "negative"
+    elif (n == 0) "zero"
+    elif (n < 10) "small positive"
+    elif (n < 100) "medium"
+    else "large";
+
+function classify_triangle(a: Number, b: Number, c: Number): String =>
+    if (a <= 0 | b <= 0 | c <= 0) "invalid"
+    elif (a + b <= c | a + c <= b | b + c <= a) "invalid"
+    elif (a == b & b == c) "equilateral"
+    elif (a == b | b == c | a == c) "isosceles"
+    else "scalene";
+
+function classify_bmi(bmi: Number): String =>
+    if (bmi < 18.5) "underweight"
+    elif (bmi < 25.0) "normal"
+    elif (bmi < 30.0) "overweight"
+    else "obese";
+
+function classify_season(month: Number): String =>
+    if (month < 1 | month > 12) "invalid month"
+    elif (month == 12 | month == 1 | month == 2) "winter"
+    elif (month == 3 | month == 4 | month == 5) "spring"
+    elif (month == 6 | month == 7 | month == 8) "summer"
+    else "autumn";
+
+function print_number_cases() {
+    print("=== Number Classification ===");
+    print("classify(-5) = " @ classify_number(-5));
+    print("classify(0)  = " @ classify_number(0));
+    print("classify(7)  = " @ classify_number(7));
+    print("classify(42) = " @ classify_number(42));
+    print("classify(999)= " @ classify_number(999));
+}
+
+function print_triangle_cases() {
+    print("=== Triangle Classification ===");
+    print("(5,5,5) = " @ classify_triangle(5, 5, 5));
+    print("(3,3,5) = " @ classify_triangle(3, 3, 5));
+    print("(3,4,5) = " @ classify_triangle(3, 4, 5));
+    print("(1,2,10)= " @ classify_triangle(1, 2, 10));
+    print("(0,4,5) = " @ classify_triangle(0, 4, 5));
+}
+
+function print_bmi_cases() {
+    print("=== BMI Classification ===");
+    print("bmi=17.0 -> " @ classify_bmi(17.0));
+    print("bmi=22.5 -> " @ classify_bmi(22.5));
+    print("bmi=27.3 -> " @ classify_bmi(27.3));
+    print("bmi=35.0 -> " @ classify_bmi(35.0));
+}
+
+function print_season_cases() {
+    print("=== Season Classification ===");
+    print("month=1  -> " @ classify_season(1));
+    print("month=4  -> " @ classify_season(4));
+    print("month=7  -> " @ classify_season(7));
+    print("month=10 -> " @ classify_season(10));
+    print("month=12 -> " @ classify_season(12));
+    print("month=13 -> " @ classify_season(13));
+}
+
+{
+    print_number_cases();
+    print_triangle_cases();
+    print_bmi_cases();
+    print_season_cases();
+    print("Done.");
+}

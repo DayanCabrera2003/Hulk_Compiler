@@ -1,0 +1,159 @@
+// 29_gcd_lcm_primes.hulk — Number theory: GCD, LCM, primes, divisors
+
+// Euclidean GCD using while loop
+function gcd(a: Number, b: Number): Number {
+    let x = a in
+    let y = b in
+    {
+        while (y != 0) {
+            let tmp = y in
+            {
+                y := x % y;
+                x := tmp;
+            };
+        };
+        x
+    }
+}
+
+// LCM via GCD
+function lcm(a: Number, b: Number): Number => (a * b) \ gcd(a, b);
+
+// Trial division primality test
+function is_prime(n: Number): Boolean {
+    if (n < 2) {
+        false
+    } elif (n == 2) {
+        true
+    } elif ((n % 2) == 0) {
+        false
+    } else {
+        let d = 3 in
+        let found = false in
+        {
+            while ((d * d <= n) & !found) {
+                if ((n % d) == 0) {
+                    found := true;
+                } else {
+                    d := d + 2;
+                };
+            };
+            !found
+        }
+    }
+}
+
+// Count divisors of n
+function count_divisors(n: Number): Number {
+    let count = 0 in
+    let d = 1 in
+    {
+        while (d <= n) {
+            if ((n % d) == 0) {
+                count := count + 1;
+            };
+            d := d + 1;
+        };
+        count
+    }
+}
+
+// Sum of all divisors (including n)
+function sum_of_divisors(n: Number): Number {
+    let total = 0 in
+    let d = 1 in
+    {
+        while (d <= n) {
+            if ((n % d) == 0) {
+                total := total + d;
+            };
+            d := d + 1;
+        };
+        total
+    }
+}
+
+// Perfect number: sum of proper divisors = n (i.e. sum_all - n == n)
+function is_perfect(n: Number): Boolean =>
+    (sum_of_divisors(n) - n) == n;
+
+// Nth prime (find by scanning)
+function nth_prime(k: Number): Number {
+    let count = 0 in
+    let candidate = 2 in
+    let result = 2 in
+    {
+        while (count < k) {
+            if (is_prime(candidate)) {
+                count := count + 1;
+                result := candidate;
+            };
+            candidate := candidate + 1;
+        };
+        result
+    }
+}
+
+{
+    print("=== GCD and LCM ===");
+    print("  gcd(48, 18)  = " @ gcd(48, 18));
+    print("  gcd(100, 75) = " @ gcd(100, 75));
+    print("  gcd(17, 13)  = " @ gcd(17, 13));
+    print("  lcm(4, 6)    = " @ lcm(4, 6));
+    print("  lcm(7, 11)   = " @ lcm(7, 11));
+    print("  lcm(12, 18)  = " @ lcm(12, 18));
+
+    print("");
+    print("=== First 20 Primes ===");
+    let count = 0 in
+    let line = "" in
+    let c = 2 in
+    {
+        while (count < 20) {
+            if (is_prime(c)) {
+                line := line @ c @ " ";
+                count := count + 1;
+            };
+            c := c + 1;
+        };
+        print("  " @ line);
+    };
+
+    print("");
+    print("=== Primality checks ===");
+    let tests = [1, 2, 3, 4, 17, 100, 97, 101, 200, 199] in
+    let ti = 0 in
+    while (ti < tests.size()) {
+        let n = tests[ti] in
+        print("  is_prime(" @ n @ ") = " @ is_prime(n));
+        ti := ti + 1;
+    };
+
+    print("");
+    print("=== Divisor counts and sums ===");
+    let ns = [1, 6, 12, 28, 36, 100] in
+    let ni = 0 in
+    while (ni < ns.size()) {
+        let n = ns[ni] in
+        print("  n=" @ n @ "  #divisors=" @ count_divisors(n) @ "  sum=" @ sum_of_divisors(n));
+        ni := ni + 1;
+    };
+
+    print("");
+    print("=== Perfect Numbers ===");
+    let p = 1 in
+    while (p <= 500) {
+        if (is_perfect(p)) {
+            print("  " @ p @ " is PERFECT  (divisors sum to " @ (sum_of_divisors(p) - p) @ ")");
+        };
+        p := p + 1;
+    };
+
+    print("");
+    print("=== nth_prime ===");
+    let k = 1 in
+    while (k <= 10) {
+        print("  prime #" @ k @ " = " @ nth_prime(k));
+        k := k + 1;
+    };
+}

@@ -1,0 +1,95 @@
+// 05_boolean_expressions.hulk
+// Boolean logic: true/false, &, |, !, comparisons, truth-table style output
+
+// Convert boolean to string for readable printing
+function bool_str(b: Boolean): String =>
+    if (b) "true" else "false";
+
+// Print a binary truth-table row
+function table_row(p: Boolean, q: Boolean, and_val: Boolean, or_val: Boolean, imp_val: Boolean) =>
+    print(bool_str(p) @ "\t\t" @ bool_str(q) @
+          "\t\t" @ bool_str(and_val) @
+          "\t\t" @ bool_str(or_val) @
+          "\t\t" @ bool_str(imp_val));
+
+// Logical implication: p -> q  <=>  !p | q
+function implies(p: Boolean, q: Boolean): Boolean => !p | q;
+
+// Exclusive or: exactly one of p, q is true
+function xor(p: Boolean, q: Boolean): Boolean =>
+    (p | q) & !(p & q);
+
+{
+    // Literals
+    let yes = true in
+    let no = false in
+    print("true = " @ bool_str(yes));
+    print("false = " @ bool_str(no));
+
+    // NOT operator
+    print("!true = " @ bool_str(!yes));
+    print("!false = " @ bool_str(!no));
+
+    // AND operator
+    print("true & true = " @ bool_str(yes & yes));
+    print("true & false = " @ bool_str(yes & no));
+    print("false & true = " @ bool_str(no & yes));
+    print("false & false = " @ bool_str(no & no));
+
+    // OR operator
+    print("true | true = " @ bool_str(yes | yes));
+    print("true | false = " @ bool_str(yes | no));
+    print("false | true = " @ bool_str(no | yes));
+    print("false | false = " @ bool_str(no | no));
+
+    // Comparison operators producing booleans
+    let a = 10 in
+    let b = 20 in
+    print("10 < 20 = " @ bool_str(a < b));
+    print("10 > 20 = " @ bool_str(a > b));
+    print("10 <= 10 = " @ bool_str(a <= 10));
+    print("10 >= 20 = " @ bool_str(a >= b));
+    print("10 == 10 = " @ bool_str(a == 10));
+    print("10 != 20 = " @ bool_str(a != b));
+
+    // Compound boolean expressions
+    let x = 5 in
+    let in_range = (x > 0) & (x < 10) in
+    print("5 is in (0,10): " @ bool_str(in_range));
+
+    let y = 15 in
+    let out_of_range = (y < 0) | (y > 10) in
+    print("15 is outside (0,10): " @ bool_str(out_of_range));
+
+    // De Morgan: !(p & q) == (!p | !q)
+    let p = true in
+    let q = false in
+    let demorgan_left = !(p & q) in
+    let demorgan_right = (!p | !q) in
+    print("De Morgan !(p&q) = " @ bool_str(demorgan_left));
+    print("De Morgan !p|!q = " @ bool_str(demorgan_right));
+    print("They match: " @ bool_str(demorgan_left == demorgan_right));
+
+    // XOR via helper
+    print("XOR(true,false) = " @ bool_str(xor(true, false)));
+    print("XOR(true,true)  = " @ bool_str(xor(true, true)));
+    print("XOR(false,false)= " @ bool_str(xor(false, false)));
+
+    // Implication
+    print("true->true  = " @ bool_str(implies(true, true)));
+    print("true->false = " @ bool_str(implies(true, false)));
+    print("false->true = " @ bool_str(implies(false, true)));
+    print("false->false= " @ bool_str(implies(false, false)));
+
+    // Truth table header
+    print("p\t\tq\t\tp&q\t\tp|q\t\tp->q");
+    print("-------------------------------------------------------------");
+
+    // All four combinations
+    table_row(true,  true,  true  & true,  true  | true,  implies(true,  true));
+    table_row(true,  false, true  & false, true  | false, implies(true,  false));
+    table_row(false, true,  false & true,  false | true,  implies(false, true));
+    table_row(false, false, false & false, false | false, implies(false, false));
+
+    print("--- Boolean demo complete ---")
+}

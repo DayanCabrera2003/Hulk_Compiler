@@ -1,0 +1,101 @@
+// 07_expression_blocks.hulk
+// Demonstrates { e1; e2; e3 } blocks as expressions returning the last value
+
+// A function whose body is a block returning a computed value
+function absolute(n: Number): Number {
+    // Block body: multiple statements, last value is the result
+    let is_neg = n < 0 in
+    if (is_neg) -n else n
+}
+
+// Function that uses a block to accumulate and return a sum
+function sum_up_to(limit: Number): Number {
+    let total = 0 in {
+        for (i in range(1, limit + 1)) {
+            total := total + i;
+        };
+        total   // last expression is the block's value
+    }
+}
+
+// Function demonstrating nested blocks
+function nested_blocks(a: Number, b: Number): Number {
+    let outer = {
+        let inner = {
+            a * b   // innermost block returns a*b
+        } in
+        inner + a   // middle block returns inner+a
+    } in
+    outer + b       // function returns outer+b
+}
+
+{
+    // Block as expression: the whole block evaluates to 42
+    let val = {
+        let x = 10 in
+        let y = 32 in
+        x + y           // block value
+    } in
+    print("Block value (10+32): " @ val);
+
+    // Block used directly in print argument
+    print("Inline block: " @ { let a = 7 in a * 6 });
+
+    // Block as one branch of if
+    let n = -15 in
+    let result = if (n < 0) {
+        let pos = -n in
+        print("n was negative, making positive");
+        pos             // block returns the positive value
+    } else {
+        print("n was non-negative");
+        n
+    } in
+    print("Absolute value of -15: " @ result);
+
+    // Nested blocks — each level returns the inner computation
+    let deep = {
+        let level1 = {
+            let level2 = {
+                let level3 = 100 in
+                level3 + 1      // 101
+            } in
+            level2 * 2          // 202
+        } in
+        level1 - 2              // 200
+    } in
+    print("Nested 3-level block: " @ deep);
+
+    // Block in let body that performs side-effects then returns
+    let greeting = {
+        print("(computing greeting inside block)");
+        "Hello from block"
+    } in
+    print(greeting);
+
+    // sum_up_to: block accumulates sum, returns it
+    print("Sum 1..10 = " @ sum_up_to(10));
+    print("Sum 1..5  = " @ sum_up_to(5));
+
+    // absolute function (block body)
+    print("abs(-7) = " @ absolute(-7));
+    print("abs(13) = " @ absolute(13));
+
+    // nested_blocks: demonstrates block composition
+    print("nested_blocks(3,4) = " @ nested_blocks(3, 4));
+    // expected: inner=3*4=12, middle=12+3=15, outer+4=19
+
+    // Block in a while loop condition context
+    let counter = 0 in {
+        while (counter < 5) {
+            counter := counter + 1;
+        };
+        print("Counter after while: " @ counter);
+    };
+
+    // Block whose value is used in arithmetic
+    let doubled = 2 * { let base = 21 in base } in
+    print("2 * block(21) = " @ doubled);
+
+    print("--- Expression blocks demo complete ---")
+}

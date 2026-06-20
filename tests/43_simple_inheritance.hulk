@@ -1,0 +1,86 @@
+// 43_simple_inheritance.hulk — Simple inheritance chain
+
+type Shape {
+    color = "red";
+
+    get_color() => self.color;
+    set_color(c) { self.color := c; }
+
+    describe() =>
+        "Shape color=" @ self.get_color();
+}
+
+type Circle(r) inherits Shape {
+    radius = r;
+
+    area()          => PI * self.radius ^ 2;
+    circumference() => 2 * PI * self.radius;
+
+    describe() =>
+        "Circle r=" @ self.radius
+        @@ "color=" @ self.get_color()
+        @@ "area=" @ self.area();
+}
+
+type Rectangle(w, h) inherits Shape {
+    width  = w;
+    height = h;
+
+    get_width()  => self.width;
+    get_height() => self.height;
+
+    area()      => self.width * self.height;
+    perimeter() => 2 * (self.width + self.height);
+
+    describe() =>
+        "Rectangle" @@ self.width @ "x" @ self.height
+        @@ "color=" @ self.get_color()
+        @@ "area=" @ self.area();
+}
+
+type Square(side) inherits Rectangle(side, side) {
+    describe() =>
+        "Square side=" @ self.get_width()
+        @@ "color=" @ self.get_color()
+        @@ "area=" @ self.area();
+}
+
+{
+    print("=== Inheritance chain test ===");
+
+    let s = new Shape() in {
+        print(s.describe());
+        s.set_color("blue");
+        print("After color change:" @@ s.describe());
+    };
+
+    let c = new Circle(5) in {
+        print(c.describe());
+        print("Circumference:" @@ c.circumference());
+        c.set_color("green");
+        print("After color change:" @@ c.describe());
+    };
+
+    let r = new Rectangle(6, 4) in {
+        print(r.describe());
+        print("Perimeter:" @@ r.perimeter());
+        r.set_color("yellow");
+        print("After color change:" @@ r.describe());
+    };
+
+    let sq = new Square(7) in {
+        print(sq.describe());
+        print("Perimeter:" @@ sq.perimeter());
+        sq.set_color("purple");
+        print("After color change:" @@ sq.describe());
+    };
+
+    print("=== Color inherited from Shape ===");
+    let c2 = new Circle(3) in
+    let r2 = new Rectangle(2, 8) in
+    let sq2 = new Square(4) in {
+        print("Circle color:" @@ c2.get_color());
+        print("Rectangle color:" @@ r2.get_color());
+        print("Square color:" @@ sq2.get_color());
+    };
+}

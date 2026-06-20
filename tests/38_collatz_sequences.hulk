@@ -1,0 +1,103 @@
+// 38_collatz_sequences.hulk
+// Collatz sequence problems: next step, length, printing, and champion finder
+
+// Next step in Collatz sequence
+function collatz_next(n: Number): Number =>
+    if (n % 2 == 0) n \ 2 else 3 * n + 1;
+
+// Count steps to reach 1 (length of sequence from n)
+function collatz_length(n: Number): Number {
+    let val = n, steps = 0 in {
+        while (val != 1) {
+            val := collatz_next(val);
+            steps := steps + 1;
+        };
+        steps
+    }
+}
+
+// Print the full Collatz sequence starting at n
+function print_collatz(n: Number) {
+    print("Collatz(" @ n @ "): ");
+    let val = n in {
+        while (val != 1) {
+            print("  " @ val);
+            val := collatz_next(val);
+        };
+        print("  1  [done]");
+    };
+}
+
+// Check if n is a power of 2 using while loop
+function is_power_of_2(n: Number): Boolean {
+    if (n <= 0) false
+    else {
+        let v = n, ok = 1 in {
+            while (v > 1 & ok == 1) {
+                ok := if (v % 2 == 0) ok else 0;
+                v := v \ 2;
+            };
+            ok == 1
+        }
+    }
+}
+
+// Find n < limit with longest Collatz sequence
+function max_collatz_under(limit: Number): Number {
+    let best_n = 1, best_len = 1, n = 2 in {
+        while (n < limit) {
+            let len = collatz_length(n) in {
+                best_n   := if (len > best_len) n   else best_n;
+                best_len := if (len > best_len) len else best_len;
+            };
+            n := n + 1;
+        };
+        best_n
+    }
+}
+
+// Length of longest sequence under limit (companion to max_collatz_under)
+function max_collatz_length_under(limit: Number): Number {
+    let best_len = 1, n = 2 in {
+        while (n < limit) {
+            let len = collatz_length(n) in
+                best_len := if (len > best_len) len else best_len;
+            n := n + 1;
+        };
+        best_len
+    }
+}
+
+{
+    print("=== collatz_next ===");
+    print("next(6)  = " @ collatz_next(6));
+    print("next(7)  = " @ collatz_next(7));
+    print("next(1)  = " @ collatz_next(1));
+
+    print("=== collatz_length ===");
+    print("length(1)  = " @ collatz_length(1));
+    print("length(6)  = " @ collatz_length(6));
+    print("length(27) = " @ collatz_length(27));
+
+    print("=== Full sequences ===");
+    print_collatz(6);
+    print_collatz(11);
+    print_collatz(27);
+
+    print("=== is_power_of_2 ===");
+    print("is_pow2(1)  = " @ is_power_of_2(1));
+    print("is_pow2(4)  = " @ is_power_of_2(4));
+    print("is_pow2(16) = " @ is_power_of_2(16));
+    print("is_pow2(6)  = " @ is_power_of_2(6));
+    print("is_pow2(0)  = " @ is_power_of_2(0));
+
+    print("=== Champion under 100 ===");
+    let champ = max_collatz_under(100) in
+        print("n=" @ champ @ " length=" @ max_collatz_length_under(100));
+
+    print("=== Champion under 50 ===");
+    let champ50 = max_collatz_under(50) in
+        print("n=" @ champ50 @ " length=" @ collatz_length(champ50));
+
+    print("Done.");
+}

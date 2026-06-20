@@ -1,0 +1,70 @@
+// 21_inline_functions.hulk — Gallery of inline functions
+
+// Math helpers
+function square(x: Number): Number => x ^ 2;
+function cube(x: Number): Number => x ^ 3;
+function average(a: Number, b: Number): Number => (a + b) \ 2;
+function abs_val(x: Number): Number => if (x >= 0) x else (0 - x);
+function clamp(x: Number, lo: Number, hi: Number): Number =>
+    if (x < lo) lo elif (x > hi) hi else x;
+
+// Inline functions calling each other
+function distance(a: Number, b: Number): Number => abs_val(a - b);
+function midpoint(a: Number, b: Number): Number => average(a, b);
+function in_range(x: Number, lo: Number, hi: Number): Number =>
+    clamp(x, lo, hi);
+
+// Boolean helpers
+function is_even(n: Number): Boolean => (n % 2) == 0;
+function is_positive(x: Number): Boolean => x > 0;
+function is_between(x: Number, lo: Number, hi: Number): Boolean =>
+    (x >= lo) & (x <= hi);
+function is_odd(n: Number): Boolean => !is_even(n);
+
+// String/print helpers
+function print_labeled(label: String, value: Number) =>
+    print(label @ ": " @ value);
+function print_bool(label: String, value: Boolean) =>
+    print(label @ ": " @ value);
+function print_eq(a: Number, b: Number, result: Number) =>
+    print(a @ " op " @ b @ " = " @ result);
+
+{
+    print("=== Math functions ===");
+    print_labeled("square(5)", square(5));
+    print_labeled("square(12)", square(12));
+    print_labeled("cube(3)", cube(3));
+    print_labeled("cube(4)", cube(4));
+    print_labeled("average(10, 20)", average(10, 20));
+    print_labeled("average(7, 13)", average(7, 13));
+    print_labeled("abs_val(-7)", abs_val(0 - 7));
+    print_labeled("abs_val(3)", abs_val(3));
+    print_labeled("clamp(5, 0, 10)", clamp(5, 0, 10));
+    print_labeled("clamp(-3, 0, 10)", clamp(0 - 3, 0, 10));
+    print_labeled("clamp(15, 0, 10)", clamp(15, 0, 10));
+
+    print("=== Functions calling each other ===");
+    print_labeled("distance(3, 8)", distance(3, 8));
+    print_labeled("distance(8, 3)", distance(8, 3));
+    print_labeled("midpoint(4, 10)", midpoint(4, 10));
+    print_labeled("in_range(5, 0, 10)", in_range(5, 0, 10));
+    print_labeled("in_range(15, 0, 10)", in_range(15, 0, 10));
+
+    print("=== Boolean helpers ===");
+    print_bool("is_even(4)", is_even(4));
+    print_bool("is_even(7)", is_even(7));
+    print_bool("is_odd(9)", is_odd(9));
+    print_bool("is_positive(5)", is_positive(5));
+    print_bool("is_positive(-1)", is_positive(0 - 1));
+    print_bool("is_between(5, 1, 10)", is_between(5, 1, 10));
+    print_bool("is_between(0, 1, 10)", is_between(0, 1, 10));
+
+    print("=== Repeated calls with varied args ===");
+    let i = 1 in
+    while (i <= 6) {
+        print("square(" @ i @ ") = " @ square(i) @ "   cube(" @ i @ ") = " @ cube(i));
+        i := i + 1;
+    };
+
+    print("Done.");
+}

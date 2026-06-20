@@ -19,6 +19,10 @@ pub struct Resolver {
     pub(crate) expr_symbols: HashMap<NodeId, SymbolId>,
     pub(crate) type_parents: HashMap<SymbolId, Option<SymbolId>>,
     pub(crate) type_methods: HashMap<SymbolId, HashMap<String, SymbolId>>,
+    /// Per-type set of attribute names declared *directly* in that type
+    /// (excluding inherited ones). Attributes are private, so this is the
+    /// authoritative set of attributes a method of that type may name.
+    pub(crate) type_attributes: HashMap<SymbolId, HashSet<String>>,
     pub(crate) protocol_methods: HashMap<SymbolId, HashSet<String>>,
     pub(crate) protocol_extends: HashMap<SymbolId, Vec<SymbolId>>,
     pub(crate) function_param_annotations: HashMap<SymbolId, Vec<Option<TypeAnn>>>,
@@ -43,6 +47,7 @@ impl Resolver {
             expr_symbols: HashMap::new(),
             type_parents: HashMap::new(),
             type_methods: HashMap::new(),
+            type_attributes: HashMap::new(),
             protocol_methods: HashMap::new(),
             protocol_extends: HashMap::new(),
             function_param_annotations: HashMap::new(),

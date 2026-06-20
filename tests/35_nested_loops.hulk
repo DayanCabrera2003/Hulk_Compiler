@@ -1,0 +1,81 @@
+// 35_nested_loops.hulk
+// Programs with nested loops: multiplication table, Pythagorean triples, star pattern
+
+// Check if n is prime (used by prime sieve logic)
+function is_prime(n: Number): Boolean {
+    if (n < 2) false
+    else {
+        let found = 0, d = 2 in {
+            while (d * d <= n & found == 0) {
+                found := if (n % d == 0) 1 else 0;
+                d := d + 1;
+            };
+            found == 0
+        }
+    }
+}
+
+// Print full 10x10 multiplication table using nested for loops
+function print_mult_table() {
+    print("=== 10x10 Multiplication Table ===");
+    for (i in range(1, 11)) {
+        for (j in range(1, 11)) {
+            print(i @ "x" @ j @ "=" @ i * j);
+        };
+    };
+}
+
+// Find all Pythagorean triples with a,b,c <= limit using nested for
+function find_pythagorean_triples(limit: Number) {
+    print("=== Pythagorean Triples (a<=b<=c<=" @ limit @ ") ===");
+    let count = 0 in {
+        for (a in range(1, limit + 1)) {
+            for (b in range(a, limit + 1)) {
+                for (c in range(b, limit + 1)) {
+                    count := count + if (a * a + b * b == c * c) {
+                        print(a @ "^2 + " @ b @ "^2 = " @ c @ "^2");
+                        1
+                    } else 0;
+                };
+            };
+        };
+        print("Total triples found: " @ count);
+    };
+}
+
+// Print a star triangle: row i has i stars (built with inner while)
+function print_star_triangle(rows: Number) {
+    print("=== Star Triangle (" @ rows @ " rows) ===");
+    for (i in range(1, rows + 1)) {
+        let stars = "", j = 0 in {
+            while (j < i) {
+                stars := stars @ "*";
+                j := j + 1;
+            };
+            print(stars);
+        };
+    };
+}
+
+// Count primes up to N using nested while (trial division per candidate)
+function count_primes_up_to(n: Number): Number {
+    let count = 0, i = 2 in {
+        while (i <= n) {
+            count := count + if (is_prime(i)) 1 else 0;
+            i := i + 1;
+        };
+        count
+    }
+}
+
+{
+    print_mult_table();
+    find_pythagorean_triples(20);
+    print_star_triangle(6);
+
+    print("=== Prime Count ===");
+    print("primes up to 50  = " @ count_primes_up_to(50));
+    print("primes up to 100 = " @ count_primes_up_to(100));
+
+    print("Done.");
+}

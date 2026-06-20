@@ -1,0 +1,58 @@
+// 01_hello_world.hulk
+// Demonstrates string literals, print, @ and @@ concatenation operators
+
+// A function that builds a personalized greeting
+function greet(name: String): String => "Hello, " @ name @ "!";
+
+// A function that greets with a title
+function greet_titled(title: String, name: String): String =>
+    "Dear " @ title @@ name @ ", welcome!";
+
+// A function that formats a numbered greeting
+function numbered_greeting(n: Number, name: String): String =>
+    "Greeting #" @ n @ ": Hello, " @ name @ ".";
+
+{
+    // Basic greeting using print
+    print("Hello, World!");
+
+    // Using @ to concatenate strings
+    let first = "Hello" in
+    let second = "HULK" in
+    print(first @ ", " @ second @ "!");
+
+    // Using @@ inserts a space between operands
+    print("Welcome" @@ "to" @@ "the" @@ "HULK" @@ "compiler!");
+
+    // Concatenating a string with a number
+    let year = 2024 in
+    print("Year: " @ year);
+
+    // Using helper functions
+    print(greet("Alice"));
+    print(greet("Bob"));
+    print(greet_titled("Dr.", "Smith"));
+    print(greet_titled("Prof.", "Johnson"));
+
+    // Numbered greetings in a loop
+    for (i in range(1, 4)) {
+        print(numbered_greeting(i, "student"));
+    };
+
+    // Demonstrate escape characters inside strings
+    print("Line one\nLine two\nLine three");
+    print("Column1\tColumn2\tColumn3");
+    print("She said \"Hello\" to him.");
+
+    // Mix numbers and strings with @@
+    let count = 42 in
+    print("There are" @@ count @@ "items in the list.");
+
+    // Nested concatenation
+    let lang = "HULK" in
+    let version = 1 in
+    print("Language: " @ lang @@ "| Version: " @ version);
+
+    // Final message
+    print("--- All greetings complete ---")
+}

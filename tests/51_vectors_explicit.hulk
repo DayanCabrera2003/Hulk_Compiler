@@ -1,0 +1,83 @@
+// 51_vectors_explicit.hulk
+// Explicit vector operations: sum, product, max, min, variance, string concat
+
+function vec_sum(v: Number[]): Number {
+    let total = 0 in {
+        for (x in v) total := total + x;
+        total
+    }
+}
+
+function vec_product(v: Number[]): Number {
+    let prod = 1 in {
+        for (x in v) prod := prod * x;
+        prod
+    }
+}
+
+function vec_max(v: Number[]): Number {
+    let m = v[0] in {
+        let i = 1 in
+            while (i < v.size()) {
+                if (v[i] > m) m := v[i] else 0;
+                i := i + 1
+            };
+        m
+    }
+}
+
+function vec_min(v: Number[]): Number {
+    let m = v[0] in {
+        let i = 1 in
+            while (i < v.size()) {
+                if (v[i] < m) m := v[i] else 0;
+                i := i + 1
+            };
+        m
+    }
+}
+
+function vec_mean(v: Number[]): Number =>
+    vec_sum(v) \ v.size();
+
+function vec_variance(v: Number[]): Number {
+    let mean = vec_mean(v) in
+    let total = 0 in {
+        for (x in v) total := total + (x - mean) ^ 2;
+        total \ v.size()
+    }
+}
+
+function concat_all(words: Object[]): String {
+    let result = "" in {
+        for (w in words) result := result @ w;
+        result
+    }
+}
+
+{
+    // Create a vector of 10 numbers
+    let nums = [3, 7, 2, 9, 1, 5, 8, 4, 6, 10] in {
+        print("Vector: [3, 7, 2, 9, 1, 5, 8, 4, 6, 10]");
+        print("Sum:      " @ vec_sum(nums));
+        print("Product:  " @ vec_product(nums));
+        print("Max:      " @ vec_max(nums));
+        print("Min:      " @ vec_min(nums));
+        print("Mean:     " @ vec_mean(nums));
+        print("Variance: " @ vec_variance(nums));
+
+        // Direct index access
+        print("First element (index 0): " @ nums[0]);
+        print("Last  element (index 9): " @ nums[9]);
+
+        // Mutation: double the third element
+        nums[2] := nums[2] * 2;
+        print("After nums[2] *= 2, nums[2] = " @ nums[2])
+    };
+
+    // Vector of strings
+    let parts = ["Hello", ", ", "World", "!"] in {
+        print("Concatenated: " @ concat_all(parts));
+        print("Parts count: " @ parts.size())
+    }
+}

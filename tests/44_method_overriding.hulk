@@ -1,0 +1,77 @@
+// 44_method_overriding.hulk — Polymorphism via virtual method overriding
+
+type Animal(n) {
+    name = n;
+
+    get_name() => self.name;
+
+    speak() => "...";
+
+    describe() =>
+        self.get_name() @@ "says:" @@ self.speak();
+}
+
+type Dog(n) inherits Animal(n) {
+    speak() => "Woof!";
+}
+
+type Cat(n) inherits Animal(n) {
+    speak() => "Meow!";
+}
+
+type Duck(n) inherits Animal(n) {
+    speak() => "Quack!";
+}
+
+type Parrot(n, phrase) inherits Animal(n) {
+    learned = phrase;
+
+    speak() => self.learned;
+}
+
+function make_speak(a) {
+    print(a.get_name() @@ "says:" @@ a.speak());
+}
+
+function introduce_all(a1, a2, a3, a4) {
+    {
+        print("--- All animals speak ---");
+        make_speak(a1);
+        make_speak(a2);
+        make_speak(a3);
+        make_speak(a4);
+    }
+}
+
+{
+    print("=== Virtual method overriding ===");
+
+    let dog    = new Dog("Rex")                      in
+    let cat    = new Cat("Whiskers")                 in
+    let duck   = new Duck("Donald")                  in
+    let parrot = new Parrot("Polly", "Pretty bird!") in {
+        // Direct calls
+        print("Direct calls:");
+        print(dog.describe());
+        print(cat.describe());
+        print(duck.describe());
+        print(parrot.describe());
+
+        // Through function accepting Animal
+        print("");
+        introduce_all(dog, cat, duck, parrot);
+
+        // Reassignment to same variable (still virtual dispatch)
+        print("");
+        print("=== Polymorphic variable ===");
+        let zoo_animal = new Animal("Generic") in {
+            print("Generic animal:" @@ zoo_animal.speak());
+        };
+
+        // Show all sounds
+        print("");
+        print("=== Sound roster ===");
+        let animals_sounds = dog.speak() @ " " @ cat.speak() @ " " @ duck.speak() in
+        print("Sounds: " @ animals_sounds);
+    };
+}

@@ -1,0 +1,105 @@
+// 47_as_downcast.hulk — Downcasting with `as`
+
+type Shape(label) {
+    name = label;
+
+    get_name() => self.name;
+
+    // Base area — overridden in subclasses
+    area() => 0;
+
+    kind() => "Shape";
+}
+
+type Circle(r) inherits Shape("Circle") {
+    radius = r;
+
+    get_radius() => self.radius;
+
+    area() => PI * self.radius ^ 2;
+
+    circumference() => 2 * PI * self.radius;
+
+    kind() => "Circle";
+}
+
+type Rectangle(w, h) inherits Shape("Rectangle") {
+    width  = w;
+    height = h;
+
+    area()      => self.width * self.height;
+    perimeter() => 2 * (self.width + self.height);
+
+    kind() => "Rectangle";
+}
+
+type Triangle(base_len, height_len) inherits Shape("Triangle") {
+    base_side = base_len;
+    tri_height = height_len;
+
+    area() => 0.5 * self.base_side * self.tri_height;
+
+    hypotenuse() => sqrt(self.base_side ^ 2 + self.tri_height ^ 2);
+
+    kind() => "Triangle";
+}
+
+// Uses is + as to call type-specific methods beyond the base interface
+function process_shape(s) {
+    {
+        print("Processing: " @ s.get_name() @@ "kind=" @ s.kind() @@ "area=" @ s.area());
+
+        if (s is Circle) {
+            let c = s as Circle in
+            print("  Circle-specific — circumference=" @ c.circumference());
+        } elif (s is Rectangle) {
+            let r = s as Rectangle in
+            print("  Rectangle-specific — perimeter=" @ r.perimeter());
+        } elif (s is Triangle) {
+            let t = s as Triangle in
+            print("  Triangle-specific — hypotenuse=" @ t.hypotenuse());
+        } else {
+            print("  Plain Shape — no extra info");
+        };
+    }
+}
+
+function total_area(s1, s2, s3) {
+    s1.area() + s2.area() + s3.area();
+}
+
+{
+    print("=== Downcast with as ===");
+    print("");
+
+    let c  = new Circle(5)         in
+    let r  = new Rectangle(4, 6)   in
+    let t  = new Triangle(3, 4)    in
+    let s  = new Shape("generic")  in {
+        process_shape(c);
+        process_shape(r);
+        process_shape(t);
+        process_shape(s);
+
+        print("");
+        print("=== Total area of three shapes ===");
+        let tot = total_area(c, r, t) in
+        print("Circle + Rectangle + Triangle area =" @@ tot);
+
+        print("");
+        print("=== Explicit downcast for extra computation ===");
+        // Safe pattern: always guard with is before as
+        if (c is Circle) {
+            let cc = c as Circle in
+            print("Confirmed circle radius:" @@ cc.get_radius());
+        } else {
+            print("Not a circle");
+        };
+
+        if (r is Circle) {
+            print("Rectangle classified as Circle — wrong");
+        } else {
+            print("Rectangle is NOT a Circle — correct");
+        };
+    };
+}

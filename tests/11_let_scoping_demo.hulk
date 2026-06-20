@@ -1,0 +1,66 @@
+// 11_let_scoping_demo.hulk
+// Demonstrates all scoping rules for let expressions in HULK
+
+// Helper function to print a labeled number
+function show(label: String, value: Number): Number => print(label @ " " @ value);
+
+// Helper: square — defined before global expression
+function square(n: Number): Number => n * n;
+
+{
+    // Scenario 1: Single binding — let binds one variable used in body
+    let result1 = let x = 42 in x * 2 in
+    show("Single binding x=42, x*2 =", result1);
+
+    // Scenario 2: Multiple bindings (right-associative chaining)
+    // let a=6, b=a*7 is sugar for let a=6 in let b=a*7 in ...
+    let result2 = let a = 6, b = a * 7 in b in
+    show("Multiple bindings a=6 b=a*7, b =", result2);
+
+    // Scenario 3: Later bindings can reference earlier ones
+    let result3 = let p = 10, q = p + 5, r = p + q in r in
+    show("Chain p=10 q=p+5 r=p+q, r =", result3);
+
+    // Scenario 4: Variable shadowing — inner let hides outer
+    let outer_a = 20 in
+        let result4 = let a = outer_a in
+            let inner = let a = 42 in a in
+            inner
+        in
+        show("Outer a=20, inner a=42, inner value =", result4);
+
+    // Scenario 5: Let as expression — its value flows into print directly
+    print(let greeting_num = 7 in greeting_num ^ 2);
+
+    // Scenario 6: Nested lets with arithmetic at each level
+    let level1 = 100 in
+        let level2 = level1 + 50 in
+            let level3 = level2 * 2 in
+                show("Nested levels 100 -> +50 -> *2 =", level3);
+
+    // Scenario 7: Let inside a block body — body is a sequence of expressions
+    let block_result =
+        let base = 5 in {
+            let step1 = base * base in
+            let step2 = step1 + base in
+            step2
+        }
+    in show("Block body let base=5, base^2+base =", block_result);
+
+    // Scenario 8: Let binding using a function result
+    let sq_result = let side = 9 in square(side) in
+    show("Let with function call side=9, square =", sq_result);
+
+    // Scenario 9: Multiple independent lets in sequence
+    let alpha = 3 in
+        let beta = 4 in
+            let hypotenuse = sqrt(alpha ^ 2 + beta ^ 2) in
+                show("Pythagorean 3-4-? hypotenuse =", hypotenuse);
+
+    // Scenario 10: Shadowing restores original after scope ends (last statement, no trailing ;)
+    let x = 1000 in {
+        let shadow_result = let x = 1 in x * 99 in
+        show("x shadowed to 1 inside, 1*99 =", shadow_result);
+        show("outer x still =", x);
+    }
+}

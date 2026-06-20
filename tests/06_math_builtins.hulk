@@ -1,0 +1,78 @@
+// 06_math_builtins.hulk
+// Exercises every math builtin: sqrt, sin, cos, exp, log, rand, PI, E
+
+// Euclidean distance between two 2D points
+function distance(x1: Number, y1: Number, x2: Number, y2: Number): Number =>
+    sqrt((x2 - x1) ^ 2 + (y2 - y1) ^ 2);
+
+// Hypotenuse from legs a and b
+function hypotenuse(a: Number, b: Number): Number => sqrt(a ^ 2 + b ^ 2);
+
+// Circle area using PI
+function circle_area(r: Number): Number => PI * r ^ 2;
+
+// Verify: sin^2(x) + cos^2(x) should equal 1
+function trig_identity(angle: Number): Number =>
+    sin(angle) ^ 2 + cos(angle) ^ 2;
+
+{
+    // PI and E constants
+    print("PI = " @ PI);
+    print("E  = " @ E);
+
+    // sqrt
+    print("sqrt(2)   = " @ sqrt(2));
+    print("sqrt(9)   = " @ sqrt(9));
+    print("sqrt(144) = " @ sqrt(144));
+
+    // sin and cos at notable angles
+    print("sin(0)    = " @ sin(0));
+    print("cos(0)    = " @ cos(0));
+    print("sin(PI/2) = " @ sin(PI \ 2));
+    print("cos(PI)   = " @ cos(PI));
+    print("sin(PI)   = " @ sin(PI));
+
+    // Trigonometric identity at several angles
+    let angle0 = 0 in
+    let angle1 = PI \ 6 in
+    let angle2 = PI \ 4 in
+    let angle3 = PI \ 3 in
+    let angle4 = PI \ 2 in
+    print("sin^2+cos^2 at 0      = " @ trig_identity(angle0));
+    print("sin^2+cos^2 at PI/6   = " @ trig_identity(angle1));
+    print("sin^2+cos^2 at PI/4   = " @ trig_identity(angle2));
+    print("sin^2+cos^2 at PI/3   = " @ trig_identity(angle3));
+    print("sin^2+cos^2 at PI/2   = " @ trig_identity(angle4));
+
+    // exp
+    print("exp(0) = " @ exp(0));
+    print("exp(1) = " @ exp(1));
+    print("exp(2) = " @ exp(2));
+    print("E^2    = " @ E ^ 2);
+
+    // log: log(base, value)
+    print("log(10, 1000)  = " @ log(10, 1000));
+    print("log(2, 1024)   = " @ log(2, 1024));
+    print("log(E, E)      = " @ log(E, E));
+    print("log(E, E^3)    = " @ log(E, E ^ 3));
+
+    // Distance formula (Pythagorean)
+    print("distance (0,0)->(3,4) = " @ distance(0, 0, 3, 4));
+    print("distance (1,1)->(4,5) = " @ distance(1, 1, 4, 5));
+    print("hypotenuse(5,12) = " @ hypotenuse(5, 12));
+
+    // Circle area
+    print("area circle r=1   = " @ circle_area(1));
+    print("area circle r=5   = " @ circle_area(5));
+    print("area circle r=10  = " @ circle_area(10));
+
+    // Unit circle: coordinates at angle = PI/4
+    let angle = PI \ 4 in
+    print("Unit circle at PI/4: (" @ cos(angle) @ ", " @ sin(angle) @ ")");
+
+    // rand — just call it; result is non-deterministic
+    let r = rand() in
+    print("rand() returned a number in [0,1): " @ (r >= 0 & r < 1));
+
+    print("--- Math builtins demo complete ---")
+}

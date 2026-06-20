@@ -1,0 +1,104 @@
+// 18_conditional_variables.hulk
+// Variables and conditionals interacting — if/elif/else to set and branch on variables
+
+// Compute numeric sign: -1, 0, or 1
+function sign(x: Number): Number =>
+    if (x > 0) 1
+    elif (x == 0) 0
+    else (0 - 1);
+
+// Classify a number into a category string
+function classify(x: Number): String =>
+    if (x < 0) "negative"
+    elif (x == 0) "zero"
+    elif (x < 100) "small positive"
+    elif (x < 10000) "medium positive"
+    else "large positive";
+
+// Absolute value using if
+function absval(x: Number): Number =>
+    if (x >= 0) x else (0 - x);
+
+// Minimum of two numbers
+function minval(a: Number, b: Number): Number =>
+    if (a <= b) a else b;
+
+// Maximum of two numbers
+function maxval(a: Number, b: Number): Number =>
+    if (a >= b) a else b;
+
+// Grade classification
+function grade_letter(score: Number): String =>
+    if (score >= 90) "A"
+    elif (score >= 80) "B"
+    elif (score >= 70) "C"
+    elif (score >= 60) "D"
+    else "F";
+
+// FizzBuzz for numbers 1..N
+function fizzbuzz(n: Number): Number {
+    for (i in range(1, n + 1)) {
+        let output =
+            if (i % 15 == 0) "FizzBuzz"
+            elif (i % 3 == 0) "Fizz"
+            elif (i % 5 == 0) "Buzz"
+            else i
+        in print(output);
+    };
+    n
+}
+
+// Quadrant of a point in the Cartesian plane
+function quadrant(x: Number, y: Number): Number =>
+    if (x > 0 & y > 0) 1
+    elif (x < 0 & y > 0) 2
+    elif (x < 0 & y < 0) 3
+    elif (x > 0 & y < 0) 4
+    else 0;
+
+// Clamp a value to [lo, hi]
+function clamp(val: Number, lo: Number, hi: Number): Number =>
+    if (val < lo) lo
+    elif (val > hi) hi
+    else val;
+
+// --- Run all functions ---
+{
+    print("=== Signs ===");
+    print(sign(42));
+    print(sign(0));
+    print(sign(0 - 7));
+
+    print("=== Classifications ===");
+    print(classify(0 - 5));
+    print(classify(0));
+    print(classify(73));
+    print(classify(5000));
+    print(classify(999999));
+
+    print("=== Absolute values ===");
+    print(absval(0 - 15));
+    print(absval(15));
+
+    print("=== Min and Max ===");
+    print("min(8,3) = " @ minval(8, 3));
+    print("max(8,3) = " @ maxval(8, 3));
+
+    print("=== Grades ===");
+    let scores = [95, 83, 71, 65, 50] in
+    for (i in range(0, scores.size()))
+        print(scores[i] @ " -> " @ grade_letter(scores[i]));
+
+    print("=== FizzBuzz 1..20 ===");
+    fizzbuzz(20);
+
+    print("=== Quadrants ===");
+    print("Q(" @ 1 @ "," @ 1 @ ") = " @ quadrant(1, 1));
+    print("Q(" @ (0-1) @ "," @ 1 @ ") = " @ quadrant(0 - 1, 1));
+    print("Q(" @ (0-1) @ "," @ (0-1) @ ") = " @ quadrant(0 - 1, 0 - 1));
+
+    print("=== Clamp ===");
+    print(clamp(150, 0, 100));
+    print(clamp(0 - 5, 0, 100));
+    print(clamp(50, 0, 100));
+}

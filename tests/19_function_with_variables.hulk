@@ -1,0 +1,102 @@
+// 19_function_with_variables.hulk
+// Functions that use let extensively inside their bodies
+
+// Function 1: Euclidean distance between two 2D points
+function distance(x1: Number, y1: Number, x2: Number, y2: Number): Number {
+    let dx = x2 - x1, dy = y2 - y1 in
+    let dist_sq = dx ^ 2 + dy ^ 2 in
+    sqrt(dist_sq)
+}
+
+// Function 2: Quadratic formula — returns larger root (discriminant must be >= 0)
+function quadratic_root_pos(a: Number, b: Number, c: Number): Number {
+    let discriminant = b ^ 2 - 4 * a * c in
+    let root_d = sqrt(discriminant) in
+    let denom = 2 * a in
+    (0 - b + root_d) \ denom
+}
+
+function quadratic_root_neg(a: Number, b: Number, c: Number): Number {
+    let discriminant = b ^ 2 - 4 * a * c in
+    let root_d = sqrt(discriminant) in
+    let denom = 2 * a in
+    (0 - b - root_d) \ denom
+}
+
+// Function 3: Body Mass Index
+function bmi(weight_kg: Number, height_m: Number): Number {
+    let height_sq = height_m ^ 2 in
+    let bmi_val = weight_kg \ height_sq in
+    bmi_val
+}
+
+function bmi_category(bmi_val: Number): String =>
+    if (bmi_val < 18.5) "Underweight"
+    elif (bmi_val < 25.0) "Normal"
+    elif (bmi_val < 30.0) "Overweight"
+    else "Obese";
+
+// Function 4: Convert Celsius to Fahrenheit with intermediate let
+function celsius_to_fahrenheit(c: Number): Number {
+    let scaled = c * 9 in
+    let divided = scaled \ 5 in
+    let result = divided + 32 in
+    result
+}
+
+// Function 5: Normalize an angle in degrees to [0, 360)
+function normalize_degrees(angle: Number): Number {
+    let mod_val = angle % 360 in
+    if (mod_val < 0)
+        mod_val + 360
+    else
+        mod_val
+}
+
+// Function 6: Compound interest — A = P(1 + r/n)^(nt)
+function compound_interest(principal: Number, rate: Number, n_compounds: Number, years: Number): Number {
+    let period_rate = rate \ n_compounds in
+    let growth_factor = 1 + period_rate in
+    let exponent = n_compounds * years in
+    let power = growth_factor ^ exponent in
+    let final_amount = principal * power in
+    final_amount
+}
+
+// Function 7: Hypotenuse from legs using named intermediates
+function hypotenuse(leg_a: Number, leg_b: Number): Number {
+    let a_sq = leg_a ^ 2 in
+    let b_sq = leg_b ^ 2 in
+    let sum_sq = a_sq + b_sq in
+    sqrt(sum_sq)
+}
+
+// --- Call each function and print results ---
+{
+    print("=== Distance (0,0) to (3,4) ===");
+    print(distance(0, 0, 3, 4));
+
+    print("=== Quadratic x^2 - 5x + 6 = 0, roots ===");
+    print("Root+: " @ quadratic_root_pos(1, 0 - 5, 6));
+    print("Root-: " @ quadratic_root_neg(1, 0 - 5, 6));
+
+    print("=== BMI: 70kg, 1.75m ===");
+    let bmi_val = bmi(70, 1.75) in
+    print("BMI = " @ bmi_val @ "  Category: " @ bmi_category(bmi_val));
+
+    print("=== Celsius to Fahrenheit ===");
+    print("0C = " @ celsius_to_fahrenheit(0) @ "F");
+    print("100C = " @ celsius_to_fahrenheit(100) @ "F");
+    print("37C = " @ celsius_to_fahrenheit(37) @ "F");
+
+    print("=== Normalize angles ===");
+    print(normalize_degrees(370));
+    print(normalize_degrees(0 - 90));
+    print(normalize_degrees(720));
+
+    print("=== Compound interest: P=1000, r=0.05, n=12, t=10 ===");
+    print(compound_interest(1000, 0.05, 12, 10));
+
+    print("=== Hypotenuse 5,12 ===");
+    print(hypotenuse(5, 12));
+}

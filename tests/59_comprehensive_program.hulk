@@ -1,0 +1,108 @@
+// 59_comprehensive_program.hulk
+// Simulated number guessing game with hardcoded target and multiple guess strategies
+
+type GameState(target: Number, lo: Number, hi: Number) {
+    target   = target;
+    lo       = lo;
+    hi       = hi;
+    attempts = 0;
+    won      = false;
+
+    guess(val: Number): String {
+        self.attempts := self.attempts + 1;
+        if (val == self.target) {
+            self.won := true;
+            "correct"
+        } elif (val < self.target) {
+            self.lo := val + 1;
+            "too low"
+        } else {
+            self.hi := val - 1;
+            "too high"
+        }
+    };
+
+    midpoint(): Number =>
+        (self.lo + self.hi) \ 2;
+
+    status(): String =>
+        if (self.won) { "WON in " @ self.attempts @ " attempts" }
+        else { "still searching (attempts: " @ self.attempts @ ")" };
+}
+
+// Binary search strategy: always guess midpoint
+function play_binary(target: Number, lo: Number, hi: Number): Number {
+    let g = new GameState(target, lo, hi) in {
+        print("Binary search for target=" @ target @ " in [" @ lo @ ", " @ hi @ "]");
+        while (!g.won) {
+            let mid = g.midpoint() in {
+                let result = g.guess(mid) in
+                    print("  Guess " @ mid @ " -> " @ result)
+            }
+        };
+        print("Result: " @ g.status());
+        g.attempts
+    }
+}
+
+// Sequential strategy: guess lo, lo+1, lo+2, ...
+function play_sequential(target: Number, lo: Number, hi: Number): Number {
+    let g = new GameState(target, lo, hi) in {
+        print("Sequential search for target=" @ target @ " in [" @ lo @ ", " @ hi @ "]");
+        let current = lo in
+            while (!g.won & current <= hi) {
+                let result = g.guess(current) in
+                    print("  Guess " @ current @ " -> " @ result);
+                current := current + 1
+            };
+        print("Result: " @ g.status());
+        g.attempts
+    }
+}
+
+// Fixed guess list strategy
+function play_guesses(target: Number, guesses: Number[]): Number {
+    let g = new GameState(target, 1, 100) in {
+        print("Fixed-guess strategy for target=" @ target);
+        let i = 0 in
+            while (!g.won & i < guesses.size()) {
+                let result = g.guess(guesses[i]) in
+                    print("  Guess " @ guesses[i] @ " -> " @ result);
+                i := i + 1
+            };
+        if (!g.won) print("  Did not find target in given guesses") else 0;
+        print("Result: " @ g.status());
+        g.attempts
+    }
+}
+
+{
+    print("===== Number Guessing Game Simulation =====");
+    print("");
+
+    // Binary search: optimal strategy
+    let a1 = play_binary(37, 1, 100) in
+    let a2 = play_binary(1, 1, 100) in
+    let a3 = play_binary(100, 1, 100) in
+    let a4 = play_binary(50, 1, 100) in {
+        print("Binary search attempts: " @ a1 @ ", " @ a2 @ ", " @ a3 @ ", " @ a4);
+        print("Average (4 runs): " @ ((a1 + a2 + a3 + a4) \ 4))
+    };
+
+    print("");
+
+    // Sequential: worst case scan
+    let b1 = play_sequential(5, 1, 20) in
+    let b2 = play_sequential(15, 1, 20) in {
+        print("Sequential attempts: " @ b1 @ " and " @ b2)
+    };
+
+    print("");
+
+    // Fixed guess list
+    let guesses = [50, 25, 12, 6, 3, 42, 37] in
+        play_guesses(37, guesses);
+
+    print("");
+    print("===== All strategies complete =====")
+}

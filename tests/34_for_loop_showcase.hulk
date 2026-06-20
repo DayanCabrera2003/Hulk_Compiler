@@ -1,0 +1,87 @@
+// 34_for_loop_showcase.hulk
+// Six distinct for-based programs demonstrating range iteration
+
+// Sum a range of numbers
+function range_sum(lo: Number, hi: Number): Number {
+    let acc = 0 in {
+        for (i in range(lo, hi + 1)) {
+            acc := acc + i;
+        };
+        acc
+    }
+}
+
+// Sum even numbers in [1, n]
+function sum_evens(n: Number): Number {
+    let acc = 0 in {
+        for (i in range(1, n + 1)) {
+            acc := acc + if (i % 2 == 0) i else 0;
+        };
+        acc
+    }
+}
+
+// Sum odd numbers in [1, n]
+function sum_odds(n: Number): Number {
+    let acc = 0 in {
+        for (i in range(1, n + 1)) {
+            acc := acc + if (i % 2 != 0) i else 0;
+        };
+        acc
+    }
+}
+
+// Count numbers in [1, limit] divisible by 3 or 7
+function count_div3or7(limit: Number): Number {
+    let count = 0 in {
+        for (i in range(1, limit + 1)) {
+            count := count + if (i % 3 == 0 | i % 7 == 0) 1 else 0;
+        };
+        count
+    }
+}
+
+// Running maximum over a range (using for + :=)
+function range_max(lo: Number, hi: Number): Number {
+    let mx = lo in {
+        for (i in range(lo, hi + 1)) {
+            mx := if (i > mx) i else mx;
+        };
+        mx
+    }
+}
+
+// Print multiplication table row for factor f
+function print_mult_row(f: Number) {
+    for (j in range(1, 11)) {
+        print(f @ " x " @ j @ " = " @ f * j);
+    };
+}
+
+{
+    // 1. Sum 1..100
+    print("=== Sums ===");
+    print("sum 1..100       = " @ range_sum(1, 100));
+
+    // 2. Sum of evens 1..100
+    print("sum evens 1..100 = " @ sum_evens(100));
+
+    // 3. Sum of odds 1..100
+    print("sum odds 1..100  = " @ sum_odds(100));
+
+    // 4. Count divisible by 3 or 7 in 1..1000
+    print("=== Divisibility ===");
+    print("count div3or7 in 1..1000 = " @ count_div3or7(1000));
+
+    // 5. Running max
+    print("=== Running Max ===");
+    print("max of range(5,15) = " @ range_max(5, 15));
+
+    // 6. Multiplication tables 1..5
+    print("=== Multiplication Tables 1..5 ===");
+    for (f in range(1, 6)) {
+        print_mult_row(f);
+    };
+
+    print("Done.");
+}

@@ -1,0 +1,116 @@
+// 28_mathematical_library.hulk — A comprehensive math function library
+
+function sign(x: Number): Number =>
+    if (x > 0) 1 elif (x < 0) (0 - 1) else 0;
+
+function abs_val(x: Number): Number =>
+    if (x >= 0) x else (0 - x);
+
+function max2(a: Number, b: Number): Number =>
+    if (a >= b) a else b;
+
+function min2(a: Number, b: Number): Number =>
+    if (a <= b) a else b;
+
+function clamp(x: Number, lo: Number, hi: Number): Number =>
+    max2(lo, min2(x, hi));
+
+function deg_to_rad(d: Number): Number => d * PI \ 180;
+
+function rad_to_deg(r: Number): Number => r * 180 \ PI;
+
+function hypotenuse(a: Number, b: Number): Number => sqrt(a ^ 2 + b ^ 2);
+
+function is_close(a: Number, b: Number, eps: Number): Boolean =>
+    abs_val(a - b) < eps;
+
+// Floor: for positive numbers, x - (x % 1)
+function floor_pos(x: Number): Number => x - (x % 1);
+
+// Round: floor(x + 0.5) for positive x
+function round_pos(x: Number): Number => floor_pos(x + 0.5);
+
+// Ceil approximation for positive x
+function ceil_pos(x: Number): Number {
+    let f = floor_pos(x) in
+    if (is_close(f, x, 0.0000001)) f else f + 1
+}
+
+// Heron's formula: area of triangle with sides a, b, c
+function triangle_area(a: Number, b: Number, c: Number): Number {
+    let s = (a + b + c) \ 2 in
+    sqrt(s * (s - a) * (s - b) * (s - c))
+}
+
+// Check Pythagorean triple
+function is_pythagorean(a: Number, b: Number, c: Number): Boolean =>
+    is_close(a ^ 2 + b ^ 2, c ^ 2, 0.001);
+
+// Distance between two 2D points
+function dist2d(x1: Number, y1: Number, x2: Number, y2: Number): Number =>
+    hypotenuse(x2 - x1, y2 - y1);
+
+// Circle area
+function circle_area(r: Number): Number => PI * r ^ 2;
+
+// Sphere surface area
+function sphere_surface(r: Number): Number => 4 * PI * r ^ 2;
+
+{
+    print("=== sign, abs, max, min, clamp ===");
+    print("  sign(-5) = " @ sign(0 - 5));
+    print("  sign(0)  = " @ sign(0));
+    print("  sign(7)  = " @ sign(7));
+    print("  abs(-9)  = " @ abs_val(0 - 9));
+    print("  max2(4,7)= " @ max2(4, 7));
+    print("  min2(4,7)= " @ min2(4, 7));
+    print("  clamp(15,0,10)= " @ clamp(15, 0, 10));
+    print("  clamp(-3,0,10)= " @ clamp(0 - 3, 0, 10));
+
+    print("");
+    print("=== Angle Conversion ===");
+    let degrees = [0, 30, 45, 60, 90, 180, 270, 360] in
+    let di = 0 in
+    while (di < degrees.size()) {
+        let d = degrees[di] in
+        let r = deg_to_rad(d) in
+        print("  " @ d @ " deg = " @ r @ " rad   back=" @ rad_to_deg(r) @ " deg");
+        di := di + 1;
+    };
+
+    print("");
+    print("=== Hypotenuse ===");
+    print("  hyp(3,4)   = " @ hypotenuse(3, 4));
+    print("  hyp(5,12)  = " @ hypotenuse(5, 12));
+    print("  hyp(8,15)  = " @ hypotenuse(8, 15));
+
+    print("");
+    print("=== Rounding functions ===");
+    let vals = [2.1, 2.5, 2.9, 3.0, 7.7] in
+    let vi = 0 in
+    while (vi < vals.size()) {
+        let v = vals[vi] in
+        print("  x=" @ v @ "  floor=" @ floor_pos(v) @ "  round=" @ round_pos(v) @ "  ceil=" @ ceil_pos(v));
+        vi := vi + 1;
+    };
+
+    print("");
+    print("=== Heron's Formula — Triangle Areas ===");
+    print("  (3,4,5):     area = " @ triangle_area(3, 4, 5));
+    print("  (5,12,13):   area = " @ triangle_area(5, 12, 13));
+    print("  (7,8,9):     area = " @ triangle_area(7, 8, 9));
+    print("  equilateral(10,10,10): area = " @ triangle_area(10, 10, 10));
+
+    print("");
+    print("=== Pythagorean Triples ===");
+    print("  (3,4,5):   " @ is_pythagorean(3, 4, 5));
+    print("  (5,12,13): " @ is_pythagorean(5, 12, 13));
+    print("  (8,15,17): " @ is_pythagorean(8, 15, 17));
+    print("  (3,4,6):   " @ is_pythagorean(3, 4, 6));
+
+    print("");
+    print("=== Geometry ===");
+    print("  dist2d(0,0,3,4) = " @ dist2d(0, 0, 3, 4));
+    print("  circle_area(r=5) = " @ circle_area(5));
+    print("  sphere_surface(r=3) = " @ sphere_surface(3));
+}

@@ -1,0 +1,102 @@
+// 48_self_usage.hulk — Extensive self usage in BankAccount
+
+type BankAccount(owner_name, initial_balance) {
+    owner   = owner_name;
+    balance = initial_balance;
+
+    get_owner()   => self.owner;
+    get_balance() => self.balance;
+
+    deposit(amount) {
+        if (amount > 0) {
+            self.balance := self.balance + amount;
+            print("Deposited" @@ amount @@ "to" @@ self.owner @ ". Balance:" @@ self.get_balance());
+        } else {
+            print("Deposit amount must be positive.");
+        };
+    }
+
+    withdraw(amount) {
+        if (amount <= 0) {
+            print("Withdrawal amount must be positive.");
+        } elif (amount > self.balance) {
+            print("Insufficient funds. Balance:" @@ self.get_balance() @@ "requested:" @@ amount);
+        } else {
+            self.balance := self.balance - amount;
+            print("Withdrew" @@ amount @@ "from" @@ self.owner @ ". Balance:" @@ self.get_balance());
+        };
+    }
+
+    describe() {
+        print("Account owner: " @ self.get_owner());
+        print("Balance:       " @ self.get_balance());
+    }
+
+    // transfer calls self.withdraw and other.deposit — shows self + external object
+    transfer(amount, other) {
+        if (amount <= 0) {
+            print("Transfer amount must be positive.");
+        } elif (amount > self.get_balance()) {
+            print("Transfer failed: insufficient funds in " @ self.get_owner() @ "'s account.");
+        } else {
+            print("Transferring" @@ amount @@ "from" @@ self.get_owner() @@ "to" @@ other.get_owner());
+            self.withdraw(amount);
+            other.deposit(amount);
+        };
+    }
+
+    apply_interest(rate) {
+        // rate e.g. 0.05 means 5%
+        let interest = self.get_balance() * rate in {
+            self.balance := self.balance + interest;
+            print("Interest" @@ interest @@ "applied to" @@ self.owner @ ". Balance:" @@ self.get_balance());
+        };
+    }
+}
+
+{
+    print("=== BankAccount self usage demo ===");
+    print("");
+
+    let alice = new BankAccount("Alice", 1000) in
+    let bob   = new BankAccount("Bob",   500)  in {
+        print("--- Initial state ---");
+        alice.describe();
+        bob.describe();
+
+        print("");
+        print("--- Deposits ---");
+        alice.deposit(200);
+        bob.deposit(300);
+
+        print("");
+        print("--- Withdrawals ---");
+        alice.withdraw(150);
+        bob.withdraw(50);
+
+        print("");
+        print("--- Transfer: Alice -> Bob ---");
+        alice.transfer(300, bob);
+
+        print("");
+        print("--- State after transfer ---");
+        alice.describe();
+        bob.describe();
+
+        print("");
+        print("--- Invalid operations ---");
+        alice.withdraw(99999);
+        bob.deposit(-100);
+        bob.transfer(-50, alice);
+
+        print("");
+        print("--- Apply interest (5%) ---");
+        alice.apply_interest(0.05);
+        bob.apply_interest(0.05);
+
+        print("");
+        print("--- Final state ---");
+        alice.describe();
+        bob.describe();
+    };
+}

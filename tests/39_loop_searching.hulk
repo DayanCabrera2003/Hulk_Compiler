@@ -1,0 +1,126 @@
+// 39_loop_searching.hulk
+// Searching algorithms implemented with loops
+
+// Check primality (trial division)
+function is_prime(n: Number): Boolean {
+    if (n < 2) false
+    else {
+        let d = 2, ok = 1 in {
+            while (d * d <= n & ok == 1) {
+                ok := if (n % d == 0) 0 else ok;
+                d := d + 1;
+            };
+            ok == 1
+        }
+    }
+}
+
+// Linear search in a hardcoded 10-element sequence
+// Returns 0-based index of first match, or -1 if not found
+function linear_search(target: Number): Number {
+    let v = [10, 25, 3, 47, 8, 99, 14, 66, 2, 31] in {
+        let found = -1, i = 0 in {
+            while (i < v.size() & found == -1) {
+                found := if (v[i] == target) i else found;
+                i := i + 1;
+            };
+            found
+        }
+    }
+}
+
+// Find first prime strictly after n
+function find_first_prime_after(n: Number): Number {
+    let candidate = n + 1 in {
+        while (!is_prime(candidate)) {
+            candidate := candidate + 1;
+        };
+        candidate
+    }
+}
+
+// Find the nth prime (1-indexed: nth_prime(1)=2, nth_prime(2)=3, ...)
+function find_nth_prime(n: Number): Number {
+    let count = 0, candidate = 1 in {
+        while (count < n) {
+            candidate := candidate + 1;
+            count := count + if (is_prime(candidate)) 1 else 0;
+        };
+        candidate
+    }
+}
+
+// Two-sum: find two indices in fixed array that add to target
+// Uses nested loops; prints the pair and returns 1 if found, 0 if not
+function two_sum(target: Number): Number {
+    let arr = [2, 7, 11, 15, 1, 8, 3, 6] in {
+        let found = 0, i = 0 in {
+            while (i < arr.size() & found == 0) {
+                let j = i + 1 in {
+                    while (j < arr.size() & found == 0) {
+                        found := if (arr[i] + arr[j] == target) {
+                            print("two_sum(" @ target @ "): indices "
+                                @ i @ " and " @ j
+                                @ " (values " @ arr[i] @ "+" @ arr[j] @ ")");
+                            1
+                        } else 0;
+                        j := j + 1;
+                    };
+                };
+                i := i + 1;
+            };
+            if (found == 0) print("two_sum(" @ target @ "): no pair found") else 0;
+            found
+        }
+    }
+}
+
+// Binary search on hardcoded sorted array [2,5,8,12,16,23,38,45,56,72,91]
+// Returns index or -1
+function binary_search(target: Number): Number {
+    let arr = [2, 5, 8, 12, 16, 23, 38, 45, 56, 72, 91] in {
+        let lo = 0, hi = arr.size() - 1, result = -1 in {
+            while (lo <= hi & result == -1) {
+                let mid = (lo + hi) \ 2 in {
+                    result := if (arr[mid] == target) mid
+                              elif (arr[mid] < target) { lo := mid + 1; -1 }
+                              else { hi := mid - 1; -1 };
+                };
+            };
+            result
+        }
+    }
+}
+
+{
+    print("=== Linear Search ===");
+    print("search(99)  -> idx " @ linear_search(99));
+    print("search(10)  -> idx " @ linear_search(10));
+    print("search(31)  -> idx " @ linear_search(31));
+    print("search(42)  -> idx " @ linear_search(42));
+
+    print("=== First Prime After ===");
+    print("first_prime_after(10)  = " @ find_first_prime_after(10));
+    print("first_prime_after(20)  = " @ find_first_prime_after(20));
+    print("first_prime_after(100) = " @ find_first_prime_after(100));
+
+    print("=== Nth Prime ===");
+    print("prime #1  = " @ find_nth_prime(1));
+    print("prime #5  = " @ find_nth_prime(5));
+    print("prime #10 = " @ find_nth_prime(10));
+    print("prime #20 = " @ find_nth_prime(20));
+
+    print("=== Two Sum ===");
+    two_sum(9);
+    two_sum(18);
+    two_sum(7);
+    two_sum(100);
+
+    print("=== Binary Search ===");
+    print("bsearch(23)  -> idx " @ binary_search(23));
+    print("bsearch(2)   -> idx " @ binary_search(2));
+    print("bsearch(91)  -> idx " @ binary_search(91));
+    print("bsearch(50)  -> idx " @ binary_search(50));
+
+    print("Done.");
+}

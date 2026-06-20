@@ -1,0 +1,93 @@
+// 23_recursive_factorial.hulk — Factorial and related combinatorics
+
+function factorial_rec(n: Number): Number =>
+    if (n <= 1) 1 else n * factorial_rec(n - 1);
+
+function factorial_iter(n: Number): Number {
+    let result = 1 in
+    let i = 2 in
+    {
+        while (i <= n) {
+            result := result * i;
+            i := i + 1;
+        };
+        result
+    }
+}
+
+// n!! = n * (n-2) * (n-4) * ... down to 1 or 2
+function double_factorial(n: Number): Number =>
+    if (n <= 1) 1 else n * double_factorial(n - 2);
+
+// Permutations P(n, r) = n! \ (n-r)!
+function permutations(n: Number, r: Number): Number =>
+    if (r > n) 0
+    else factorial_rec(n) \ factorial_rec(n - r);
+
+// Combinations C(n, r) = n! \ (r! * (n-r)!)
+function combinations(n: Number, r: Number): Number =>
+    if (r > n) 0
+    elif (r == 0) 1
+    else factorial_rec(n) \ (factorial_rec(r) * factorial_rec(n - r));
+
+function print_factorial_table() {
+    print("Factorial table (0..15):");
+    let i = 0 in
+    while (i <= 15) {
+        print("  " @ i @ "! = " @ factorial_rec(i));
+        i := i + 1;
+    };
+}
+
+function print_pascals_triangle(rows: Number) {
+    print("Pascal's triangle (" @ rows @ " rows):");
+    let row = 0 in
+    while (row < rows) {
+        let line = "" in
+        let col = 0 in
+        {
+            while (col <= row) {
+                line := line @ combinations(row, col) @ " ";
+                col := col + 1;
+            };
+            print("  " @ line);
+            row := row + 1;
+        };
+    };
+}
+
+{
+    print("=== Recursive vs Iterative Factorial ===");
+    let k = 0 in
+    while (k <= 10) {
+        print("factorial_rec(" @ k @ ") = " @ factorial_rec(k) @
+              "   iter = " @ factorial_iter(k));
+        k := k + 1;
+    };
+
+    print("");
+    print("=== Double Factorial (n!!) ===");
+    let n = 1 in
+    while (n <= 10) {
+        print("  " @ n @ "!! = " @ double_factorial(n));
+        n := n + 1;
+    };
+
+    print("");
+    print("=== Permutations P(n, r) ===");
+    print("  P(5,2) = " @ permutations(5, 2));
+    print("  P(6,3) = " @ permutations(6, 3));
+    print("  P(10,4) = " @ permutations(10, 4));
+
+    print("");
+    print("=== Combinations C(n, r) ===");
+    print("  C(5,2) = " @ combinations(5, 2));
+    print("  C(6,3) = " @ combinations(6, 3));
+    print("  C(10,5) = " @ combinations(10, 5));
+
+    print("");
+    print_factorial_table();
+
+    print("");
+    print_pascals_triangle(8);
+}

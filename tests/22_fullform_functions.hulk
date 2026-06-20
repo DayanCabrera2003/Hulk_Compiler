@@ -1,0 +1,81 @@
+// 22_fullform_functions.hulk — Full-form functions with complex bodies
+
+function print_separator() {
+    print("-----------------------------");
+}
+
+function print_table(n: Number) {
+    print("Multiplication table for " @ n @ ":");
+    let i = 1 in
+    while (i <= 10) {
+        print("  " @ n @ " x " @ i @ " = " @ (n * i));
+        i := i + 1;
+    };
+}
+
+function describe_number(n: Number) {
+    print("Number: " @ n);
+    print("  Square:    " @ (n ^ 2));
+    print("  Square root: " @ sqrt(n));
+    let parity = if ((n % 2) == 0) "even" else "odd" in
+    print("  Parity:    " @ parity);
+    let sign = if (n > 0) "positive" elif (n < 0) "negative" else "zero" in
+    print("  Sign:      " @ sign);
+    let digits = if (n < 10) 1 elif (n < 100) 2 else 3 in
+    print("  Approx digits: " @ digits);
+}
+
+function compute_stats(a: Number, b: Number, c: Number) {
+    let mn = if (a <= b & a <= c) a elif (b <= c) b else c in
+    let mx = if (a >= b & a >= c) a elif (b >= c) b else c in
+    let avg = (a + b + c) \ 3 in
+    let rng = mx - mn in
+    {
+        print("Stats for (" @ a @ ", " @ b @ ", " @ c @ "):");
+        print("  Min:     " @ mn);
+        print("  Max:     " @ mx);
+        print("  Average: " @ avg);
+        print("  Range:   " @ rng);
+    }
+}
+
+function fizzbuzz(n: Number) {
+    print("FizzBuzz 1.." @ n @ ":");
+    let i = 1 in
+    while (i <= n) {
+        let out =
+            if ((i % 15) == 0) "FizzBuzz"
+            elif ((i % 3) == 0) "Fizz"
+            elif ((i % 5) == 0) "Buzz"
+            else i
+        in
+        print("  " @ out);
+        i := i + 1;
+    };
+}
+
+function print_powers(b: Number, up_to: Number) {
+    print("Powers of " @ b @ " up to exponent " @ up_to @ ":");
+    let exp = 0 in
+    while (exp <= up_to) {
+        print("  " @ b @ "^" @ exp @ " = " @ (b ^ exp));
+        exp := exp + 1;
+    };
+}
+
+{
+    print_separator();
+    print_table(7);
+    print_separator();
+    describe_number(36);
+    print_separator();
+    compute_stats(12, 7, 19);
+    print_separator();
+    compute_stats(5, 5, 5);
+    print_separator();
+    fizzbuzz(20);
+    print_separator();
+    print_powers(2, 10);
+    print_separator();
+    print("All done.");
+}

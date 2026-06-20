@@ -11,6 +11,7 @@ impl Resolver {
         self.expr_symbols.clear();
         self.type_parents.clear();
         self.type_methods.clear();
+        self.type_attributes.clear();
         self.protocol_methods.clear();
         self.protocol_extends.clear();
         self.function_param_annotations.clear();
@@ -61,6 +62,18 @@ impl Resolver {
                 type_decl.span.clone(),
             );
             self.type_parents.insert(type_id, None);
+            // Record this type's own attribute names up front, before any
+            // method body is resolved, so field-access validation can run
+            // regardless of member declaration order or cross-type references.
+            let own_attributes = type_decl
+                .members
+                .iter()
+                .filter_map(|member| match &member.kind {
+                    MemberKind::Attribute { name, .. } => Some(name.clone()),
+                    MemberKind::Method(_) => None,
+                })
+                .collect();
+            self.type_attributes.insert(type_id, own_attributes);
         }
 
         for protocol in &program.protocols {

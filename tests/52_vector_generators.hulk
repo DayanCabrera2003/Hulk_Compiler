@@ -1,0 +1,71 @@
+// 52_vector_generators.hulk
+// Implicit vector (generator) syntax: [expr | x in iterable]
+
+function vec_sum(v: Number[]): Number {
+    let total = 0 in {
+        for (x in v) total := total + x;
+        total
+    }
+}
+
+function vec_print(v: Number[]) {
+    let i = 0 in
+        while (i < v.size()) {
+            print("  [" @ i @ "] = " @ v[i]);
+            i := i + 1
+        }
+}
+
+{
+    // Squares of 1..10
+    let squares = [x ^ 2 | x in range(1, 11)] in {
+        print("Squares of 1..10:");
+        vec_print(squares);
+        print("Sum of squares: " @ vec_sum(squares))
+    };
+
+    // Cubes of 1..8
+    let cubes = [x ^ 3 | x in range(1, 9)] in {
+        print("Cubes of 1..8:");
+        vec_print(cubes);
+        print("Sum of cubes: " @ vec_sum(cubes))
+    };
+
+    // Powers of 2: 2^x for x in 1..8
+    let powers_of_2 = [2 ^ x | x in range(1, 9)] in {
+        print("Powers of 2 (2^1 .. 2^8):");
+        vec_print(powers_of_2);
+        print("Sum: " @ vec_sum(powers_of_2))
+    };
+
+    // Triangular numbers: x*(x+1)/2 for x in 1..10
+    let triangular = [x * (x + 1) \ 2 | x in range(1, 11)] in {
+        print("Triangular numbers T(1)..T(10):");
+        vec_print(triangular);
+        print("Sum of triangular numbers: " @ vec_sum(triangular))
+    };
+
+    // Sin values at multiples of PI/6 (0, pi/6, 2pi/6, ... 6pi/6)
+    let angles = [sin(x * PI \ 6) | x in range(0, 7)] in {
+        print("sin(x * PI/6) for x in 0..6:");
+        vec_print(angles)
+    };
+
+    // x*(x+1) for x in range
+    let paired = [x * (x + 1) | x in range(0, 10)] in {
+        print("x*(x+1) for x in 0..9:");
+        vec_print(paired);
+        print("Sum: " @ vec_sum(paired))
+    };
+
+    // Nested: sum-of-squares vs square-of-sum
+    let v1 = [x ^ 2 | x in range(1, 6)] in
+    let v2 = [x | x in range(1, 6)] in {
+        let sos = vec_sum(v1) in
+        let s_sq = vec_sum(v2) ^ 2 in {
+            print("Sum-of-squares 1..5:  " @ sos);
+            print("Square-of-sum  1..5:  " @ s_sq);
+            print("Difference: " @ (s_sq - sos))
+        }
+    }
+}

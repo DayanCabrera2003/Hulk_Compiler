@@ -1,0 +1,135 @@
+// 60_math_library_program.hulk
+// Comprehensive math library: vectors, statistics, polynomial eval, integration, fast power
+
+// --- Vector operations ---
+
+function vec_add(a: Number[], b: Number[]): Number[] =>
+    [a[i] + b[i] | i in range(0, a.size())];
+
+function scalar_mul(v: Number[], s: Number): Number[] =>
+    [v[i] * s | i in range(0, v.size())];
+
+function dot(a: Number[], b: Number[]): Number {
+    let acc = 0 in {
+        let i = 0 in
+            while (i < a.size()) {
+                acc := acc + a[i] * b[i];
+                i := i + 1
+            };
+        acc
+    }
+}
+
+function vec_norm_sq(v: Number[]): Number => dot(v, v);
+
+// --- Statistics ---
+
+function stat_mean(v: Number[]): Number {
+    let s = 0 in {
+        for (x in v) s := s + x;
+        s \ v.size()
+    }
+}
+
+function stat_variance(v: Number[]): Number {
+    let m = stat_mean(v) in
+    let s = 0 in {
+        for (x in v) s := s + (x - m) ^ 2;
+        s \ v.size()
+    }
+}
+
+function stat_std_dev(v: Number[]): Number =>
+    sqrt(stat_variance(v));
+
+// --- Polynomial: eval_poly(coeffs, x) = sum coeffs[i] * x^i ---
+
+function eval_poly(coeffs: Number[], x: Number): Number {
+    let result = 0 in
+    let i = 0 in {
+        while (i < coeffs.size()) {
+            result := result + coeffs[i] * x ^ i;
+            i := i + 1
+        };
+        result
+    }
+}
+
+// --- Numerical integration (rectangle method) ---
+
+function integrate(f: (Number) -> Number, a: Number, b: Number, n: Number): Number {
+    let h = (b - a) \ n in
+    let acc = 0 in {
+        let i = 0 in
+            while (i < n) {
+                let mid = a + (i + 0.5) * h in
+                    acc := acc + f(mid);
+                i := i + 1
+            };
+        acc * h
+    }
+}
+
+// --- Fast integer power (repeated squaring) ---
+
+function pow_int(base: Number, n: Number): Number {
+    let result = 1 in
+    let b = base in
+    let exp = n in {
+        while (exp > 0) {
+            if (exp % 2 == 1) result := result * b else 0;
+            b := b * b;
+            exp := exp \ 2
+        };
+        result
+    }
+}
+
+{
+    // Problem 1: vector operations
+    let u = [1, 2, 3] in
+    let v = [4, 5, 6] in {
+        print("=== Problem 1: Vector ops ===");
+        print("u = [1,2,3]   v = [4,5,6]");
+        let w = vec_add(u, v) in
+            print("u + v = [" @ w[0] @ ", " @ w[1] @ ", " @ w[2] @ "]");
+        let s = scalar_mul(u, 3) in
+            print("3*u   = [" @ s[0] @ ", " @ s[1] @ ", " @ s[2] @ "]");
+        print("u . v = " @ dot(u, v));
+        print("|u|^2 = " @ vec_norm_sq(u))
+    };
+
+    // Problem 2: statistics on a data set
+    let data = [4, 7, 13, 2, 1, 9, 8, 11, 3, 6] in {
+        print("=== Problem 2: Statistics ===");
+        print("Data: [4,7,13,2,1,9,8,11,3,6]");
+        print("Mean:    " @ stat_mean(data));
+        print("Var:     " @ stat_variance(data));
+        print("Std dev: " @ stat_std_dev(data))
+    };
+
+    // Problem 3: polynomial p(x) = 1 + 2x + 3x^2  evaluated at several points
+    let coeffs = [1, 2, 3] in {
+        print("=== Problem 3: Polynomial 1 + 2x + 3x^2 ===");
+        for (x in range(0, 6))
+            print("p(" @ x @ ") = " @ eval_poly(coeffs, x))
+    };
+
+    // Problem 4: numerical integration of sin(x) from 0 to PI (~2)
+    let sin_integral = integrate((x) => sin(x), 0, PI, 1000) in {
+        print("=== Problem 4: Integral of sin(x) from 0 to PI ===");
+        print("Numerical: " @ sin_integral @ "  (exact = 2.0)")
+    };
+
+    // Problem 5: fast power vs direct
+    print("=== Problem 5: Fast integer power ===");
+    print("2^10  = " @ pow_int(2, 10));
+    print("3^7   = " @ pow_int(3, 7));
+    print("5^5   = " @ pow_int(5, 5));
+    print("10^6  = " @ pow_int(10, 6));
+    // Verify: sum of pow_int(2,k) for k=0..10 = 2^11 - 1 = 2047
+    let geo_sum = 0 in {
+        for (k in range(0, 11)) geo_sum := geo_sum + pow_int(2, k);
+        print("Sum 2^0..2^10 = " @ geo_sum @ "  (expected 2047)")
+    }
+}

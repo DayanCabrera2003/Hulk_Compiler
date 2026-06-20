@@ -1,0 +1,105 @@
+// 49_complex_hierarchy.hulk — Complex geometry class hierarchy
+
+type Shape(shape_name) {
+    label = shape_name;
+
+    name()      => self.label;
+    area()      => 0;
+    perimeter() => 0;
+}
+
+type Triangle(a, b, c) inherits Shape("Triangle") {
+    side_a = a;
+    side_b = b;
+    side_c = c;
+
+    perimeter() => self.side_a + self.side_b + self.side_c;
+
+    // Heron's formula: area = sqrt(s*(s-a)*(s-b)*(s-c)) where s = perimeter/2
+    area() {
+        let s = self.perimeter() \ 2 in
+        sqrt(s * (s - self.side_a) * (s - self.side_b) * (s - self.side_c));
+    }
+}
+
+type Equilateral(side) inherits Triangle(side, side, side) {
+    s = side;
+
+    name() => "Equilateral";
+
+    // Override area with direct formula: (sqrt(3)/4)*side^2
+    area() => (sqrt(3) \ 4) * self.s ^ 2;
+}
+
+type Pentagon(side) inherits Shape("Pentagon") {
+    edge = side;
+
+    perimeter() => 5 * self.edge;
+
+    // Regular pentagon area = (side^2 * sqrt(25 + 10*sqrt(5))) \ 4
+    area() {
+        let inner = sqrt(25 + 10 * sqrt(5)) in
+        (self.edge ^ 2 * inner) \ 4;
+    }
+}
+
+type Circle(r) inherits Shape("Circle") {
+    radius = r;
+
+    perimeter() => 2 * PI * self.radius;
+
+    area() => PI * self.radius ^ 2;
+}
+
+type Rectangle(w, h) inherits Shape("Rectangle") {
+    width  = w;
+    height = h;
+
+    perimeter() => 2 * (self.width + self.height);
+
+    area() => self.width * self.height;
+}
+
+function print_shape_info(s) {
+    {
+        print("Shape:     " @ s.name());
+        print("Area:      " @ s.area());
+        print("Perimeter: " @ s.perimeter());
+        print("");
+    }
+}
+
+{
+    print("=== Complex Geometry Hierarchy ===");
+    print("");
+
+    let t  = new Triangle(3, 4, 5)   in
+    let eq = new Equilateral(6)       in
+    let p  = new Pentagon(4)          in
+    let c  = new Circle(7)            in
+    let r  = new Rectangle(8, 3)     in {
+        print_shape_info(t);
+        print_shape_info(eq);
+        print_shape_info(p);
+        print_shape_info(c);
+        print_shape_info(r);
+
+        print("=== Comparisons ===");
+        let areas = t.area() + eq.area() + p.area() + c.area() + r.area() in
+        print("Total area (all shapes): " @ areas);
+
+        print("Largest perimeter check:");
+        if (c.perimeter() > p.perimeter()) {
+            print("  Circle has larger perimeter than Pentagon");
+        } else {
+            print("  Pentagon has larger perimeter than Circle");
+        };
+
+        print("Equilateral vs Triangle area:");
+        if (eq.area() > t.area()) {
+            print("  Equilateral (side=6) area > Triangle (3-4-5) area");
+        } else {
+            print("  Triangle (3-4-5) area >= Equilateral (side=6) area");
+        };
+    };
+}

@@ -1,0 +1,87 @@
+// 55_protocol_extends.hulk
+// Protocol extension hierarchy: Named -> Printable -> Serializable
+
+protocol Named {
+    get_name(): String;
+}
+
+protocol Printable extends Named {
+    to_string(): String;
+}
+
+protocol Serializable extends Printable {
+    serialize(): String;
+}
+
+// --- Types that implement each level ---
+
+type Person(first: String, last: String) {
+    first = first;
+    last  = last;
+    get_name(): String => self.first @@ self.last;
+    to_string(): String => "Person(" @ self.get_name() @ ")";
+    serialize(): String => "{\"type\":\"Person\",\"first\":\"" @ self.first @ "\",\"last\":\"" @ self.last @ "\"}";
+}
+
+type Product(name: String, price: Number) {
+    name  = name;
+    price = price;
+    get_name(): String => self.name;
+    to_string(): String => "Product(" @ self.name @ ", $" @ self.price @ ")";
+    serialize(): String => "{\"type\":\"Product\",\"name\":\"" @ self.name @ "\",\"price\":" @ self.price @ "}";
+}
+
+type Location(city: String, country: String) {
+    city    = city;
+    country = country;
+    get_name(): String => self.city @ ", " @ self.country;
+    to_string(): String => "Location(" @ self.get_name() @ ")";
+    serialize(): String => "{\"city\":\"" @ self.city @ "\",\"country\":\"" @ self.country @ "\"}";
+}
+
+// --- Functions parameterized by protocol ---
+
+function show_name(n: Named) {
+    print("Name: " @ n.get_name())
+}
+
+function show_printable(p: Printable) {
+    print("Name:   " @ p.get_name());
+    print("String: " @ p.to_string())
+}
+
+function show_serialized(s: Serializable) {
+    print("Name:   " @ s.get_name());
+    print("String: " @ s.to_string());
+    print("JSON:   " @ s.serialize())
+}
+
+function names_equal(a: Named, b: Named): Boolean =>
+    a.get_name() == b.get_name();
+
+{
+    let alice   = new Person("Alice", "Smith") in
+    let widget  = new Product("Widget Pro", 29.99) in
+    let london  = new Location("London", "UK") in {
+        print("=== Via Named ===");
+        show_name(alice);
+        show_name(widget);
+        show_name(london);
+
+        print("=== Via Printable ===");
+        show_printable(alice);
+        show_printable(widget);
+        show_printable(london);
+
+        print("=== Via Serializable ===");
+        show_serialized(alice);
+        show_serialized(widget);
+        show_serialized(london);
+
+        // Serializable satisfies Named — compare names across hierarchy levels
+        print("=== Cross-protocol comparison ===");
+        let alice2 = new Person("Alice", "Smith") in
+            print("alice == alice2 by name: " @ names_equal(alice, alice2));
+        print("alice == widget by name:  " @ names_equal(alice, widget))
+    }
+}

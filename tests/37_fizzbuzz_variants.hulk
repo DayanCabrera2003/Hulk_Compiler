@@ -1,0 +1,88 @@
+// 37_fizzbuzz_variants.hulk
+// FizzBuzz variants: classic, FizzBuzzBazz, factor listing, Goldbach check
+
+// Check if n is prime
+function is_prime(n: Number): Boolean {
+    if (n < 2) false
+    else {
+        let d = 2, ok = 1 in {
+            while (d * d <= n & ok == 1) {
+                ok := if (n % d == 0) 0 else ok;
+                d := d + 1;
+            };
+            ok == 1
+        }
+    }
+}
+
+// Classic FizzBuzz 1..100
+function fizzbuzz() {
+    print("=== Classic FizzBuzz 1..100 ===");
+    for (i in range(1, 101)) {
+        let label =
+            if (i % 15 == 0) "FizzBuzz"
+            elif (i % 3 == 0) "Fizz"
+            elif (i % 5 == 0) "Buzz"
+            else i
+        in print(label);
+    };
+}
+
+// FizzBuzzBazz: 3->Fizz, 5->Buzz, 7->Bazz, combinations
+function fizzbuzzbazz(limit: Number) {
+    print("=== FizzBuzzBazz 1.." @ limit @ " ===");
+    for (i in range(1, limit + 1)) {
+        let by3 = i % 3 == 0, by5 = i % 5 == 0, by7 = i % 7 == 0 in {
+            let label =
+                if (by3 & by5 & by7) "FizzBuzzBazz"
+                elif (by3 & by5) "FizzBuzz"
+                elif (by3 & by7) "FizzBazz"
+                elif (by5 & by7) "BuzzBazz"
+                elif (by3) "Fizz"
+                elif (by5) "Buzz"
+                elif (by7) "Bazz"
+                else i
+            in print(label);
+        };
+    };
+}
+
+// For each n in 1..limit, list all its divisors count
+function factor_counts(limit: Number) {
+    print("=== Factor counts 1.." @ limit @ " ===");
+    for (n in range(1, limit + 1)) {
+        let count = 0 in {
+            for (d in range(1, n + 1)) {
+                count := count + if (n % d == 0) 1 else 0;
+            };
+            print(n @ " has " @ count @ " divisors");
+        };
+    };
+}
+
+// Goldbach: every even number >= 4 is sum of two primes
+function goldbach_check(limit: Number) {
+    print("=== Goldbach check even numbers 4.." @ limit @ " ===");
+    for (n in range(2, limit \ 2 + 1)) {
+        let even = n * 2 in {
+            let found = 0, p = 2 in {
+                while (p <= even \ 2 & found == 0) {
+                    found := if (is_prime(p) & is_prime(even - p)) {
+                        print(even @ " = " @ p @ " + " @ (even - p));
+                        1
+                    } else 0;
+                    p := p + 1;
+                };
+                if (found == 0) print(even @ ": no pair found (conjecture violated?)") else 0;
+            };
+        };
+    };
+}
+
+{
+    fizzbuzz();
+    fizzbuzzbazz(30);
+    factor_counts(20);
+    goldbach_check(30);
+    print("All FizzBuzz variants done.");
+}

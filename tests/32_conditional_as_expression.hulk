@@ -1,0 +1,99 @@
+// 32_conditional_as_expression.hulk
+// if used as an expression value in many contexts
+
+function abs_val(x: Number): Number =>
+    if (x >= 0) x else -x;
+
+function sign(x: Number): Number =>
+    if (x > 0) 1 elif (x == 0) 0 else -1;
+
+function step(x: Number): Number =>
+    if (x >= 0) 1 else 0;
+
+function ramp(x: Number): Number =>
+    if (x > 0) x else 0;
+
+function max2(a: Number, b: Number): Number =>
+    if (a > b) a else b;
+
+function min2(a: Number, b: Number): Number =>
+    if (a < b) a else b;
+
+function clamp(x: Number, lo: Number, hi: Number): Number =>
+    if (x < lo) lo elif (x > hi) hi else x;
+
+function piecewise(x: Number): Number =>
+    if (x < 0) x * x
+    elif (x < 5) 2 * x + 1
+    else 3 * x - 4;
+
+{
+    // 1. if as argument to print
+    print(if (10 > 0) "positive" else "non-positive");
+
+    // 2. if result stored in let
+    let result = if (7 > 3) "seven wins" else "three wins" in
+        print("Result: " @ result);
+
+    // 3. if used in arithmetic
+    let x = 4 in
+        print("add or sub: " @ (x + if (x > 2) 100 else 0));
+
+    // 4. nested if as expression (ternary-like chaining)
+    let grade = 78 in
+        print("Grade: " @ if (grade >= 90) "A" elif (grade >= 80) "B" elif (grade >= 70) "C" else "F");
+
+    // 5. abs_val
+    print("abs(-7) = " @ abs_val(-7));
+    print("abs(5)  = " @ abs_val(5));
+
+    // 6. sign
+    print("sign(-3) = " @ sign(-3));
+    print("sign(0)  = " @ sign(0));
+    print("sign(9)  = " @ sign(9));
+
+    // 7. step
+    print("step(-1) = " @ step(-1));
+    print("step(0)  = " @ step(0));
+    print("step(2)  = " @ step(2));
+
+    // 8. ramp
+    print("ramp(-5) = " @ ramp(-5));
+    print("ramp(3)  = " @ ramp(3));
+
+    // 9. max and min as expressions
+    let a = 12, b = 7 in {
+        print("max(12,7) = " @ max2(a, b));
+        print("min(12,7) = " @ min2(a, b));
+    };
+
+    // 10. clamp used in expression
+    print("clamp(15,0,10) = " @ clamp(15, 0, 10));
+    print("clamp(-3,0,10) = " @ clamp(-3, 0, 10));
+    print("clamp(5,0,10)  = " @ clamp(5, 0, 10));
+
+    // 11. if in multiplication
+    let flag = 1 in
+        print("flag*val = " @ (if (flag == 1) 42 else 0));
+
+    // 12. piecewise function (multiple if expressions)
+    print("piecewise(-2) = " @ piecewise(-2));
+    print("piecewise(3)  = " @ piecewise(3));
+    print("piecewise(10) = " @ piecewise(10));
+
+    // 13. nested ifs to compute 3-way comparison
+    let p = 5, q = 5 in
+        print("compare: " @ if (p > q) "greater" elif (p == q) "equal" else "less");
+
+    // 14. if as part of string concat
+    let n = -8 in
+        print("n is " @ if (n < 0) "negative" else "non-negative" @ " and abs=" @ abs_val(n));
+
+    // 15. if inside let initializer
+    let threshold = 50 in
+        let score = 73 in
+            let status = if (score >= threshold) "pass" else "fail" in
+                print("Score " @ score @ ": " @ status);
+
+    print("All 15 if-as-expression demos done.");
+}

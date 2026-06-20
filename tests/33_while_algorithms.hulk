@@ -1,0 +1,119 @@
+// 33_while_algorithms.hulk
+// Classic algorithms implemented with while loops and destructive assignment
+
+// GCD using Euclid's algorithm
+function gcd(a: Number, b: Number): Number {
+    let x = a, y = b in {
+        while (y != 0) {
+            let tmp = y in {
+                y := x % y;
+                x := tmp;
+            };
+        };
+        x
+    }
+}
+
+// Number of digits in a positive integer
+function num_digits(n: Number): Number {
+    let count = 0, val = if (n == 0) 1 else n in {
+        let v = if (val < 0) -val else val in {
+            while (v > 0) {
+                count := count + 1;
+                v := v \ 10;
+            };
+            count
+        }
+    }
+}
+
+// Sum of digits
+function sum_digits(n: Number): Number {
+    let val = if (n < 0) -n else n, acc = 0 in {
+        while (val > 0) {
+            acc := acc + val % 10;
+            val := val \ 10;
+        };
+        acc
+    }
+}
+
+// Integer square root (floor)
+function isqrt(n: Number): Number {
+    let r = 0 in {
+        while ((r + 1) * (r + 1) <= n) {
+            r := r + 1;
+        };
+        r
+    }
+}
+
+// Power by repeated multiplication
+function power_iter(base: Number, exp: Number): Number {
+    let result = 1, e = exp in {
+        while (e > 0) {
+            result := result * base;
+            e := e - 1;
+        };
+        result
+    }
+}
+
+// Collatz steps to reach 1
+function collatz_steps(n: Number): Number {
+    let val = n, steps = 0 in {
+        while (val != 1) {
+            val := if (val % 2 == 0) val \ 2 else 3 * val + 1;
+            steps := steps + 1;
+        };
+        steps
+    }
+}
+
+// Sum of digits of each number from 1 to n
+function digital_root_sum(n: Number): Number {
+    let i = 1, total = 0 in {
+        while (i <= n) {
+            total := total + sum_digits(i);
+            i := i + 1;
+        };
+        total
+    }
+}
+
+{
+    print("=== GCD (Euclid) ===");
+    print("gcd(48,18)  = " @ gcd(48, 18));
+    print("gcd(100,75) = " @ gcd(100, 75));
+    print("gcd(13,7)   = " @ gcd(13, 7));
+
+    print("=== Number of Digits ===");
+    print("digits(0)     = " @ num_digits(0));
+    print("digits(7)     = " @ num_digits(7));
+    print("digits(42)    = " @ num_digits(42));
+    print("digits(12345) = " @ num_digits(12345));
+
+    print("=== Sum of Digits ===");
+    print("sumdigits(0)   = " @ sum_digits(0));
+    print("sumdigits(99)  = " @ sum_digits(99));
+    print("sumdigits(123) = " @ sum_digits(123));
+
+    print("=== Integer Square Root ===");
+    print("isqrt(9)   = " @ isqrt(9));
+    print("isqrt(10)  = " @ isqrt(10));
+    print("isqrt(100) = " @ isqrt(100));
+    print("isqrt(50)  = " @ isqrt(50));
+
+    print("=== Power by Repeated Multiplication ===");
+    print("power(2,10) = " @ power_iter(2, 10));
+    print("power(3,5)  = " @ power_iter(3, 5));
+    print("power(5,0)  = " @ power_iter(5, 0));
+
+    print("=== Collatz Sequence Steps ===");
+    print("collatz(6)  = " @ collatz_steps(6)  @ " steps");
+    print("collatz(27) = " @ collatz_steps(27) @ " steps");
+    print("collatz(1)  = " @ collatz_steps(1)  @ " steps");
+
+    print("=== Digital Root Sum 1..10 ===");
+    print("sum of digit-sums 1..10 = " @ digital_root_sum(10));
+}

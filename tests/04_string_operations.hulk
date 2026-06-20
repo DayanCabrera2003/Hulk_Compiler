@@ -1,0 +1,101 @@
+// 04_string_operations.hulk
+// Demonstrates all string features: literals, escapes, @, @@, functions
+
+// Build a separator line of dashes
+function separator(n: Number): String {
+    let result = "" in {
+        for (i in range(0, n)) {
+            result := result @ "-";
+        };
+        result
+    }
+}
+
+// Pad a label on the left for aligned output
+function labeled(label: String, value: String): String =>
+    "[" @ label @ "] " @ value;
+
+// Repeat a string n times
+function repeat_str(s: String, n: Number): String {
+    let result = "" in {
+        for (i in range(0, n)) {
+            result := result @ s;
+        };
+        result
+    }
+}
+
+// Build a greeting line with name and count
+function build_line(name: String, count: Number): String =>
+    "User: " @ name @@ "| Visits: " @ count;
+
+{
+    // Basic string literal
+    print("Basic string literal");
+
+    // String with escape characters
+    print("Tab:\there");
+    print("Newline:\nSecond line");
+    print("Quoted: \"HULK is great\"");
+
+    // @ operator: concatenate without extra space
+    let hello = "Hello" in
+    let world = "World" in
+    print(hello @ ", " @ world @ "!");
+
+    // @@ operator: inserts exactly one space
+    print("foo" @@ "bar" @@ "baz");
+
+    // Concatenating strings with numbers
+    let score = 98 in
+    print("Your score: " @ score @ " points");
+
+    // String stored in let binding
+    let greeting = "Good morning" in
+    let name = "Alice" in
+    print(greeting @ ", " @ name @ ".");
+
+    // Build strings in functions
+    print(separator(30));
+
+    // Labeled output using helper
+    print(labeled("Name", "Bob"));
+    print(labeled("City", "Havana"));
+    print(labeled("Score", "100"));
+
+    print(separator(30));
+
+    // Repeat string
+    print(repeat_str("*", 10));
+    print(repeat_str("ab", 5));
+    print(repeat_str("-", 20));
+
+    // Concatenation chain
+    let part1 = "The " in
+    let part2 = "quick " in
+    let part3 = "brown " in
+    let part4 = "fox" in
+    print(part1 @ part2 @ part3 @ part4);
+
+    // Mixed @@ and @ in same expression
+    let lang = "HULK" in
+    let ver = 1 in
+    print("Language:" @@ lang @@ "version" @@ ver);
+
+    // Build lines using function
+    print(build_line("Alice", 5));
+    print(build_line("Bob", 12));
+    print(build_line("Charlie", 1));
+
+    // String with number arithmetic in concat
+    let base = 10 in
+    let result = base ^ 2 in
+    print("10 squared is " @ result);
+
+    // Empty string concatenation
+    let empty = "" in
+    print("empty @ 'hello' = " @ (empty @ "hello"));
+
+    print(separator(30));
+    print("String operations complete.")
+}

@@ -1,0 +1,87 @@
+// 45_base_keyword.hulk — Using base() to call parent methods
+
+type Person(firstname, lastname) {
+    first = firstname;
+    last  = lastname;
+
+    name() => self.first @@ self.last;
+
+    greet() => "Hello, I am" @@ self.name();
+
+    title() => "";
+
+    formal_name() => self.title() @@ self.name();
+}
+
+type Knight(firstname, lastname) inherits Person(firstname, lastname) {
+    // base() calls Person.name()
+    name() => "Sir" @@ base();
+
+    title() => "Knight";
+}
+
+type SuperKnight(firstname, lastname) inherits Knight(firstname, lastname) {
+    // base() calls Knight.name() which itself calls Person.name()
+    name() => base() @@ "the Brave";
+
+    title() => "Grand Knight";
+}
+
+type ArchKnight(firstname, lastname) inherits SuperKnight(firstname, lastname) {
+    name() => "Lord" @@ base();
+
+    title() => "Arch Knight";
+}
+
+// A second hierarchy demonstrating base() in greet()
+type Employee(firstname, lastname, company) inherits Person(firstname, lastname) {
+    employer = company;
+
+    name()  => base() @@ "of" @@ self.employer;
+    greet() => base() @@ "(employee)";
+}
+
+type Manager(firstname, lastname, company, dept) inherits Employee(firstname, lastname, company) {
+    department = dept;
+
+    name()  => base() @@ "[" @ self.department @ "]";
+    greet() => base() @@ "- manages" @@ self.department;
+}
+
+{
+    print("=== base() call chain ===");
+
+    let p  = new Person("John", "Doe")             in
+    let k  = new Knight("Arthur", "Pendragon")     in
+    let sk = new SuperKnight("Lancelot", "du Lac")  in
+    let ak = new ArchKnight("Roland", "Charlemagne") in {
+        print("Person name:      " @ p.name());
+        print("Knight name:      " @ k.name());
+        print("SuperKnight name: " @ sk.name());
+        print("ArchKnight name:  " @ ak.name());
+
+        print("");
+        print("Person greet:      " @ p.greet());
+        print("Knight greet:      " @ k.greet());
+        print("SuperKnight greet: " @ sk.greet());
+    };
+
+    print("");
+    print("=== Formal names ===");
+    let k2  = new Knight("Gawain", "of Orkney") in
+    let sk2 = new SuperKnight("Percival", "the Pure") in {
+        print(k2.formal_name());
+        print(sk2.formal_name());
+    };
+
+    print("");
+    print("=== Employee hierarchy ===");
+
+    let emp = new Employee("Alice", "Smith", "Acme")            in
+    let mgr = new Manager("Bob", "Jones", "Globex", "Engineering") in {
+        print("Employee name:  " @ emp.name());
+        print("Employee greet: " @ emp.greet());
+        print("Manager name:   " @ mgr.name());
+        print("Manager greet:  " @ mgr.greet());
+    };
+}

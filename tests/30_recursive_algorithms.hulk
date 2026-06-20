@@ -1,0 +1,149 @@
+// 30_recursive_algorithms.hulk — Recursive algorithms on numbers
+
+// Recursive exponentiation (fast: divide exponent by 2)
+function power(num: Number, exp: Number): Number =>
+    if (exp == 0) 1
+    elif ((exp % 2) == 0) power(num * num, exp \ 2)
+    else num * power(num, exp - 1);
+
+// Sum of decimal digits: sum_digits(123) = 6
+function sum_digits(n: Number): Number =>
+    if (n < 10) n else (n % 10) + sum_digits(n \ 10);
+
+// Reverse digits: reverse_digits(1234) = 4321
+function reverse_digits(n: Number): Number {
+    let rev = 0 in
+    let rem = n in
+    {
+        while (rem > 0) {
+            rev := rev * 10 + (rem % 10);
+            rem := rem \ 10;
+        };
+        rev
+    }
+}
+
+// Count digits: count_digits(12345) = 5
+function count_digits(n: Number): Number =>
+    if (n < 10) 1 else 1 + count_digits(n \ 10);
+
+// Is palindrome number: is_palindrome(121) = true
+function is_palindrome_num(n: Number): Boolean =>
+    reverse_digits(n) == n;
+
+// Print binary representation using while loop
+function print_binary(n: Number) {
+    let bits = "" in
+    let rem = n in
+    {
+        if (rem == 0) {
+            bits := "0";
+        } else {
+            while (rem > 0) {
+                bits := (rem % 2) @ bits;
+                rem := rem \ 2;
+            };
+        };
+        print("  " @ n @ " in binary = " @ bits);
+    }
+}
+
+// Count set bits (1-bits) in binary representation
+function count_bits(n: Number): Number =>
+    if (n == 0) 0 else (n % 2) + count_bits(n \ 2);
+
+// Ackermann function (for small m, n only — grows extremely fast)
+function ackermann(m: Number, n: Number): Number =>
+    if (m == 0) n + 1
+    elif (n == 0) ackermann(m - 1, 1)
+    else ackermann(m - 1, ackermann(m, n - 1));
+
+// Collatz steps: how many steps to reach 1
+function collatz_steps(n: Number): Number =>
+    if (n == 1) 0
+    elif ((n % 2) == 0) 1 + collatz_steps(n \ 2)
+    else 1 + collatz_steps(3 * n + 1);
+
+{
+    print("=== Fast Recursive Power ===");
+    print("  power(2,10) = " @ power(2, 10));
+    print("  power(3,5)  = " @ power(3, 5));
+    print("  power(7,4)  = " @ power(7, 4));
+    print("  power(2,20) = " @ power(2, 20));
+
+    print("");
+    print("=== Sum of Digits ===");
+    let nums = [0, 9, 99, 123, 9999, 12345, 999999] in
+    let ni = 0 in
+    while (ni < nums.size()) {
+        let n = nums[ni] in
+        print("  sum_digits(" @ n @ ") = " @ sum_digits(n));
+        ni := ni + 1;
+    };
+
+    print("");
+    print("=== Reverse Digits ===");
+    let rns = [123, 4567, 100, 9009, 12321] in
+    let ri = 0 in
+    while (ri < rns.size()) {
+        let n = rns[ri] in
+        print("  reverse(" @ n @ ") = " @ reverse_digits(n));
+        ri := ri + 1;
+    };
+
+    print("");
+    print("=== Count Digits ===");
+    let cdn = [1, 10, 100, 9999, 12345] in
+    let ci = 0 in
+    while (ci < cdn.size()) {
+        let n = cdn[ci] in
+        print("  count_digits(" @ n @ ") = " @ count_digits(n));
+        ci := ci + 1;
+    };
+
+    print("");
+    print("=== Palindrome Numbers ===");
+    let pals = [121, 1221, 12321, 1234, 999, 1001, 100] in
+    let pi = 0 in
+    while (pi < pals.size()) {
+        let n = pals[pi] in
+        print("  is_palindrome(" @ n @ ") = " @ is_palindrome_num(n));
+        pi := pi + 1;
+    };
+
+    print("");
+    print("=== Binary Representations ===");
+    let bins = [0, 1, 2, 5, 10, 15, 16, 255] in
+    let bi = 0 in
+    while (bi < bins.size()) {
+        print_binary(bins[bi]);
+        bi := bi + 1;
+    };
+
+    print("");
+    print("=== Count Set Bits ===");
+    let cbns = [0, 1, 7, 8, 15, 16, 255] in
+    let cbi = 0 in
+    while (cbi < cbns.size()) {
+        let n = cbns[cbi] in
+        print("  count_bits(" @ n @ ") = " @ count_bits(n));
+        cbi := cbi + 1;
+    };
+
+    print("");
+    print("=== Ackermann (small values) ===");
+    print("  A(0,0)=" @ ackermann(0,0) @ " A(0,3)=" @ ackermann(0,3));
+    print("  A(1,0)=" @ ackermann(1,0) @ " A(1,3)=" @ ackermann(1,3));
+    print("  A(2,0)=" @ ackermann(2,0) @ " A(2,3)=" @ ackermann(2,3));
+    print("  A(3,0)=" @ ackermann(3,0) @ " A(3,2)=" @ ackermann(3,2));
+
+    print("");
+    print("=== Collatz Sequence Steps ===");
+    let col = [1, 2, 3, 6, 7, 27] in
+    let coli = 0 in
+    while (coli < col.size()) {
+        let n = col[coli] in
+        print("  collatz_steps(" @ n @ ") = " @ collatz_steps(n));
+        coli := coli + 1;
+    };
+}

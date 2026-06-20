@@ -1,0 +1,87 @@
+// 42_type_constructor_args.hulk — Types with constructor arguments
+
+type Circle(cx, cy, radius) {
+    center_x = cx;
+    center_y = cy;
+    r = radius;
+
+    area()          => PI * self.r ^ 2;
+    circumference() => 2 * PI * self.r;
+
+    contains(px, py) {
+        let dx = px - self.center_x in
+        let dy = py - self.center_y in
+        sqrt(dx ^ 2 + dy ^ 2) <= self.r;
+    }
+
+    describe() =>
+        "Circle center=(" @ self.center_x @ "," @ self.center_y @ ")"
+        @@ "r=" @ self.r
+        @@ "area=" @ self.area()
+        @@ "circ=" @ self.circumference();
+}
+
+type Vector2D(vx, vy) {
+    x = vx;
+    y = vy;
+
+    add_x(val) {
+        self.x := self.x + val;
+        self.x;
+    }
+
+    add_y(val) {
+        self.y := self.y + val;
+        self.y;
+    }
+
+    magnitude() => sqrt(self.x ^ 2 + self.y ^ 2);
+
+    normalize_x() {
+        let m = self.magnitude() in
+        if (m > 0) self.x \ m else 0;
+    }
+
+    normalize_y() {
+        let m = self.magnitude() in
+        if (m > 0) self.y \ m else 0;
+    }
+
+    to_string() => "Vec2D(" @ self.x @ "," @ self.y @ ")";
+}
+
+{
+    print("=== Circle tests ===");
+
+    let c1 = new Circle(0, 0, 5) in
+    let c2 = new Circle(3, 3, 2) in
+    let c3 = new Circle(-1, -1, 10) in {
+        print(c1.describe());
+        print(c2.describe());
+        print(c3.describe());
+
+        print("c1 contains (3,4):" @@ c1.contains(3, 4));
+        print("c1 contains (4,4):" @@ c1.contains(4, 4));
+        print("c2 contains (3,3):" @@ c2.contains(3, 3));
+        print("c3 contains (0,0):" @@ c3.contains(0, 0));
+    };
+
+    print("=== Vector2D tests ===");
+
+    let v1 = new Vector2D(3, 4) in
+    let v2 = new Vector2D(1, 0) in
+    let v3 = new Vector2D(0, 7) in {
+        print("v1:" @@ v1.to_string() @@ "magnitude=" @ v1.magnitude());
+        print("v2:" @@ v2.to_string() @@ "magnitude=" @ v2.magnitude());
+        print("v3:" @@ v3.to_string() @@ "magnitude=" @ v3.magnitude());
+
+        print("v1 normalize_x=" @ v1.normalize_x() @@ "normalize_y=" @ v1.normalize_y());
+        print("v2 normalize_x=" @ v2.normalize_x() @@ "normalize_y=" @ v2.normalize_y());
+
+        // mutation
+        v1.add_x(1);
+        v1.add_y(1);
+        print("v1 after add (1,1):" @@ v1.to_string());
+        print("v1 new magnitude=" @ v1.magnitude());
+    };
+}

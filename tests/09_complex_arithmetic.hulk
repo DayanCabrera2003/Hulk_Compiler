@@ -1,0 +1,110 @@
+// 09_complex_arithmetic.hulk
+// Complex mathematical computations: quadratic, geometry, finance, series
+
+// Quadratic formula: returns the larger root of ax^2 + bx + c = 0
+function quad_pos(a: Number, b: Number, c: Number): Number =>
+    (-b + sqrt(b ^ 2 - 4 * a * c)) \ (2 * a);
+
+// Smaller root
+function quad_neg(a: Number, b: Number, c: Number): Number =>
+    (-b - sqrt(b ^ 2 - 4 * a * c)) \ (2 * a);
+
+// Discriminant
+function discriminant(a: Number, b: Number, c: Number): Number =>
+    b ^ 2 - 4 * a * c;
+
+// Distance between two 2D points
+function dist2d(x1: Number, y1: Number, x2: Number, y2: Number): Number =>
+    sqrt((x2 - x1) ^ 2 + (y2 - y1) ^ 2);
+
+// Area of a circle
+function area_circle(r: Number): Number => PI * r ^ 2;
+
+// Area of a triangle given base and height
+function area_triangle(base: Number, height: Number): Number =>
+    base * height \ 2;
+
+// Compound interest: principal * (1 + rate)^years
+function compound(principal: Number, rate: Number, years: Number): Number =>
+    principal * (1 + rate) ^ years;
+
+// Sum of first n natural numbers
+function sum_n(n: Number): Number => n * (n + 1) \ 2;
+
+// Sum of squares 1^2 + 2^2 + ... + n^2
+function sum_squares(n: Number): Number =>
+    n * (n + 1) * (2 * n + 1) \ 6;
+
+// nth Fibonacci via loop (not recursion to stay simple)
+function fib(n: Number): Number {
+    let prev = 0 in
+    let curr = 1 in
+    let i = 1 in {
+        while (i < n) {
+            let next = prev + curr in {
+                prev := curr;
+                curr := next;
+                i := i + 1;
+            };
+        };
+        if (n == 0) 0 else curr
+    }
+}
+
+{
+    // --- Quadratic formula ---
+    print("=== Quadratic Formula ===");
+    // x^2 - 5x + 6 = 0  =>  roots 2 and 3
+    let qa = 1 in
+    let qb = -5 in
+    let qc = 6 in
+    print("x^2 - 5x + 6 = 0");
+    print("  discriminant = " @ discriminant(qa, qb, qc));
+    print("  root1 = " @ quad_pos(qa, qb, qc));
+    print("  root2 = " @ quad_neg(qa, qb, qc));
+
+    // 2x^2 + x - 3 = 0  =>  roots 1 and -1.5
+    let qa2 = 2 in
+    let qb2 = 1 in
+    let qc2 = -3 in
+    print("2x^2 + x - 3 = 0");
+    print("  root1 = " @ quad_pos(qa2, qb2, qc2));
+    print("  root2 = " @ quad_neg(qa2, qb2, qc2));
+
+    // --- Geometry ---
+    print("=== Geometry ===");
+    print("distance (0,0) to (3,4)    = " @ dist2d(0, 0, 3, 4));
+    print("distance (2,3) to (7,11)   = " @ dist2d(2, 3, 7, 11));
+    print("area circle r=3            = " @ area_circle(3));
+    print("area circle r=7            = " @ area_circle(7));
+    print("area triangle b=10 h=5     = " @ area_triangle(10, 5));
+    print("area triangle b=6  h=9     = " @ area_triangle(6, 9));
+
+    // Unit circle at 45 degrees
+    let ang = PI \ 4 in
+    print("Unit circle at 45deg: (" @ cos(ang) @ ", " @ sin(ang) @ ")");
+
+    // --- Compound interest ---
+    print("=== Compound Interest ===");
+    let principal = 1000 in
+    let rate = 0.05 in
+    print("$1000 at 5% for 1 year  = $" @ compound(principal, rate, 1));
+    print("$1000 at 5% for 5 years = $" @ compound(principal, rate, 5));
+    print("$1000 at 5% for 10 yrs  = $" @ compound(principal, rate, 10));
+    print("$1000 at 10% for 5 yrs  = $" @ compound(principal, 0.1, 5));
+
+    // --- Series sums ---
+    print("=== Series Sums ===");
+    print("Sum 1..10   = " @ sum_n(10));
+    print("Sum 1..100  = " @ sum_n(100));
+    print("Sum sq 1..5 = " @ sum_squares(5));
+    print("Sum sq 1..10= " @ sum_squares(10));
+
+    // --- Fibonacci ---
+    print("=== Fibonacci ===");
+    for (i in range(0, 11)) {
+        print("fib(" @ i @ ") = " @ fib(i));
+    };
+
+    print("--- Complex arithmetic complete ---")
+}

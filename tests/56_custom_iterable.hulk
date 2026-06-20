@@ -1,0 +1,89 @@
+// 56_custom_iterable.hulk
+// Custom iterable types implementing next()/current() protocol
+
+// --- Counter: counts from `from_n` up to `to_n` inclusive ---
+type Counter(from_n: Number, to_n: Number) {
+    cur  = from_n - 1;
+    top  = to_n;
+    next(): Boolean => {
+        self.cur := self.cur + 1;
+        self.cur <= self.top
+    };
+    current(): Number => self.cur;
+}
+
+// --- FibonacciIter: emits Fibonacci numbers up to a limit ---
+type FibonacciIter(limit: Number) {
+    prev  = 0;
+    curr  = 1;
+    limit = limit;
+    started = false;
+    next(): Boolean => {
+        if (!self.started) {
+            self.started := true
+        } else {
+            let tmp = self.curr in {
+                self.curr := self.prev + self.curr;
+                self.prev := tmp
+            }
+        };
+        self.prev <= self.limit
+    };
+    current(): Number => self.prev;
+}
+
+// --- StepIter: counts from `start` to `stop` by `step` ---
+type StepIter(start: Number, stop: Number, step: Number) {
+    cur  = start - step;
+    stop = stop;
+    step = step;
+    next(): Boolean => {
+        self.cur := self.cur + self.step;
+        self.cur <= self.stop
+    };
+    current(): Number => self.cur;
+}
+
+function sum_iterable(it: Counter): Number {
+    let total = 0 in {
+        for (x in it) total := total + x;
+        total
+    }
+}
+
+function collect_counter(from_n: Number, to_n: Number): Number[] =>
+    [x | x in new Counter(from_n, to_n)];
+
+{
+    print("=== Counter 1..10 via for loop ===");
+    for (x in new Counter(1, 10)) print(x);
+
+    print("=== Sum via Counter 1..100 ===");
+    let total = 0 in {
+        for (x in new Counter(1, 101)) total := total + x;
+        print("Sum 1..100 = " @ total)
+    };
+
+    print("=== Collect Counter into vector ===");
+    let v = collect_counter(1, 5) in {
+        print("Size: " @ v.size());
+        let i = 0 in
+            while (i < v.size()) {
+                print("  v[" @ i @ "] = " @ v[i]);
+                i := i + 1
+            }
+    };
+
+    print("=== Fibonacci up to 100 ===");
+    for (f in new FibonacciIter(100)) print(f);
+
+    print("=== StepIter 0..20 step 3 ===");
+    for (x in new StepIter(0, 20, 3)) print(x);
+
+    print("=== Nested counters: multiplication table 1..4 x 1..4 ===");
+    for (i in new Counter(1, 4)) {
+        for (j in new Counter(1, 4)) {
+            print(i @ " * " @ j @ " = " @ (i * j))
+        }
+    }
+}

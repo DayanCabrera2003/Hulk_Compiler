@@ -1,0 +1,77 @@
+// 13_let_as_expression.hulk
+// Demonstrates let used as a sub-expression inside larger expressions
+
+function square(n: Number): Number => n * n;
+function cube(n: Number): Number => n * n * n;
+
+{
+    // Use 1: let directly inside print()
+    print(let x = 5 in x * 2);
+
+    // Use 2: Arithmetic with let — Pythagorean theorem inline
+    let hyp = (let a = 3 in a ^ 2) + (let b = 4 in b ^ 2) in
+    print("3^2 + 4^2 = " @ hyp);
+
+    // Use 3: Two independent let sub-expressions added together
+    let sum_of_cubes = (let p = 3 in cube(p)) + (let q = 4 in cube(q)) in
+    print("3^3 + 4^3 = " @ sum_of_cubes);
+
+    // Use 4: let inside the condition branch of if
+    let threshold = 10 in
+    let val = 7 in
+    if (val < threshold)
+        print("Small: " @ (let ratio = val \ threshold in ratio))
+    else
+        print("Large");
+
+    // Use 5: let inside a function call argument
+    print(square(let base = 6 in base + 1));
+
+    // Use 6: Nested lets producing a final number (chain of computations)
+    let final_val =
+        let r = 2 in
+            let area = PI * r ^ 2 in
+                let rounded = area - (area % 1) in
+                    rounded
+    in
+    print("Circle area r=2 (truncated) = " @ final_val);
+
+    // Use 7: let inside while guard — compute upper bound with let
+    let limit = let base_n = 5 in base_n * base_n in
+    let counter = 0 in
+    let acc = 0 in {
+        while (counter < limit) {
+            acc := acc + counter;
+            counter := counter + 1;
+        };
+        print("Sum 0.." @ (limit - 1) @ " = " @ acc);
+    };
+
+    // Use 8: let supplying default values in an if expression
+    let input = -3 in
+    let safe = if (input >= 0) input else (let negated = 0 - input in negated) in
+    print("abs(-3) via let-in-else = " @ safe);
+
+    // Use 9: let combined with boolean operators
+    let in_range =
+        (let lo = 1 in lo <= 5) & (let hi = 10 in 5 <= hi)
+    in
+    print("5 in [1,10]? " @ in_range);
+
+    // Use 10: let as the returned value of another let's body
+    let outer_result =
+        let outer_x = 100 in
+            let inner_result = let inner_x = outer_x \ 4 in inner_x * 3 in
+            inner_result
+    in
+    print("(100/4)*3 via nested let = " @ outer_result);
+
+    // Use 11: let inside string concatenation
+    print("Computed: " @ (let msg_val = 2 ^ 10 in msg_val));
+
+    // Use 12: let inside a for body (loop variable + binding)
+    for (i in range(1, 5)) {
+        let powered = let base = i in base ^ 3 in
+        print(i @ "^3 = " @ powered);
+    };
+}

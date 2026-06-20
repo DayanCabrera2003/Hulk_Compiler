@@ -119,6 +119,7 @@ if let Some(symbol_id) = resolver.expr_symbols.get(&expr.id) {
 - `funcion no existe: <nombre>`
 - `tipo no existe: <nombre>`
 - `redefinicion de <nombre>`
+- `atributo no existe: <nombre>` (acceso a un campo inexistente en el tipo o sus ancestros)
 
 ### Decisiones de diseño
 
@@ -164,3 +165,27 @@ La corrección se aplica en dos puntos:
 
 La distinción en el lowerer no puede basarse únicamente en la presencia del símbolo resuelto, porque `resolve_base` también almacena un símbolo cuando `base` actúa como palabra clave válida de override (el símbolo apunta al método del tipo padre). Por eso la condición comprueba el `SymbolKind` — solo `Variable` y `Parameter` indican sombreado real.
 
+
+---
+
+## Validación de acceso a atributos (`recv.field`)
+
+### Qué se implementó
+
+**Archivos**:
+- `crates/hulk-semantic/src/resolver/mod.rs` — nuevo mapa `type_attributes: HashMap<SymbolId, HashSet<String>>` que registra, por tipo, el conjunto de atributos declarados **directamente** en él (sin heredados).
+- `crates/hulk-semantic/src/resolver/names/decls.rs` — `register_global_declarations` puebla `type_attributes` en una pre-pasada, antes de resolver cualquier cuerpo de método, de modo que la validación funcione sin importar el orden de declaración de miembros ni las referencias entre tipos.
+- `crates/hulk-semantic/src/validation.rs` — `validate_field_access` y los helpers `type_owns_attribute` / `ancestor_owns_attribute`.
+- `crates/hulk-semantic/src/resolver/names/exprs.rs` — el caso `ExprKind::FieldAccess` ahora llama a `validate_field_access` además de resolver el receptor (espejo de `validate_method_call`).
+
+**Regla**: un acceso `recv.field` es válido si `field` es un atributo alcanzable desde el tipo léxico actual — propio o heredado de un ancestro. Nombrar un atributo que no existe en ninguna parte de esa jerarquía es un typo y se rechaza con `atributo no existe: <field>`.
+
+### Decisión de diseño — spec vs. implementación
+
+`hulk-docs.pdf` §A.7 afirma que los atributos son privados "not even inheritors": un hijo no podría leer un atributo del padre. Tomar eso al pie de la letra haría **ilegales los patrones recursivos idiomáticos** de HULK (`Cons inherits List` leyendo `self.v`, `Node inherits Tree` leyendo `self.v`), que el propio test suite del proyecto usa como código válido (`crates/hulk-codegen/tests/comprehensive.rs`).
+
+Ante el conflicto, se optó por ser fiel al **comportamiento de la implementación de referencia** (que permite el acceso heredado) en lugar de a la prosa de la spec: la validación solo caza atributos inexistentes, no aplica la privacidad estricta frente a herederos. Esto mejora el compilador (antes no se detectaba ningún typo de atributo) sin romper código idiomático.
+
+### Gotcha
+
+La validación se ancla en el **tipo léxico actual** (`current_type`), no en el tipo estático del receptor. Por eso `other.x` dentro de un método de `Vec2` (con `x` atributo de `Vec2`) es válido: la comprobación es por nombre de atributo contra la jerarquía del tipo en cuyo cuerpo se escribe el acceso. La validación 100% correcta por tipo estático del receptor requeriría la inferencia de `infer_field_access` (hoy retorna `Object`, pendiente en 7.3) y queda como mejora futura.

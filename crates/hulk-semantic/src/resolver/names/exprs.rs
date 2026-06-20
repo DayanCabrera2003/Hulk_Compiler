@@ -64,7 +64,10 @@ impl Resolver {
                 self.validate_method_call(receiver, expr);
                 self.resolve_exprs(args);
             }
-            ExprKind::FieldAccess { receiver, .. } => self.resolve_expr(receiver),
+            ExprKind::FieldAccess { receiver, field } => {
+                self.resolve_expr(receiver);
+                self.validate_field_access(field, expr);
+            }
             ExprKind::Index { target, index } => {
                 self.resolve_expr(target);
                 self.resolve_expr(index);

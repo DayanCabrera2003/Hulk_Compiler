@@ -1,0 +1,97 @@
+// 17_for_loops_variables.hulk
+// Programs using for loops with range and accumulator variables
+
+// Algorithm 1: Sum of 1..100 using for + running total
+function sum_range(lo: Number, hi: Number): Number {
+    let total = 0 in {
+        for (i in range(lo, hi + 1))
+            total := total + i;
+        total
+    }
+}
+
+// Algorithm 2: Sum of squares 1^2 + 2^2 + ... + N^2
+function sum_of_squares(n: Number): Number {
+    let acc = 0 in {
+        for (i in range(1, n + 1))
+            acc := acc + i * i;
+        acc
+    }
+}
+
+// Algorithm 3: Product of range (generalized factorial)
+function product_range(lo: Number, hi: Number): Number {
+    let prod = 1 in {
+        for (i in range(lo, hi + 1))
+            prod := prod * i;
+        prod
+    }
+}
+
+// Algorithm 4: Count numbers in 1..N divisible by both 3 and 5
+function count_fizzbuzz(n: Number): Number {
+    let count = 0 in {
+        for (i in range(1, n + 1)) {
+            if (i % 3 == 0 & i % 5 == 0)
+                count := count + 1
+            else
+                count := count;
+        };
+        count
+    }
+}
+
+// Algorithm 5: Running maximum in a vector
+function running_max(values: Number[]): Number {
+    let current_max = values[0] in {
+        for (i in range(1, values.size()))
+            if (values[i] > current_max)
+                current_max := values[i]
+            else
+                current_max := current_max;
+        current_max
+    }
+}
+
+// Algorithm 6: Multiplication table for a given number, printed
+function mult_table(n: Number): Number {
+    for (i in range(1, 13))
+        print(n @ " x " @ i @ " = " @ (n * i));
+    n
+}
+
+// Algorithm 7: Prefix sums (running total printed at each step)
+function prefix_sums(limit: Number): Number {
+    let running = 0 in {
+        for (i in range(1, limit + 1)) {
+            running := running + i;
+            print("prefix_sum[" @ i @ "] = " @ running);
+        };
+        running
+    }
+}
+
+// --- Run all algorithms ---
+{
+    print("=== Sum 1..100 ===");
+    print(sum_range(1, 100));
+
+    print("=== Sum of squares 1..10 ===");
+    print(sum_of_squares(10));
+
+    print("=== Product 1..7 (7!) ===");
+    print(product_range(1, 7));
+
+    print("=== Count fizzbuzz hits in 1..100 ===");
+    print(count_fizzbuzz(100));
+
+    print("=== Running max of [3, 17, 2, 99, 41] ===");
+    let vals = [3, 17, 2, 99, 41] in
+    print(running_max(vals));
+
+    print("=== Multiplication table for 7 ===");
+    mult_table(7);
+
+    print("=== Prefix sums 1..5 ===");
+    prefix_sums(5);
+}

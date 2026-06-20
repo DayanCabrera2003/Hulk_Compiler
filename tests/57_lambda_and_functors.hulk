@@ -1,0 +1,92 @@
+// 57_lambda_and_functors.hulk
+// Lambda expressions and higher-order functions with functor parameters
+
+function apply(x: Number, f: (Number) -> Number): Number =>
+    f(x);
+
+function apply_twice(x: Number, f: (Number) -> Number): Number =>
+    f(f(x));
+
+function apply_n(x: Number, n: Number, f: (Number) -> Number): Number {
+    let result = x in {
+        let i = 0 in
+            while (i < n) {
+                result := f(result);
+                i := i + 1
+            };
+        result
+    }
+}
+
+function compose_apply(x: Number, f: (Number) -> Number, g: (Number) -> Number): Number =>
+    g(f(x));
+
+function filter_count(limit: Number, pred: (Number) -> Boolean): Number {
+    let cnt = 0 in {
+        for (i in range(1, limit + 1))
+            if (pred(i)) cnt := cnt + 1 else 0;
+        cnt
+    }
+}
+
+function map_sum(limit: Number, f: (Number) -> Number): Number {
+    let total = 0 in {
+        for (i in range(1, limit + 1)) total := total + f(i);
+        total
+    }
+}
+
+function map_to_vec(limit: Number, f: (Number) -> Number): Number[] =>
+    [f(x) | x in range(1, limit + 1)];
+
+function fold(v: Number[], init: Number, f: (Number, Number) -> Number): Number {
+    let acc = init in {
+        for (x in v) acc := f(acc, x);
+        acc
+    }
+}
+
+{
+    // Basic apply
+    print("apply(5, x=>x*2)         = " @ apply(5, (x) => x * 2));
+    print("apply(7, x=>x^2)         = " @ apply(7, (x) => x ^ 2));
+    print("apply(3, x=>x+10)        = " @ apply(3, (x) => x + 10));
+
+    // apply_twice
+    print("apply_twice(3, x=>x+1)   = " @ apply_twice(3, (x) => x + 1));
+    print("apply_twice(2, x=>x*3)   = " @ apply_twice(2, (x) => x * 3));
+
+    // apply_n
+    print("apply_n(1, 8, x=>x*2)    = " @ apply_n(1, 8, (x) => x * 2));
+
+    // compose_apply: first double, then add 1
+    print("compose g(f(5)) dbl+add1 = " @ compose_apply(5, (x) => x * 2, (x) => x + 1));
+    // compose: first add 1, then square
+    print("compose g(f(4)) +1 then^ = " @ compose_apply(4, (x) => x + 1, (x) => x ^ 2));
+
+    // filter_count
+    print("Evens in 1..20:    " @ filter_count(20, (x) => x % 2 == 0));
+    print("Odds  in 1..20:    " @ filter_count(20, (x) => x % 2 == 1));
+    print("Multiples of 3, 1..30: " @ filter_count(30, (x) => x % 3 == 0));
+
+    // map_sum: sum of squares
+    print("Sum of squares 1..10:  " @ map_sum(10, (x) => x ^ 2));
+    // sum of (2*x - 1) = n^2
+    print("Sum of (2x-1) 1..10:   " @ map_sum(10, (x) => 2 * x - 1));
+
+    // map_to_vec and manual print
+    let cubes = map_to_vec(5, (x) => x ^ 3) in {
+        print("Cubes 1..5 via lambda:");
+        let i = 0 in
+            while (i < cubes.size()) {
+                print("  " @ cubes[i]);
+                i := i + 1
+            }
+    };
+
+    // fold: sum and product
+    let vals = [1, 2, 3, 4, 5] in {
+        print("Fold sum [1..5]:     " @ fold(vals, 0, (acc, x) => acc + x));
+        print("Fold product [1..5]: " @ fold(vals, 1, (acc, x) => acc * x))
+    }
+}

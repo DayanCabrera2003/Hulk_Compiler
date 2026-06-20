@@ -1,0 +1,106 @@
+// 46_is_operator.hulk — Dynamic type testing with the `is` operator
+
+type Vehicle(brand) {
+    make = brand;
+
+    get_make() => self.make;
+
+    category() => "Vehicle";
+
+    describe() => "Vehicle:" @@ self.get_make();
+}
+
+type Car(brand, doors) inherits Vehicle(brand) {
+    num_doors = doors;
+
+    category() => "Car";
+
+    describe() => "Car:" @@ self.get_make() @@ self.num_doors @ "-door";
+}
+
+type Truck(brand, payload_tons) inherits Vehicle(brand) {
+    payload = payload_tons;
+
+    category() => "Truck";
+
+    describe() => "Truck:" @@ self.get_make() @@ "payload=" @ self.payload @ "t";
+}
+
+type SportsCar(brand, doors, hp) inherits Car(brand, doors) {
+    horsepower = hp;
+
+    category() => "SportsCar";
+
+    describe() =>
+        "SportsCar:" @@ self.get_make() @@ self.num_doors @ "-door" @@ self.horsepower @ "hp";
+}
+
+function describe_vehicle(v) {
+    {
+        print("Brand: " @ v.get_make());
+
+        if (v is SportsCar) {
+            print("  -> It's a SportsCar (also a Car and a Vehicle)");
+        } elif (v is Car) {
+            print("  -> It's a Car (also a Vehicle)");
+        } elif (v is Truck) {
+            print("  -> It's a Truck (also a Vehicle)");
+        } else {
+            print("  -> It's a plain Vehicle");
+        };
+
+        print("  Category: " @ v.category());
+        print("  Description: " @ v.describe());
+
+        // is with root type Object — everything is Object
+        if (v is Object) {
+            print("  (is Object: true — every instance is an Object)");
+        } else {
+            print("  (is Object: false — should never print)");
+        };
+
+        // is with same type Vehicle — true for all in this hierarchy
+        if (v is Vehicle) {
+            print("  (is Vehicle: true)");
+        } else {
+            print("  (is Vehicle: false)");
+        };
+
+        print("");
+    }
+}
+
+{
+    print("=== is operator tests ===");
+    print("");
+
+    let vehicle    = new Vehicle("Generic Motors")      in
+    let car        = new Car("Toyota", 4)               in
+    let truck      = new Truck("Volvo", 20)             in
+    let sportscar  = new SportsCar("Ferrari", 2, 710)   in {
+        describe_vehicle(vehicle);
+        describe_vehicle(car);
+        describe_vehicle(truck);
+        describe_vehicle(sportscar);
+
+        // Extra: is returning false for wrong sibling
+        print("=== Cross-type is checks ===");
+        if (car is Truck) {
+            print("car is Truck: true  (wrong)");
+        } else {
+            print("car is Truck: false (correct)");
+        };
+
+        if (truck is Car) {
+            print("truck is Car: true  (wrong)");
+        } else {
+            print("truck is Car: false (correct)");
+        };
+
+        if (sportscar is Car) {
+            print("sportscar is Car: true (correct — SportsCar extends Car)");
+        } else {
+            print("sportscar is Car: false (wrong)");
+        };
+    };
+}

@@ -1,0 +1,91 @@
+// 36_loop_return_values.hulk
+// Demonstrate that while and for return the last value of their body
+
+// Function returning result of a for loop
+function last_square(n: Number): Number {
+    for (i in range(1, n + 1)) i * i
+}
+
+// Function returning result of a while loop (last value before exit)
+function last_collatz_step(start: Number): Number {
+    let val = start in
+        while (val != 1)
+            val := if (val % 2 == 0) val \ 2 else 3 * val + 1
+}
+
+// Sum via for whose body is an accumulator expression
+function for_sum(n: Number): Number {
+    let acc = 0 in {
+        for (i in range(1, n + 1)) acc := acc + i;
+        acc
+    }
+}
+
+// while returning last computed product
+function while_product_last(n: Number): Number {
+    let i = 1, prod = 1 in
+        while (i <= n) {
+            prod := prod * i;
+            i := i + 1;
+            prod
+        }
+}
+
+// for loop whose body selects max: last iteration holds running max
+function for_running_max(n: Number): Number {
+    let mx = 1 in
+        for (i in range(1, n + 1)) {
+            mx := if (i > mx) i else mx;
+            mx
+        }
+}
+
+{
+    // 1. Assign result of for to variable
+    let sq = for (i in range(1, 6)) i * i in
+        print("Last square (1..5): " @ sq);
+
+    // 2. Use while result in arithmetic
+    let w = last_collatz_step(6) in
+        print("Last Collatz step from 6 (should be 1): " @ w);
+
+    // 3. for body is arithmetic expression returning last value
+    let last = for (i in range(10, 15)) i * 2 in
+        print("Last doubled value in 10..14: " @ last);
+
+    // 4. Function returning result of for loop
+    print("last_square(7) = " @ last_square(7));
+
+    // 5. Chain: let x = for ... in print(x)
+    let x = for (i in range(1, 5)) i * i in
+        print("for chain result: " @ x);
+
+    // 6. while returning last product
+    print("while_product_last(5) = " @ while_product_last(5));
+
+    // 7. for running max used as expression in let
+    let mx = for_running_max(10) in
+        print("for_running_max(10) = " @ mx);
+
+    // 8. while result + arithmetic
+    let base = last_collatz_step(12) in
+        print("last_collatz_step(12) + 100 = " @ (base + 100));
+
+    // 9. nested: for result fed into while
+    let seed = for (i in range(3, 8)) i in
+        let steps = let v = seed in {
+            let s = 0 in {
+                while (v != 1) {
+                    v := if (v % 2 == 0) v \ 2 else 3 * v + 1;
+                    s := s + 1;
+                };
+                s
+            }
+        } in
+            print("seed=" @ seed @ " collatz_steps=" @ steps);
+
+    // 10. for_sum as expression
+    print("for_sum(10) = " @ for_sum(10));
+
+    print("All loop-as-expression demos done.");
+}
